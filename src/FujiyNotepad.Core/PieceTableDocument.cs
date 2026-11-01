@@ -232,10 +232,41 @@ public sealed class PieceTableDocument : IByteSource
         }
     }
 
-    public ValueTask<int> ReadAsync(long offset, Memory<byte> buffer, CancellationToken token = default)
+    public async ValueTask<int> ReadAsync(long offset, Memory<byte> buffer, CancellationToken token = default)
     {
-        token.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Read(offset, buffer.Span));
+        ThrowIfDisposed();
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+        Piece[] snapshot;
+        long[] starts;
+        long currentLength;
+        lock (stateLock)
+        {
+            snapshot = pieces.ToArray();
+            starts = pieceStarts;
+            currentLength = length;
+        }
+        if (offset >= currentLength || buffer.IsEmpty) return 0;
+
+        int requested = (int)Math.Min(buffer.Length, currentLength - offset);
+        int pieceIndex = Array.BinarySearch(starts, offset);
+        if (pieceIndex < 0) pieceIndex = ~pieceIndex - 1;
+        long within = offset - starts[pieceIndex];
+        int copied = 0;
+        while (copied < requested && pieceIndex < snapshot.Length)
+        {
+            token.ThrowIfCancellationRequested();
+            Piece piece = snapshot[pieceIndex];
+            int count = (int)Math.Min(requested - copied, piece.Length - within);
+            long sourceOffset = piece.SourceOffset + within;
+            int read = piece.IsAddition
+                ? await RandomAccess.ReadAsync(additions, buffer.Slice(copied, count), sourceOffset, token).ConfigureAwait(false)
+                : await original.ReadAsync(sourceOffset, buffer.Slice(copied, count), token).ConfigureAwait(false);
+            if (read != count) throw new EndOfStreamException("A piece-table source was truncated.");
+            copied += read;
+            pieceIndex++;
+            within = 0;
+        }
+        return copied;
     }
 
     public long RefreshLength() => Length;
