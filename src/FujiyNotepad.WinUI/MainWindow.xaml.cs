@@ -189,7 +189,11 @@ namespace FujiyNotepad.WinUI
                     int first = Math.Max(0, settings.LastSessionFirstVisibleLine);
                     int caretLine = Math.Max(0, settings.LastSessionCaretLine);
                     int caretColumn = Math.Max(0, settings.LastSessionCaretColumn);
-                    DispatcherQueue.TryEnqueue(() => { _ = RestoreSessionAsync(lastPath, first, caretLine, caretColumn); });
+                    string? lastProjectFolder = settings.LastSessionProjectFolderPath;
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _ = RestoreSessionAsync(lastPath, first, caretLine, caretColumn, lastProjectFolder);
+                    });
                 }
             }
         }
@@ -341,6 +345,7 @@ namespace FujiyNotepad.WinUI
                 Title = $"{Path.GetFileName(project.DocumentPath)} - Fujiy Notepad [{project.Metadata.Title}]";
                 UpdateNovelProjectMenu();
                 LblStatus.Text = $"Novel project: {project.Metadata.Title}";
+                RememberActiveNovelProjectSession(project);
             }
             catch
             {
@@ -495,12 +500,36 @@ namespace FujiyNotepad.WinUI
 
         private async Task CloseActiveNovelProjectAsync()
         {
+            bool hadActiveProject = activeNovelProject is not null || activeAnnotationStore is not null;
             NovelAnnotationStore? store = activeAnnotationStore;
             activeAnnotationStore = null;
             activeNovelProject = null;
             if (store is not null)
                 await store.DisposeAsync();
+
+            if (hadActiveProject)
+            {
+                // Explicitly leaving a project means the last file should no longer be restored as a project.
+                settings.LastSessionProjectFolderPath = "";
+                settingsStore.Save(settings);
+            }
+
             UpdateNovelProjectMenu();
+        }
+
+        private void RememberActiveNovelProjectSession(NovelProject project)
+        {
+            if (!settings.RestoreLastSession)
+                return;
+
+            // Persist the project identity immediately, not only when the main window closes. This also
+            // covers a restart/crash shortly after importing or opening a project.
+            settings.LastSessionFilePath = project.DocumentPath;
+            settings.LastSessionProjectFolderPath = project.RootPath;
+            settings.LastSessionFirstVisibleLine = provider is null ? 0 : View.FirstVisibleLine;
+            settings.LastSessionCaretLine = provider is null ? 0 : View.CaretPosition.Line;
+            settings.LastSessionCaretColumn = provider is null ? 0 : View.CaretPosition.Column;
+            settingsStore.Save(settings);
         }
 
         private void UpdateNovelProjectMenu()
@@ -1422,9 +1451,37 @@ namespace FujiyNotepad.WinUI
 
         // Reopens the last file (called at launch when no file/pipe was given and the setting is on) and queues
         // its saved scroll + caret position for restore as the index catches up.
-        private async Task RestoreSessionAsync(string path, int firstVisibleLine, int caretLine, int caretColumn)
+        private async Task RestoreSessionAsync(
+            string path, int firstVisibleLine, int caretLine, int caretColumn, string? projectFolderPath)
         {
-            await OpenFile(path); // OpenFile resets the pending-session state, so set it afterwards
+            bool restoredProject = false;
+            if (!string.IsNullOrWhiteSpace(projectFolderPath) && Directory.Exists(projectFolderPath))
+            {
+                try
+                {
+                    NovelProject project = await NovelProject.OpenAsync(projectFolderPath);
+                    if (PathsEqual(project.DocumentPath, path))
+                    {
+                        await ActivateNovelProjectAsync(project);
+                        restoredProject = activeNovelProject is not null && activeAnnotationStore is not null;
+                    }
+                    else
+                    {
+                        diagnostics.LogSwallowed(
+                            $"Restore novel project: saved project document does not match last session file ({projectFolderPath})",
+                            new InvalidDataException("The saved novel project does not own the last session document."));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // A missing, moved, or damaged project should not prevent the ordinary last-file restore.
+                    diagnostics.LogSwallowed($"Restore novel project: {projectFolderPath}", ex);
+                }
+            }
+
+            if (!restoredProject)
+                await OpenFile(path); // OpenFile resets the pending-session state, so set it afterwards
+
             pendingSessionFirstLine = firstVisibleLine;
             pendingSessionCaretLine = caretLine;
             pendingSessionCaretColumn = caretColumn;
@@ -1465,6 +1522,7 @@ namespace FujiyNotepad.WinUI
         private void ClearSavedSession()
         {
             settings.LastSessionFilePath = "";
+            settings.LastSessionProjectFolderPath = "";
             settings.LastSessionFirstVisibleLine = 0;
             settings.LastSessionCaretLine = 0;
             settings.LastSessionCaretColumn = 0;
@@ -3432,6 +3490,7 @@ namespace FujiyNotepad.WinUI
             }
 
             settings.LastSessionFilePath = currentFilePath!;
+            settings.LastSessionProjectFolderPath = activeNovelProject?.RootPath ?? "";
             if (filteredSource is null && provider is not null)
             {
                 settings.LastSessionFirstVisibleLine = View.FirstVisibleLine;
