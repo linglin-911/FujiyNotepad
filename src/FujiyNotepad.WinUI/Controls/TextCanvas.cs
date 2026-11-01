@@ -89,6 +89,12 @@ namespace FujiyNotepad.WinUI.Controls
 
         public event Action? ViewChanged;
         public event Action<TextPosition>? CaretChanged;
+        public event Action? CreateSmallAnnotationRequested;
+        public event Action? AddSelectionToSmallAnnotationRequested;
+
+        private MenuFlyoutItem? createSmallAnnotationItem;
+        private MenuFlyoutItem? addToSmallAnnotationItem;
+        private bool annotationCommandsEnabled;
 
         public TextCanvas()
         {
@@ -189,11 +195,35 @@ namespace FujiyNotepad.WinUI.Controls
             var selectAllItem = new MenuFlyoutItem { Text = "Select All", KeyboardAcceleratorTextOverride = "Ctrl+A" };
             selectAllItem.Click += (_, _) => SelectAllText();
 
+            createSmallAnnotationItem = new MenuFlyoutItem
+            {
+                Text = "新建小批注...",
+                Visibility = Microsoft.UI.Xaml.Visibility.Collapsed,
+            };
+            createSmallAnnotationItem.Click += (_, _) => CreateSmallAnnotationRequested?.Invoke();
+
+            addToSmallAnnotationItem = new MenuFlyoutItem
+            {
+                Text = "添加到现有小批注...",
+                Visibility = Microsoft.UI.Xaml.Visibility.Collapsed,
+            };
+            addToSmallAnnotationItem.Click += (_, _) => AddSelectionToSmallAnnotationRequested?.Invoke();
+
             var flyout = new MenuFlyout();
             flyout.Items.Add(copyItem);
             flyout.Items.Add(selectAllItem);
-            // Copy is only meaningful when something is selected.
-            flyout.Opening += (_, _) => copyItem.IsEnabled = engine.HasSelection;
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            flyout.Items.Add(createSmallAnnotationItem);
+            flyout.Items.Add(addToSmallAnnotationItem);
+            // Copy and annotation commands are only meaningful when something is selected.
+            flyout.Opening += (_, _) =>
+            {
+                copyItem.IsEnabled = engine.HasSelection;
+                if (createSmallAnnotationItem is not null)
+                    createSmallAnnotationItem.IsEnabled = engine.HasSelection;
+                if (addToSmallAnnotationItem is not null)
+                    addToSmallAnnotationItem.IsEnabled = engine.HasSelection;
+            };
 
             ContextFlyout = flyout;
         }
@@ -271,6 +301,22 @@ namespace FujiyNotepad.WinUI.Controls
         }
 
         public TextPosition SelectionStart => engine.SelectionStart;
+        public TextPosition SelectionEnd => engine.SelectionEnd;
+
+        /// <summary>Returns the selected source text with its original line terminators for annotation quotes.</summary>
+        public string? GetSelectedTextForAnnotation() => engine.GetSelectedTextForAnnotation();
+
+        /// <summary>Shows or hides the novel-project annotation commands in the text context menu.</summary>
+        public void SetAnnotationCommandsEnabled(bool enabled)
+        {
+            annotationCommandsEnabled = enabled;
+            if (createSmallAnnotationItem is not null)
+                createSmallAnnotationItem.Visibility = enabled
+                    ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+            if (addToSmallAnnotationItem is not null)
+                addToSmallAnnotationItem.Visibility = enabled
+                    ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        }
 
         /// <summary>The selected text when it lies on a single source line; otherwise null (issue #130).</summary>
         public string? GetSelectedTextOnSingleLine() => engine.GetSelectedTextOnSingleLine();
