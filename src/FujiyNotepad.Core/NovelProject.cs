@@ -9,8 +9,6 @@ namespace FujiyNotepad.Core;
 /// </summary>
 public sealed class NovelProject
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-
     private NovelProject(string rootPath, NovelProjectMetadata metadata)
     {
         RootPath = Path.GetFullPath(rootPath);
@@ -49,6 +47,7 @@ public sealed class NovelProject
             throw new IOException("The project path is an existing file.");
         }
 
+        bool createdRoot = !Directory.Exists(root);
         Directory.CreateDirectory(root);
         if (Directory.EnumerateFileSystemEntries(root).Any())
         {
@@ -93,6 +92,10 @@ public sealed class NovelProject
         {
             TryDelete(temporary);
             if (documentCreated) TryDelete(destination);
+            TryDelete(Path.Combine(root, "project.json.tmp"));
+            TryDelete(Path.Combine(root, "project.json"));
+            TryDeleteDirectoryIfEmpty(Path.Combine(root, "backups"));
+            if (createdRoot) TryDeleteDirectoryIfEmpty(root);
             throw;
         }
     }
@@ -103,8 +106,8 @@ public sealed class NovelProject
         string metadataPath = Path.Combine(root, "project.json");
         await using var stream = new FileStream(metadataPath, FileMode.Open, FileAccess.Read, FileShare.Read,
             16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        NovelProjectMetadata? metadata = await JsonSerializer.DeserializeAsync<NovelProjectMetadata>(
-            stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        NovelProjectMetadata? metadata = await JsonSerializer.DeserializeAsync(
+            stream, NovelProjectJsonContext.Default.NovelProjectMetadata, cancellationToken).ConfigureAwait(false);
         if (metadata is null || string.IsNullOrWhiteSpace(metadata.DocumentFileName))
         {
             throw new InvalidDataException("The project metadata is missing or invalid.");
@@ -133,14 +136,23 @@ public sealed class NovelProject
     public async Task SaveMetadataAsync(CancellationToken cancellationToken = default)
     {
         string temporary = MetadataPath + ".tmp";
-        await using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None,
-            16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+        try
         {
-            await JsonSerializer.SerializeAsync(stream, Metadata, JsonOptions, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            stream.Flush(flushToDisk: true);
+            await using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None,
+                16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await JsonSerializer.SerializeAsync(stream, Metadata,
+                    NovelProjectJsonContext.Default.NovelProjectMetadata, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, MetadataPath, overwrite: true);
         }
-        File.Move(temporary, MetadataPath, overwrite: true);
+        catch
+        {
+            TryDelete(temporary);
+            throw;
+        }
     }
 
     public static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken = default)
@@ -154,6 +166,16 @@ public sealed class NovelProject
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort cleanup */ }
+    }
+
+    private static void TryDeleteDirectoryIfEmpty(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+                Directory.Delete(path);
+        }
+        catch { /* best-effort cleanup */ }
     }
 }
 
