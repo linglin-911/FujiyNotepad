@@ -265,7 +265,7 @@ public static class ExternalEditMarkerCodec
         var results = new List<ExternalEditMarkerTargetResult>();
         foreach (var pair in expected)
         {
-            ExternalEditMarker[] found = observed.GetValueOrDefault(pair.Key) ?? Array.Empty<ExternalEditMarker>();
+            ExternalEditMarkerOccurrence[] found = observed.GetValueOrDefault(pair.Key) ?? Array.Empty<ExternalEditMarkerOccurrence>();
             int starts = found.Count(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.Start);
             int ends = found.Count(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.End);
             ExternalEditMarkerTargetStatus status = (starts > 1, ends > 1, starts == 0, ends == 0) switch
