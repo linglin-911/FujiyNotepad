@@ -35,6 +35,37 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task RangeQueries_ReturnAllOverlappingNotesIncludingNestedRanges()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid broad = await store.CreateAnnotationAsync("broad");
+            Guid nested = await store.CreateAnnotationAsync("nested");
+            Guid outside = await store.CreateAnnotationAsync("outside");
+            await store.AddAnchorAsync(broad, 100, 300, "broad quote");
+            await store.AddAnchorAsync(nested, 150, 180, "nested quote");
+            await store.AddAnchorAsync(outside, 301, 350, "outside quote");
+
+            var anchors = await store.GetAnchorsIntersectingRangeAsync(160, 170);
+            var notes = await store.GetAnnotationsIntersectingRangeAsync(160, 170);
+
+            Assert.Equal(2, anchors.Count);
+            Assert.Equal(2, notes.Count);
+            Assert.Contains(notes, note => note.Id == broad);
+            Assert.Contains(notes, note => note.Id == nested);
+            Assert.DoesNotContain(notes, note => note.Id == outside);
+        }
+        finally
+        {
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task Store_AllowsSameRangeForDifferentAnnotationsButRejectsDuplicateForSameAnnotation()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
