@@ -22,6 +22,7 @@ public sealed class NovelProject
     public string DocumentPath => Path.Combine(RootPath, Metadata.DocumentFileName);
     public string DatabasePath => Path.Combine(RootPath, "annotations.sqlite");
     public string BackupDirectory => Path.Combine(RootPath, "backups");
+    public string EditSessionsDirectory => Path.Combine(RootPath, "edit_sessions");
     public string MetadataPath => Path.Combine(RootPath, "project.json");
 
     /// <summary>
