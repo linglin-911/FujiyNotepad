@@ -52,7 +52,12 @@ public sealed class NovelProject
         string documentName = "novel" + (Path.GetExtension(source).Length == 0 ? ".txt" : Path.GetExtension(source));
         string destination = Path.Combine(root, documentName);
         string temporary = destination + ".importing";
+        if (File.Exists(destination) || File.Exists(Path.Combine(root, "project.json")))
+        {
+            throw new IOException("The target folder already contains a novel project or a file with the import name.");
+        }
 
+        bool documentCreated = false;
         try
         {
             await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read,
@@ -65,7 +70,8 @@ public sealed class NovelProject
                 output.Flush(flushToDisk: true);
             }
 
-            File.Move(temporary, destination, overwrite: true);
+            File.Move(temporary, destination);
+            documentCreated = true;
             string hash = await ComputeSha256Async(destination, cancellationToken).ConfigureAwait(false);
             var metadata = new NovelProjectMetadata(
                 Guid.NewGuid(),
@@ -84,7 +90,7 @@ public sealed class NovelProject
         catch
         {
             TryDelete(temporary);
-            TryDelete(destination);
+            if (documentCreated) TryDelete(destination);
             throw;
         }
     }
