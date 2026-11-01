@@ -84,14 +84,20 @@ public static class AnnotationAnchorTransformer
     public static AnchorTransformResult Apply(AnnotationAnchor anchor, DocumentEdit edit)
     {
         ArgumentNullException.ThrowIfNull(anchor);
-        edit.Validate();
+        AnchorTransformResult range = TransformRange(anchor.StartOffset, anchor.EndOffset, edit);
+        bool fullyRemoved = anchor.StartOffset < anchor.EndOffset
+                            && edit.DeletedLength > 0
+                            && edit.StartOffset <= anchor.StartOffset
+                            && edit.DeletedEnd >= anchor.EndOffset;
+        return range with { IsOrphaned = anchor.IsOrphaned || fullyRemoved || range.EndOffset <= range.StartOffset };
+    }
 
-        long start = anchor.StartOffset;
-        long end = anchor.EndOffset;
+    /// <summary>Transforms any half-open document range, for example a chapter boundary.</summary>
+    public static AnchorTransformResult TransformRange(long start, long end, DocumentEdit edit)
+    {
+        edit.Validate();
         if (start < 0 || end < start)
-        {
-            throw new ArgumentException("The anchor range is invalid.", nameof(anchor));
-        }
+            throw new ArgumentOutOfRangeException(nameof(start), "The range is invalid.");
 
         long p = edit.StartOffset;
         long inserted = edit.InsertedLength;
@@ -107,23 +113,14 @@ public static class AnnotationAnchorTransformer
             {
                 end = checked(end + inserted);
             }
-
-            return new AnchorTransformResult(start, end, anchor.IsOrphaned);
+            return new AnchorTransformResult(start, end, false);
         }
 
         long deletedEnd = edit.DeletedEnd;
-        bool fullyRemoved = start < end && p <= start && deletedEnd >= end;
-
         long newStart = MapStart(start, p, deletedEnd, inserted);
         long newEnd = MapEnd(end, p, deletedEnd, inserted);
-        bool orphaned = anchor.IsOrphaned || fullyRemoved || newEnd <= newStart;
-
-        if (newEnd < newStart)
-        {
-            newEnd = newStart;
-        }
-
-        return new AnchorTransformResult(newStart, newEnd, orphaned);
+        if (newEnd < newStart) newEnd = newStart;
+        return new AnchorTransformResult(newStart, newEnd, false);
     }
 
     private static long MapStart(long value, long editStart, long editEnd, long insertedLength)
