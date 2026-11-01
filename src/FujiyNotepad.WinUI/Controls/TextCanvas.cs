@@ -916,7 +916,9 @@ namespace FujiyNotepad.WinUI.Controls
             }
 
             float localX = (float)(x - hitLine.TextX);
-            float localY = (float)Math.Clamp(y - hitLine.Y, 0, Math.Max(0, lineHeight - 0.1));
+            // Y has already selected the visual row; use its vertical center so clicks near the top or
+            // bottom padding of a row still hit the glyphs on that row.
+            float localY = (float)Math.Max(0, lineHeight / 2.0);
             if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out bool trailing))
             {
                 int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
