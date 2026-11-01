@@ -63,6 +63,41 @@ public sealed class ExternalEditSessionTests
     }
 
     [Fact]
+    public async Task CreateMarkedAsync_ManifestRoundTripsMarkerTargetsThroughSourceGeneratedJson()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "FujiyExternalEditTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string source = Path.Combine(root, "source.txt");
+        string projectFolder = Path.Combine(root, "project");
+        string export = Path.Combine(root, "external", "novel-marked.txt");
+        await File.WriteAllTextAsync(source, "abcdefg");
+
+        try
+        {
+            NovelProject project = await NovelProject.ImportAsync(source, projectFolder);
+            await using var store = new NovelAnnotationStore(project.DatabasePath);
+            await store.InitializeAsync();
+            Guid annotationId = await store.CreateAnnotationAsync("Test note", title: "Note");
+            await store.AddAnchorAsync(annotationId, 0, 3, "abc", documentRevision: project.Metadata.DocumentRevision);
+            await store.UpsertChapterAsync(new NovelChapter(
+                Guid.NewGuid(), "Chapter 1", 0, 7, 1, project.Metadata.DocumentRevision));
+
+            ExternalEditSession created = await ExternalEditSession.CreateMarkedAsync(project, store, export);
+            ExternalEditSession reopened = await ExternalEditSession.OpenAsync(created.SessionDirectory, export);
+
+            Assert.Equal(4, reopened.Metadata.ExpectedMarkers?.Count);
+            ExternalEditMarkerValidationResult validation = await reopened.ValidateEditedCopyMarkersAsync(export);
+            Assert.False(validation.HasIssues);
+            Assert.Equal(2, validation.Targets.Count);
+            Assert.All(validation.Targets, target => Assert.Equal(ExternalEditMarkerTargetStatus.Intact, target.Status));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ValidateProjectBaselineAsync_RejectsProjectChangedAfterExport()
     {
         string root = Path.Combine(Path.GetTempPath(), "FujiyExternalEditTests", Guid.NewGuid().ToString("N"));
