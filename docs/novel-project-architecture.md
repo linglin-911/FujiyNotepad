@@ -12,6 +12,10 @@ Initial project layout:
   novel.txt
   annotations.sqlite
   backups/
+  edit_sessions/
+    <session-id>/
+      baseline.txt
+      session.json
 ```
 
 The project document is opened through the existing positional byte-source and line-index pipeline. Import and hashing are streaming operations; they do not load the entire novel into memory.
@@ -31,9 +35,11 @@ SQLite is the durable store. Anchor indexes cover annotation ID, start offset, e
 
 The reader is read-only. Users export a working copy, edit it in a third-party editor, then select the edited file in FujiyNotepad for comparison. The project document remains untouched until the user reviews and applies the diff.
 
-Each export creates an immutable baseline snapshot under `edit_sessions/<session-id>/baseline.txt`, plus a manifest containing project ID, document revision, byte length, SHA-256 and export filename. The edited file is kept outside the project until apply. Before any diff is applied, the app verifies that the active project document still matches the exported baseline. A stale session must be rejected and re-exported or explicitly reconciled; it must never be silently applied.
+Each export creates an immutable byte-for-byte baseline snapshot under `edit_sessions/<session-id>/baseline.txt`, plus a manifest containing project ID, document revision, byte length, SHA-256, export filename, source/export encoding IDs, and the expected marker identities. The edited file is kept outside the project until apply. Before any diff is applied, the app verifies that the active project document still matches the exported baseline. A stale session must be rejected and re-exported or explicitly reconciled; it must never be silently applied.
 
-The external export is streamed in 1 MiB buffers and uses a temporary file followed by a move, so the app does not overwrite an existing export or the active project document.
+The plain-copy API remains available, while `ExternalEditSession.CreateMarkedAsync` queries all non-orphaned annotation anchors and chapter ranges from SQLite and emits an independently paired start/end marker for each. It rejects a stale project fingerprint or any active anchor/chapter from a different document revision. The baseline is copied first and is the sole input to the marked export. Both baseline copying and marked text generation use bounded buffers and temporary files followed by moves, so the novel is never loaded into one large string and an existing export is never overwritten.
+
+The export retains the detected source encoding when it can represent Unicode tag characters. Windows-1252 cannot represent these markers, so only that marked working copy is converted to UTF-8 with BOM; the project document and immutable baseline remain byte-for-byte unchanged. The manifest records both encoding IDs. `ValidateEditedCopyMarkersAsync` scans a selected edited copy incrementally and validates marker identities and positions against the manifest, returning offsets in marker-free UTF-16 text coordinates.
 
 ## Invisible external-edit markers
 
@@ -43,7 +49,7 @@ Each tracked range receives an independent start/end pair carrying a format vers
 
 Marker writing and scanning operate on TextReader/TextWriter buffers and UTF-16 document offsets, not on a whole-file string. The writer inserts all markers at a sorted list of offsets. The scanner reports each marker's offset in the marker-free text, malformed sequences, and then validation detects missing, duplicate, reversed, or unexpected pairs. A complete pair supplies the edited range directly; a damaged pair must be reviewed or reconciled using diff/context matching.
 
-The marker codec and planner are implemented as a core foundation with tests. The current export action is not yet wired to query SQLite anchors/chapters and emit a marked file; the UI, manifest persistence of the expected marker set, marker stripping, diff generation, and safe apply/recovery are still pending. Do not assume ordinary exports contain markers until that integration is implemented.
+The marker codec, planner, marked export path, expected-marker manifest persistence, and edited-copy marker validation are implemented in the Core layer with tests. The WinUI export/import UI is not yet wired to these APIs. Marker stripping, large-file diff generation, visual diff UI, re-anchoring changed quotes/context, and safe apply/recovery are still pending. Do not apply an edited file yet: marker validation alone does not compare or update the project document.
 
 ## Diff and anchor remapping
 
