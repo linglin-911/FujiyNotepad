@@ -133,7 +133,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             SELECT Id, CategoryId, Title, Content, CreatedAt, UpdatedAt
             FROM Annotations
             WHERE ($category IS NULL OR CategoryId = $category)
-              AND ($search IS NULL OR Title LIKE $search ESCAPE '\\' OR Content LIKE $search ESCAPE '\\')
+              AND ($search IS NULL OR Title LIKE $search ESCAPE '\' OR Content LIKE $search ESCAPE '\')
             ORDER BY UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
