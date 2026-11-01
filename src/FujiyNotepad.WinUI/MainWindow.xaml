@@ -67,7 +67,7 @@
                 <MenuFlyoutItem x:Uid="ExitItem" Text="Exit" Click="Exit_Click" KeyboardAcceleratorTextOverride="Alt+F4" />
             </MenuBarItem>
             <MenuBarItem x:Name="NovelProjectMenu" Title="Novel Project">
-                <MenuFlyoutItem x:Name="CreateProjectItem" Text="Create Project from Current File..." Click="CreateNovelProject_Click" IsEnabled="False" />
+                <MenuFlyoutItem x:Name="CreateProjectItem" Text="Import TXT as New Project..." Click="CreateNovelProject_Click" IsEnabled="True" />
                 <MenuFlyoutItem x:Name="OpenProjectItem" Text="Open Project Folder..." Click="OpenNovelProject_Click" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Name="ExportMarkedCopyItem" Text="Export Marked Working Copy..." Click="ExportMarkedCopy_Click" IsEnabled="False" />
