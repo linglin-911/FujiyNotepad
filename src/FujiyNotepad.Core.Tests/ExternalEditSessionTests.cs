@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using FujiyNotepad.Core;
 
 namespace FujiyNotepad.Core.Tests;
@@ -93,6 +94,10 @@ public sealed class ExternalEditSessionTests
         }
         finally
         {
+            // Microsoft.Data.Sqlite pools disposed connections by default. Clear the idle pool
+            // before deleting the temporary project directory, otherwise Windows can keep
+            // annotations.sqlite (and its WAL sidecars) locked after the store is disposed.
+            SqliteConnection.ClearAllPools();
             Directory.Delete(root, recursive: true);
         }
     }
