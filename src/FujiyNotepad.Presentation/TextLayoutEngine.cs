@@ -61,13 +61,13 @@ namespace FujiyNotepad.Presentation
     }
 
     /// <summary>A match-highlight rectangle on a line, in viewport pixels (the line's Y/height are known).</summary>
-    public readonly record struct HighlightRect(double X, double Width);
+    public readonly record struct HighlightRect(double X, double Width, int StartIndex = -1, int Length = 0);
 
     /// <summary>
     /// A persistent-highlight-rule rectangle: like <see cref="HighlightRect"/> but carrying the rule's packed
     /// 0xAARRGGBB colour, since each rule paints in its own colour (unlike the single-colour Find highlight).
     /// </summary>
-    public readonly record struct RuleHighlightRect(double X, double Width, uint Argb);
+    public readonly record struct RuleHighlightRect(double X, double Width, uint Argb, int StartIndex = -1, int Length = 0);
 
     /// <summary>
     /// Size of the current selection. <see cref="Lines"/> is 0 when nothing is selected, otherwise the number
@@ -92,6 +92,9 @@ namespace FujiyNotepad.Presentation
         /// <summary>The tab-expanded text to draw.</summary>
         public string Display { get; init; }
 
+        /// <summary>Index in the source line's tab-expanded display text where this visual row begins.</summary>
+        public int DisplayStartIndex { get; init; }
+
         /// <summary>X (viewport px) at which the text starts (accounts for the horizontal scroll offset).</summary>
         public double TextX { get; init; }
 
@@ -104,11 +107,23 @@ namespace FujiyNotepad.Presentation
         /// <summary>Width of the selection highlight in viewport pixels.</summary>
         public double SelectionWidth { get; init; }
 
+        /// <summary>Start index of the selected range in this visual row's Display string.</summary>
+        public int SelectionStartIndex { get; init; }
+
+        /// <summary>Length of the selected range in this visual row's Display string.</summary>
+        public int SelectionLength { get; init; }
+
+        /// <summary>True when the selection continues beyond this visual row, including its row break.</summary>
+        public bool SelectionContinuesPastRow { get; init; }
+
         /// <summary>True if the caret sits on this line and should be drawn.</summary>
         public bool HasCaret { get; init; }
 
         /// <summary>X (viewport px) of the caret.</summary>
         public double CaretX { get; init; }
+
+        /// <summary>Caret index in this visual row's Display string.</summary>
+        public int CaretDisplayIndex { get; init; }
 
         /// <summary>
         /// Highlight rectangles for every Find match on this line (empty when highlighting is off). Painted
@@ -767,9 +782,17 @@ namespace FujiyNotepad.Presentation
         #region Pointer
 
         /// <summary>Places the caret (and, unless extending a selection, the anchor) at a pressed point.</summary>
-        public void PointerPress(double x, double y, bool shift)
+        public void PointerPress(double x, double y, bool shift) => PointerPress(HitTest(x, y), shift);
+
+        /// <summary>Places the caret at an already-resolved source position.</summary>
+        public void PointerPress(TextPosition pos, bool shift)
         {
-            TextPosition pos = HitTest(x, y);
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            pos = ClampPosition(pos);
             if (!shift)
             {
                 anchor = pos;
@@ -784,12 +807,22 @@ namespace FujiyNotepad.Presentation
         /// <summary>Selects the whole word (or run of same-class characters) under a double-clicked point.</summary>
         public void SelectWordAt(double x, double y)
         {
-            if (provider == null || totalLines == 0 || lineHeight <= 0)
+            if (lineHeight <= 0)
+            {
+                return;
+            }
+            SelectWordAt(HitTest(x, y));
+        }
+
+        /// <summary>Selects the whole word (or run of same-class characters) at a source position.</summary>
+        public void SelectWordAt(TextPosition pos)
+        {
+            if (provider == null || totalLines == 0)
             {
                 return;
             }
 
-            TextPosition pos = HitTest(x, y);
+            pos = ClampPosition(pos);
             string line = GetColumns(pos.Line).Source;
             (int start, int end) = WordBoundaries(line, pos.Column);
             anchor = new TextPosition(pos.Line, start);
@@ -832,10 +865,14 @@ namespace FujiyNotepad.Presentation
             }
             return (start, end);
         }
-        /// <summary>Extends the selection to a dragged point, auto-scrolling past the top/bottom edges.</summary>
-        public void PointerDrag(double x, double y)
+        /// <summary>Scrolls one display row when a drag pointer is held beyond the viewport edge.</summary>
+        public void ScrollForPointer(double y)
         {
-            // Auto-scroll when dragging past the top/bottom edge.
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
             if (y < 0)
             {
                 if (wordWrap) { ScrollDisplayRows(-1); } else { SetFirstVisibleLine(firstVisibleLine - 1); }
@@ -844,10 +881,42 @@ namespace FujiyNotepad.Presentation
             {
                 if (wordWrap) { ScrollDisplayRows(1); } else { SetFirstVisibleLine(firstVisibleLine + 1); }
             }
+        }
 
-            caret = HitTest(x, y);
+        /// <summary>Extends the selection to an already-resolved source position.</summary>
+        public void PointerDrag(TextPosition pos)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            caret = ClampPosition(pos);
             RaiseCaretChanged();
             RaiseRedraw();
+        }
+
+        /// <summary>Extends the selection to a dragged point, auto-scrolling past the top/bottom edges.</summary>
+        public void PointerDrag(double x, double y)
+        {
+            ScrollForPointer(y);
+            PointerDrag(HitTest(x, y));
+        }
+
+        /// <summary>
+        /// Maps an index in a visible row's tab-expanded Display string back to the original source position.
+        /// <paramref name="displayIndex"/> is the index in the complete source line, not the row-local index.
+        /// </summary>
+        public TextPosition PositionFromDisplayIndex(int lineIndex, int displayIndex, bool trailing, int displayCharacterCount = 1)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return new TextPosition(0, 0);
+            }
+
+            lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
+            int column = GetColumns(lineIndex).CharIndexOfDisplayIndex(displayIndex, trailing, displayCharacterCount);
+            return new TextPosition(lineIndex, column);
         }
 
         /// <summary>Maps a viewport point to the nearest caret position. Metrics must be set first.</summary>
@@ -936,6 +1005,12 @@ namespace FujiyNotepad.Presentation
         }
 
         private int LineLength(int line) => GetColumns(line).Source.Length;
+
+        private TextPosition ClampPosition(TextPosition pos)
+        {
+            int line = Math.Clamp(pos.Line, 0, Math.Max(0, totalLines - 1));
+            return new TextPosition(line, Math.Clamp(pos.Column, 0, LineLength(line)));
+        }
 
         private void MoveCaretByChar(int delta, bool shift)
         {
@@ -1311,10 +1386,17 @@ namespace FujiyNotepad.Presentation
                 bool lineHasSelection = false;
                 double selectionX = 0;
                 double selectionWidth = 0;
+                int selectionStartIndex = 0;
+                int selectionLength = 0;
+                bool selectionContinuesPastRow = false;
                 if (hasSelection && lineIndex >= selStart.Line && lineIndex <= selEnd.Line)
                 {
-                    int startCol = lineIndex == selStart.Line ? columns.ColumnOfCharIndex(selStart.Column) : 0;
-                    int endCol = lineIndex == selEnd.Line ? columns.ColumnOfCharIndex(selEnd.Column) : columns.TotalColumns + 1;
+                    int startChar = lineIndex == selStart.Line ? selStart.Column : 0;
+                    int endChar = lineIndex == selEnd.Line ? selEnd.Column : columns.Source.Length;
+                    int startCol = columns.ColumnOfCharIndex(startChar);
+                    int endCol = lineIndex == selEnd.Line
+                        ? columns.ColumnOfCharIndex(endChar)
+                        : columns.TotalColumns + 1;
                     double x0 = startCol * charWidth - horizontalOffset + TextOriginX;
                     double x1 = endCol * charWidth - horizontalOffset + TextOriginX;
                     if (x1 > x0)
@@ -1323,22 +1405,33 @@ namespace FujiyNotepad.Presentation
                         selectionX = x0;
                         selectionWidth = x1 - x0;
                     }
+
+                    selectionStartIndex = columns.DisplayIndexOfCharIndex(startChar);
+                    selectionLength = columns.DisplayIndexOfCharIndex(endChar) - selectionStartIndex;
+                    selectionContinuesPastRow = lineIndex < selEnd.Line;
+                    lineHasSelection = lineHasSelection || selectionLength > 0 || selectionContinuesPastRow;
                 }
 
                 bool hasCaret = hasFocus && caretVisible && caret.Line == lineIndex;
                 double caretX = hasCaret ? columns.ColumnOfCharIndex(caret.Column) * charWidth - horizontalOffset + TextOriginX : 0;
+                int caretDisplayIndex = hasCaret ? columns.DisplayIndexOfCharIndex(caret.Column) : -1;
 
                 lines.Add(new VisibleLine
                 {
                     LineIndex = lineIndex,
                     Y = y,
                     Display = columns.Display,
+                    DisplayStartIndex = 0,
                     TextX = TextOriginX - horizontalOffset,
                     HasSelection = lineHasSelection,
                     SelectionX = selectionX,
                     SelectionWidth = selectionWidth,
+                    SelectionStartIndex = selectionStartIndex,
+                    SelectionLength = selectionLength,
+                    SelectionContinuesPastRow = selectionContinuesPastRow,
                     HasCaret = hasCaret,
                     CaretX = caretX,
+                    CaretDisplayIndex = caretDisplayIndex,
                     Matches = highlighter == null ? NoHighlights : ComputeHighlights(highlighter, columns, 0, columns.Source.Length, horizontalOffset),
                     SelectionMatches = selectionHighlighter == null ? NoHighlights : ComputeHighlights(selectionHighlighter, columns, 0, columns.Source.Length, horizontalOffset, exclude: highlighter),
                     RuleHighlights = highlightRules == null ? NoRuleHighlights : ComputeRuleHighlights(columns, 0, columns.Source.Length, horizontalOffset),
@@ -1383,18 +1476,31 @@ namespace FujiyNotepad.Presentation
 
                     bool rowHasSel = false;
                     double selX = 0, selW = 0;
+                    int selectionStartIndex = 0;
+                    int selectionLength = 0;
+                    bool selectionContinuesPastRow = false;
+                    int displayStartIndex = columns.DisplayIndexOfCharIndex(row.StartChar);
                     if (hasSelection && srcLine >= selStart.Line && srcLine <= selEnd.Line)
                     {
                         int selStartChar = srcLine == selStart.Line ? selStart.Column : 0;
                         int selEndChar = srcLine == selEnd.Line ? selEnd.Column : columns.Source.Length;
                         int s = Math.Max(selStartChar, row.StartChar);
                         int e = Math.Min(selEndChar, row.EndChar);
-                        if (e >= s)
+                        bool crossesSoftWrap = selStartChar < row.EndChar && selEndChar > row.EndChar;
+                        bool crossesSourceLine = srcLine < selEnd.Line && r == rows.Count - 1
+                                                 && selStartChar <= row.EndChar;
+                        bool crossesRow = crossesSoftWrap || crossesSourceLine;
+                        if (e > s || crossesRow)
                         {
+                            selectionStartIndex = columns.DisplayIndexOfCharIndex(s) - displayStartIndex;
+                            selectionLength = columns.DisplayIndexOfCharIndex(e) - columns.DisplayIndexOfCharIndex(s);
+                            selectionContinuesPastRow = crossesRow;
+
                             int startCol = columns.ColumnOfCharIndex(s) - row.StartColumn;
                             int endCol = columns.ColumnOfCharIndex(e) - row.StartColumn;
-                            // Show the wrap break / newline as selected when the selection continues past this row.
-                            if (srcLine < selEnd.Line || selEndChar > row.EndChar)
+                            // Preserve the row-break marker in the legacy pixel model; the renderer now uses
+                            // the exact caret position from CanvasTextLayout for the actual highlight.
+                            if (crossesRow)
                             {
                                 endCol += 1;
                             }
@@ -1406,6 +1512,7 @@ namespace FujiyNotepad.Presentation
                                 selX = x0;
                                 selW = x1 - x0;
                             }
+                            rowHasSel = rowHasSel || selectionLength > 0 || selectionContinuesPastRow;
                         }
                     }
 
@@ -1414,18 +1521,26 @@ namespace FujiyNotepad.Presentation
                     double caretX = hasCaret
                         ? (columns.ColumnOfCharIndex(caret.Column) - row.StartColumn) * charWidth + TextOriginX
                         : 0;
+                    int caretDisplayIndex = hasCaret
+                        ? columns.DisplayIndexOfCharIndex(caret.Column) - displayStartIndex
+                        : -1;
 
                     lines.Add(new VisibleLine
                     {
                         LineIndex = srcLine,
                         Y = y,
                         Display = columns.DisplaySlice(row.StartChar, row.EndChar),
+                        DisplayStartIndex = displayStartIndex,
                         TextX = TextOriginX,
                         HasSelection = rowHasSel,
                         SelectionX = selX,
                         SelectionWidth = selW,
+                        SelectionStartIndex = selectionStartIndex,
+                        SelectionLength = selectionLength,
+                        SelectionContinuesPastRow = selectionContinuesPastRow,
                         HasCaret = hasCaret,
                         CaretX = caretX,
+                        CaretDisplayIndex = caretDisplayIndex,
                         Matches = highlighter == null ? NoHighlights : ComputeHighlights(highlighter, columns, row.StartChar, row.EndChar, originPx),
                         SelectionMatches = selectionHighlighter == null ? NoHighlights : ComputeHighlights(selectionHighlighter, columns, row.StartChar, row.EndChar, originPx, exclude: highlighter),
                         RuleHighlights = highlightRules == null ? NoRuleHighlights : ComputeRuleHighlights(columns, row.StartChar, row.EndChar, originPx),
@@ -1499,7 +1614,10 @@ namespace FujiyNotepad.Presentation
                 double x1 = endCol * charWidth - originPx + TextOriginX;
                 if (x1 > x0)
                 {
-                    rects.Add(new HighlightRect(x0, x1 - x0));
+                    int displayClipStart = columns.DisplayIndexOfCharIndex(clipStart);
+                    int displayStart = columns.DisplayIndexOfCharIndex(s) - displayClipStart;
+                    int displayEnd = columns.DisplayIndexOfCharIndex(e) - displayClipStart;
+                    rects.Add(new HighlightRect(x0, x1 - x0, displayStart, displayEnd - displayStart));
                 }
             }
             return rects.Count > 0 ? rects : NoHighlights;
@@ -1544,7 +1662,10 @@ namespace FujiyNotepad.Presentation
                 double x1 = endCol * charWidth - originPx + TextOriginX;
                 if (x1 > x0)
                 {
-                    rects.Add(new RuleHighlightRect(x0, x1 - x0, span.Argb));
+                    int displayClipStart = columns.DisplayIndexOfCharIndex(clipStart);
+                    int displayStart = columns.DisplayIndexOfCharIndex(s) - displayClipStart;
+                    int displayEnd = columns.DisplayIndexOfCharIndex(e) - displayClipStart;
+                    rects.Add(new RuleHighlightRect(x0, x1 - x0, span.Argb, displayStart, displayEnd - displayStart));
                 }
             }
             return rects.Count > 0 ? rects : NoRuleHighlights;

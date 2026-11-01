@@ -38,6 +38,73 @@ namespace FujiyNotepad.Core
 
         public int TotalColumns => columnAt is null ? Source.Length : columnAt[Source.Length];
 
+        /// <summary>Maps a source UTF-16 index to the corresponding index in the tab-expanded display text.</summary>
+        public int DisplayIndexOfCharIndex(int charIndex)
+        {
+            charIndex = Math.Clamp(charIndex, 0, Source.Length);
+            return displayIndexAt is null ? charIndex : displayIndexAt[charIndex];
+        }
+
+        /// <summary>
+        /// Maps a display-text index returned by Win2D hit testing back to the original source text.
+        /// Expanded tab spaces all map to the single source tab; surrogate pairs remain a single caret step
+        /// when Win2D reports their full character count.
+        /// </summary>
+        public int CharIndexOfDisplayIndex(int displayIndex, bool trailing, int displayCharacterCount = 1)
+        {
+            displayIndex = Math.Clamp(displayIndex, 0, Display.Length);
+            if (displayIndex == 0 && !trailing)
+            {
+                return 0;
+            }
+            if (displayIndex >= Display.Length)
+            {
+                return Source.Length;
+            }
+
+            displayCharacterCount = Math.Max(1, displayCharacterCount);
+            if (displayIndexAt is null)
+            {
+                int index = displayIndex + (trailing ? displayCharacterCount : 0);
+                return Math.Clamp(index, 0, Source.Length);
+            }
+
+            // Find the source character whose display expansion contains this display index.
+            int lo = 0;
+            int hi = Source.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (displayIndexAt[mid + 1] <= displayIndex)
+                {
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+
+            if (!trailing)
+            {
+                return lo;
+            }
+
+            // When Win2D reports a multi-code-unit cluster (for example a supplementary Unicode character),
+            // prefer its exact ending boundary. A tab expansion reports individual spaces and maps to one tab.
+            if (displayCharacterCount > 1)
+            {
+                int trailingDisplayIndex = Math.Min(Display.Length, displayIndex + displayCharacterCount);
+                int boundary = Array.BinarySearch(displayIndexAt, trailingDisplayIndex);
+                if (boundary >= 0)
+                {
+                    return boundary;
+                }
+            }
+
+            return Math.Min(lo + 1, Source.Length);
+        }
+
         /// <summary>
         /// The tab-expanded Display text for the source-char range <c>[startChar, endChar)</c> — the rendered
         /// text of one wrapped row. Tab stops stay aligned to the whole line (the expansion was computed once).

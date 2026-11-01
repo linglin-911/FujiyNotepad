@@ -128,6 +128,11 @@
                 <ToggleMenuFlyoutItem x:Uid="LineNumbersToggle" x:Name="LineNumbersToggle" Text="Line Numbers" Click="LineNumbers_Click" />
                 <ToggleMenuFlyoutItem x:Uid="WhitespaceToggle" x:Name="WhitespaceToggle" Text="Show Whitespace" Click="Whitespace_Click" />
                 <ToggleMenuFlyoutItem x:Uid="WordWrapToggle" x:Name="WordWrapToggle" Text="Word Wrap" Click="WordWrap_Click" />
+                <ToggleMenuFlyoutItem x:Uid="ReadingModeToggle" x:Name="ReadingModeToggle" Text="Reading Mode" Click="ReadingMode_Click">
+                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="R" />
+                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
+                </ToggleMenuFlyoutItem>
                 <ToggleMenuFlyoutItem x:Uid="HighlightSelectionToggle" x:Name="HighlightSelectionToggle" Text="Highlight Selection Occurrences" Click="HighlightSelection_Click" />
                 <ToggleMenuFlyoutItem x:Uid="FollowTailToggle" x:Name="FollowTailToggle" Text="Follow Tail" Click="FollowTail_Click" />
                 <MenuFlyoutSeparator />

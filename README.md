@@ -43,6 +43,7 @@ The builds are unsigned, so Windows SmartScreen may warn on first run (*More inf
   and a text view that follows the system **light / dark** theme.
 - Native-style navigation: mouse wheel, a line-based vertical scrollbar, a horizontal scrollbar,
   and the keyboard (arrows, `PageUp`/`PageDown`, `Home`/`End`, `Ctrl+Home`/`Ctrl+End`).
+- **Reading Mode** (*View ▸ Reading Mode*, `Ctrl+Shift+R`): enables word wrap and hides both scrollbars for long-form reading; mouse-wheel and keyboard navigation continue to work, and text selection/copy remain available.
 - Character-level **selection** (mouse drag with continuous edge auto-scroll, `Shift`+click/arrows,
   double-click to select a word) and **copy** (`Ctrl+C`), with a caret and an `Ln, Col` indicator.
 - Background **line indexing** with progress reporting and cancellation; the scrollbar extent grows
