@@ -242,8 +242,8 @@ public static class ExternalEditMarkerCodec
 
                     // DB40 followed by a non-tag low surrogate is ordinary text. Preserve its
                     // two UTF-16 code units outside a marker, or invalidate a marker payload.
-                    if (inMarker) payload.Append('\0');
-                    else textOffset++;
+                    if (inMarker) FinishTruncatedMarker();
+                    textOffset++; // Count the non-tag high surrogate as ordinary document text.
                 }
 
                 if (ch == '\uDB40')
@@ -252,8 +252,8 @@ public static class ExternalEditMarkerCodec
                     continue;
                 }
 
-                if (inMarker) payload.Append('\0');
-                else textOffset++;
+                if (inMarker) FinishTruncatedMarker();
+                textOffset++; // A normal character after a start token means its end token was lost.
             }
         }
 
