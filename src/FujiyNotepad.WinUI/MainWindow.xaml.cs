@@ -29,6 +29,8 @@ namespace FujiyNotepad.WinUI
         // The path of the open file and its active text encoding; encodingAutoDetect tracks whether the
         // encoding was auto-detected (vs. chosen from the Encoding menu) so re-opening can re-detect.
         private string? currentFilePath;
+        private NovelProject? activeNovelProject;
+        private NovelAnnotationStore? activeAnnotationStore;
         private TextEncoding currentEncoding = TextEncoding.Utf8;
         private bool encodingAutoDetect = true;
 
@@ -153,6 +155,10 @@ namespace FujiyNotepad.WinUI
                 cancelIndexing?.Cancel();
                 findCts?.Cancel();
                 source?.Dispose();
+                if (activeAnnotationStore is { } store)
+                    _ = store.DisposeAsync();
+                activeAnnotationStore = null;
+                activeNovelProject = null;
                 CleanupStdin();
             };
 
@@ -227,6 +233,267 @@ namespace FujiyNotepad.WinUI
                 await OpenFile(result.Path);
             }
         }
+
+        private async void CreateNovelProject_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentFilePath is not { } sourcePath || stdinTempPath is not null)
+                return;
+
+            try
+            {
+                var folderPicker = new FolderPicker(AppWindow.Id)
+                {
+                    Title = "Choose where to create the novel project",
+                    CommitButtonText = "Choose parent folder",
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    ViewMode = PickerViewMode.List,
+                };
+                var parentFolder = await folderPicker.PickSingleFolderAsync();
+                if (parentFolder is null)
+                    return;
+
+                string title = Path.GetFileNameWithoutExtension(sourcePath);
+                if (string.IsNullOrWhiteSpace(title))
+                    title = "Novel";
+                string projectFolder = Path.Combine(parentFolder.Path, title + ".fujiyproject");
+
+                NovelProject project = await NovelProject.ImportAsync(sourcePath, projectFolder);
+                await ActivateNovelProjectAsync(project);
+                if (activeNovelProject is not null)
+                {
+                    await ShowNovelProjectMessageAsync("Novel project created",
+                        $"A project copy has been created and opened.\n\nProject: {project.RootPath}\nDocument: {project.DocumentPath}\n\nThe original source file was not changed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowNovelProjectMessageAsync("Could not create novel project", ex.Message);
+            }
+        }
+
+        private async void OpenNovelProject_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var folderPicker = new FolderPicker(AppWindow.Id)
+                {
+                    Title = "Select a FujiyNotepad novel project folder",
+                    CommitButtonText = "Open project",
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    ViewMode = PickerViewMode.List,
+                };
+                var folder = await folderPicker.PickSingleFolderAsync();
+                if (folder is null)
+                    return;
+
+                NovelProject project = await NovelProject.OpenAsync(folder.Path);
+                await ActivateNovelProjectAsync(project);
+            }
+            catch (Exception ex)
+            {
+                await ShowNovelProjectMessageAsync("Could not open novel project", ex.Message);
+            }
+        }
+
+        private async Task ActivateNovelProjectAsync(NovelProject project)
+        {
+            var store = new NovelAnnotationStore(project.DatabasePath);
+            try
+            {
+                await store.InitializeAsync();
+                await OpenFile(project.DocumentPath);
+                if (currentFilePath is null || !PathsEqual(currentFilePath, project.DocumentPath))
+                {
+                    await store.DisposeAsync();
+                    return;
+                }
+
+                await CloseActiveNovelProjectAsync();
+                activeNovelProject = project;
+                activeAnnotationStore = store;
+                Title = $"{Path.GetFileName(project.DocumentPath)} - Fujiy Notepad [{project.Metadata.Title}]";
+                UpdateNovelProjectMenu();
+                LblStatus.Text = $"Novel project: {project.Metadata.Title}";
+            }
+            catch
+            {
+                await store.DisposeAsync();
+                throw;
+            }
+        }
+
+        private async void ExportMarkedCopy_Click(object sender, RoutedEventArgs e)
+        {
+            if (activeNovelProject is not { } project || activeAnnotationStore is not { } store)
+                return;
+
+            try
+            {
+                var picker = new FileSavePicker(AppWindow.Id)
+                {
+                    Title = "Export a marked working copy for external editing",
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    SuggestedFileName = $"{project.Metadata.Title}-marked.txt",
+                    DefaultFileExtension = ".txt",
+                    ShowOverwritePrompt = false,
+                };
+                picker.FileTypeChoices.Add("Text file", new List<string> { ".txt" });
+
+                var result = await picker.PickSaveFileAsync();
+                if (result is null)
+                    return;
+
+                ExternalEditSession session = await ExternalEditSession.CreateMarkedAsync(
+                    project, store, result.Path);
+                int markerCount = session.Metadata.ExpectedMarkers?.Count ?? 0;
+                int rangeCount = markerCount / 2;
+                await ShowNovelProjectMessageAsync("Marked working copy exported",
+                    $"Export completed.\n\nTracked ranges: {rangeCount}\nInvisible endpoint markers: {markerCount}\n\nThe clean project document and its annotations were not modified. Edit the exported copy in your preferred text editor. When finished, use “Validate Edited Copy...” to check the markers before any future import/apply step.");
+            }
+            catch (Exception ex)
+            {
+                await ShowNovelProjectMessageAsync("Could not export marked copy", ex.Message);
+            }
+        }
+
+        private async void ValidateEditedCopy_Click(object sender, RoutedEventArgs e)
+        {
+            if (activeNovelProject is not { } project)
+                return;
+
+            try
+            {
+                Directory.CreateDirectory(project.EditSessionsDirectory);
+                var sessionPicker = new FileOpenPicker(AppWindow.Id)
+                {
+                    Title = "Select the session.json created during export",
+                    SuggestedStartFolder = project.EditSessionsDirectory,
+                    CommitButtonText = "Select session",
+                };
+                sessionPicker.FileTypeFilter.Add(".json");
+                var manifest = await sessionPicker.PickSingleFileAsync();
+                if (manifest is null)
+                    return;
+                if (!string.Equals(Path.GetFileName(manifest.Path), "session.json", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Please select the session.json file inside the export session folder.");
+
+                string sessionDirectory = Path.GetDirectoryName(Path.GetFullPath(manifest.Path))!;
+                string sessionsRoot = Path.GetFullPath(project.EditSessionsDirectory)
+                    .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!sessionDirectory.StartsWith(sessionsRoot, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The selected edit session does not belong to this project's edit_sessions folder.");
+
+                var editedPicker = new FileOpenPicker(AppWindow.Id)
+                {
+                    Title = "Select the file edited by the third-party editor",
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    CommitButtonText = "Validate markers",
+                };
+                editedPicker.FileTypeFilter.Add(".txt");
+                editedPicker.FileTypeFilter.Add(".md");
+                var editedFile = await editedPicker.PickSingleFileAsync();
+                if (editedFile is null)
+                    return;
+
+                ExternalEditSession session = await ExternalEditSession.OpenAsync(sessionDirectory, editedFile.Path);
+                if (session.Metadata.ProjectId != project.Metadata.Id)
+                    throw new InvalidDataException("The selected edit session belongs to a different novel project.");
+
+                await session.ValidateProjectBaselineAsync(project);
+                ExternalEditMarkerValidationResult validation =
+                    await session.ValidateEditedCopyMarkersAsync(editedFile.Path);
+
+                int intact = validation.Targets.Count(item => item.Status == ExternalEditMarkerTargetStatus.Intact);
+                var issues = validation.Targets
+                    .Where(item => item.Status != ExternalEditMarkerTargetStatus.Intact)
+                    .Take(20)
+                    .Select(item => $"{item.TargetKind} {item.TargetId}: {item.Status}")
+                    .ToArray();
+
+                var summary = new StringBuilder();
+                summary.AppendLine($"Intact ranges: {intact} / {validation.Targets.Count}");
+                summary.AppendLine($"Ranges requiring review: {validation.Targets.Count - intact}");
+                summary.AppendLine($"Malformed marker fragments: {validation.MalformedMarkerCount}");
+                summary.AppendLine($"Unexpected markers: {validation.UnexpectedMarkers.Count}");
+                if (issues.Length > 0)
+                {
+                    summary.AppendLine();
+                    summary.AppendLine("First ranges requiring review:");
+                    foreach (string issue in issues)
+                        summary.AppendLine(issue);
+                }
+                if (validation.HasIssues)
+                {
+                    summary.AppendLine();
+                    summary.Append("Do not apply this edited file yet. Missing or damaged markers require manual review.");
+                }
+                else
+                {
+                    summary.AppendLine();
+                    summary.Append("All expected marker pairs are intact. This is only a marker check; the edited text has not been compared or imported.");
+                }
+
+                await ShowNovelProjectMessageAsync(
+                    validation.HasIssues ? "Marker check needs review" : "Marker check passed",
+                    summary.ToString());
+            }
+            catch (Exception ex)
+            {
+                await ShowNovelProjectMessageAsync("Could not validate edited copy", ex.Message);
+            }
+        }
+
+        private async void CloseNovelProject_Click(object sender, RoutedEventArgs e)
+        {
+            await CloseActiveNovelProjectAsync();
+            if (currentFilePath is { } path)
+            {
+                Title = LocalizedStrings.Format("WindowTitleWithFile", Path.GetFileName(path));
+                LblStatus.Text = "Novel project closed; the document remains open as a regular text file.";
+            }
+            else
+            {
+                Title = LocalizedStrings.Get("AppDisplayName");
+            }
+        }
+
+        private async Task CloseActiveNovelProjectAsync()
+        {
+            NovelAnnotationStore? store = activeAnnotationStore;
+            activeAnnotationStore = null;
+            activeNovelProject = null;
+            if (store is not null)
+                await store.DisposeAsync();
+            UpdateNovelProjectMenu();
+        }
+
+        private void UpdateNovelProjectMenu()
+        {
+            bool hasProject = activeNovelProject is not null && activeAnnotationStore is not null;
+            CreateProjectItem.IsEnabled = currentFilePath is not null
+                && stdinTempPath is null
+                && !hasProject;
+            ExportMarkedCopyItem.IsEnabled = hasProject;
+            ValidateEditedCopyItem.IsEnabled = hasProject;
+            CloseProjectItem.IsEnabled = hasProject;
+        }
+
+        private async Task ShowNovelProjectMessageAsync(string title, string message)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+
+        private static bool PathsEqual(string left, string right)
+            => string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
 
         private async void OpenSample_Click(object sender, RoutedEventArgs e)
         {
@@ -394,6 +661,13 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
+            // Opening a different ordinary file leaves the project workspace behind. Reopening the
+            // project's own document (reload/encoding change) keeps the project and its annotation store.
+            if (activeNovelProject is { } openProject && !PathsEqual(path, openProject.DocumentPath))
+            {
+                await CloseActiveNovelProjectAsync();
+            }
+
             // For a Reload, remember where the view was so it can be restored over the rebuilt index.
             int restoreFirstLine = preserveView && provider is not null ? View.FirstVisibleLine : -1;
             double restoreHorizontal = preserveView && provider is not null ? View.HorizontalOffset : 0;
@@ -484,6 +758,7 @@ namespace FujiyNotepad.WinUI
                 return; // nothing open
             }
 
+            await CloseActiveNovelProjectAsync();
             await StopIndexingAsync();
             indexRefreshTimer.Stop();
             SetStatusProgress(false); // indexing was cancelled (never marked complete), so hide the bar here
@@ -559,6 +834,7 @@ namespace FujiyNotepad.WinUI
             CloseItem.IsEnabled = enabled;
             CopyPathItem.IsEnabled = enabled;
             RevealItem.IsEnabled = enabled;
+            UpdateNovelProjectMenu();
         }
 
         // (Re)starts watching the open file's folder for external changes and clears any pending hint. Watching
