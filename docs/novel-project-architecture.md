@@ -35,8 +35,9 @@ SQLite is the durable store. Anchor indexes cover annotation ID, start offset, e
 
 The main window exposes a `Novel Project` menu:
 
-- `Create Project from Current File...` asks for a parent folder and creates a sibling project directory named `<source-name>.fujiyproject`. It copies the selected/open document into that project and then opens the project copy; the source file is not changed.
+- `Import TXT as New Project...` asks the user to select the original `.txt` (or `.text`) file. The app creates a project directory under `Documents/FujiyNotepad/NovelProjects/<source-name>.fujiyproject` and copies the source into it; the original file is not changed. If that project name already exists, a timestamped unique name is chosen automatically.
 - `Open Project Folder...` opens an existing folder containing `project.json` and loads its project document and SQLite annotation store.
+- Project metadata and external-edit manifests use the source-generated `NovelProjectJsonContext`; reflection-based `System.Text.Json` serialization is disabled in the Native AOT application. Failed project imports remove partial metadata, copied documents, and newly created empty project directories.
 - `Export Marked Working Copy...` opens a save picker and calls `ExternalEditSession.CreateMarkedAsync`. The marked export is separate from the clean project document.
 - `Validate Edited Copy...` asks for the session's `session.json` and the third-party-edited text file, checks that the session belongs to the active project and that the project baseline has not changed, then displays intact and damaged marker counts.
 - `Close Novel Project` closes the annotation workspace but leaves the current document open in the ordinary read-only viewer.
