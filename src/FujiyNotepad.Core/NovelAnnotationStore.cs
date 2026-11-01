@@ -285,6 +285,64 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsIntersectingRangeAsync(long startOffset, long endOffset,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        if (startOffset < 0 || endOffset <= startOffset)
+            throw new ArgumentOutOfRangeException(nameof(startOffset), "A query range must be non-empty.");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            FROM AnnotationAnchors
+            WHERE IsOrphaned = 0 AND StartOffset < $end AND EndOffset > $start
+            ORDER BY StartOffset, EndOffset;
+            """;
+        command.Parameters.AddWithValue("$start", startOffset);
+        command.Parameters.AddWithValue("$end", endOffset);
+        var result = new List<AnnotationAnchor>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            result.Add(ReadAnchor(reader));
+        return result;
+    }
+
+    /// <summary>Returns every independent note linked to at least one overlapping source anchor.</summary>
+    public async Task<IReadOnlyList<NovelAnnotation>> GetAnnotationsIntersectingRangeAsync(long startOffset, long endOffset,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        if (startOffset < 0 || endOffset <= startOffset)
+            throw new ArgumentOutOfRangeException(nameof(startOffset), "A query range must be non-empty.");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT DISTINCT n.Id, n.CategoryId, n.Title, n.Content, n.CreatedAt, n.UpdatedAt
+            FROM Annotations n
+            INNER JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
+            WHERE a.IsOrphaned = 0 AND a.StartOffset < $end AND a.EndOffset > $start
+            ORDER BY n.UpdatedAt DESC;
+            """;
+        command.Parameters.AddWithValue("$start", startOffset);
+        command.Parameters.AddWithValue("$end", endOffset);
+        var result = new List<NovelAnnotation>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            result.Add(new NovelAnnotation(
+                Guid.Parse(reader.GetString(0)),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4)),
+                DateTimeOffset.Parse(reader.GetString(5))));
+        }
+        return result;
+    }
+
     public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsForAnnotationAsync(Guid annotationId,
         CancellationToken cancellationToken = default)
     {
