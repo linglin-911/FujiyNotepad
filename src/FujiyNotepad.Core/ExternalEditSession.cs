@@ -53,7 +53,7 @@ public sealed class ExternalEditSession
             var metadata = new ExternalEditSessionMetadata(
                 Guid.NewGuid(), project.Metadata.Id, project.Metadata.DocumentRevision,
                 length, hash, DateTimeOffset.UtcNow, Path.GetFileName(export),
-                Array.Empty<ExternalEditMarker>(), null, null);
+                Array.Empty<ExternalEditMarker>(), null, null, Path.GetFileName(baseline));
             var session = new ExternalEditSession(sessionDirectory, baseline, export, metadata);
             await session.SaveManifestAsync(cancellationToken).ConfigureAwait(false);
             return session;
@@ -138,7 +138,7 @@ public sealed class ExternalEditSession
             var metadata = new ExternalEditSessionMetadata(
                 sessionGuid, project.Metadata.Id, project.Metadata.DocumentRevision,
                 byteLength, hash, DateTimeOffset.UtcNow, Path.GetFileName(export),
-                expectedMarkers, sourceEncoding.Id, exportEncoding.Id);
+                expectedMarkers, sourceEncoding.Id, exportEncoding.Id, Path.GetFileName(baseline));
             var session = new ExternalEditSession(sessionDirectory, baseline, export, metadata);
             await session.SaveManifestAsync(cancellationToken).ConfigureAwait(false);
             return session;
@@ -148,6 +148,35 @@ public sealed class ExternalEditSession
             CleanupFailedCreate(temporaryBaseline, temporaryExport, baseline, sessionDirectory, export, exportCreated);
             throw;
         }
+    }
+
+    /// <summary>Reopens a persisted external-edit session after the application has restarted.</summary>
+    public static async Task<ExternalEditSession> OpenAsync(
+        string sessionDirectory,
+        string editedFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(editedFilePath);
+        string directory = Path.GetFullPath(sessionDirectory);
+        string manifestPath = Path.Combine(directory, "session.json");
+        await using var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        ExternalEditSessionMetadata? metadata = await JsonSerializer.DeserializeAsync<ExternalEditSessionMetadata>(
+            stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        if (metadata is null || metadata.Id == Guid.Empty || metadata.ProjectId == Guid.Empty
+            || string.IsNullOrWhiteSpace(metadata.BaseDocumentSha256))
+            throw new InvalidDataException("The external-edit session manifest is missing or invalid.");
+
+        string baselineName = metadata.BaselineFileName ?? "";
+        if (string.IsNullOrWhiteSpace(baselineName) || !string.Equals(Path.GetFileName(baselineName), baselineName, StringComparison.Ordinal))
+            throw new InvalidDataException("The external-edit session baseline filename is invalid.");
+        string baselinePath = Path.GetFullPath(Path.Combine(directory, baselineName));
+        if (!baselinePath.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(baselinePath))
+            throw new InvalidDataException("The external-edit session baseline is missing or points outside the session folder.");
+
+        return new ExternalEditSession(directory, baselinePath, Path.GetFullPath(editedFilePath), metadata);
     }
 
     /// <summary>
@@ -308,4 +337,5 @@ public sealed record ExternalEditSessionMetadata(
     string ExportFileName,
     IReadOnlyList<ExternalEditMarker>? ExpectedMarkers = null,
     string? SourceEncodingId = null,
-    string? ExportEncodingId = null);
+    string? ExportEncodingId = null,
+    string? BaselineFileName = null);
