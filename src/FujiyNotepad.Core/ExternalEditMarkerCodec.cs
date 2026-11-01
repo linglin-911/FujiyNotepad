@@ -186,6 +186,17 @@ public static class ExternalEditMarkerCodec
         int malformed = 0;
         int read;
 
+        void FinishTruncatedMarker()
+        {
+            // The start token and its payload are enough to identify which endpoint was lost.
+            // Keep that occurrence so validation can report MissingEnd instead of MissingBoth.
+            if (TryDecodePayload(payload.ToString(), out ExternalEditMarker? marker))
+                markers.Add(new ExternalEditMarkerOccurrence(marker!, markerOffset));
+            malformed++;
+            inMarker = false;
+            payload.Clear();
+        }
+
         while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -197,30 +208,42 @@ public static class ExternalEditMarkerCodec
                     pendingTagHigh = false;
                     if (ch == '\uDC01')
                     {
-                        if (inMarker) malformed++;
+                        if (inMarker) FinishTruncatedMarker();
                         inMarker = true;
                         markerOffset = textOffset;
                         payload.Clear();
                         continue;
                     }
-                    if (ch == '\uDC7F' && inMarker)
+                    if (ch == '\uDC7F')
                     {
-                        if (TryDecodePayload(payload.ToString(), out ExternalEditMarker? marker))
-                            markers.Add(new ExternalEditMarkerOccurrence(marker!, markerOffset));
+                        if (inMarker)
+                        {
+                            if (TryDecodePayload(payload.ToString(), out ExternalEditMarker? marker))
+                                markers.Add(new ExternalEditMarkerOccurrence(marker!, markerOffset));
+                            else
+                                malformed++;
+                            inMarker = false;
+                            payload.Clear();
+                        }
                         else
+                        {
+                            // A surviving end token with a deleted start token is marker debris,
+                            // not novel text. Strip it so later marker offsets remain accurate.
                             malformed++;
-                        inMarker = false;
-                        payload.Clear();
+                        }
                         continue;
                     }
-                    if (ch >= '\uDC20' && ch <= '\uDC7E' && inMarker)
+                    if (ch >= '\uDC20' && ch <= '\uDC7E')
                     {
-                        payload.Append((char)(ch - '\uDC00'));
+                        if (inMarker) payload.Append((char)(ch - '\uDC00'));
+                        else malformed++;
                         continue;
                     }
 
-                    if (!inMarker) textOffset++;
-                    else payload.Append('\0');
+                    // DB40 followed by a non-tag low surrogate is ordinary text. Preserve its
+                    // two UTF-16 code units outside a marker, or invalidate a marker payload.
+                    if (inMarker) payload.Append('\0');
+                    else textOffset++;
                 }
 
                 if (ch == '\uDB40')
@@ -236,10 +259,10 @@ public static class ExternalEditMarkerCodec
 
         if (pendingTagHigh)
         {
-            if (!inMarker) textOffset++;
-            else payload.Append('\0');
+            if (inMarker) payload.Append('\0');
+            else textOffset++;
         }
-        if (inMarker) malformed++;
+        if (inMarker) FinishTruncatedMarker();
         return (markers, malformed);
     }
 
