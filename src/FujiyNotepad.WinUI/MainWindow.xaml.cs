@@ -335,8 +335,8 @@ namespace FujiyNotepad.WinUI
                 await OpenFile(project.DocumentPath);
                 if (currentFilePath is null || !PathsEqual(currentFilePath, project.DocumentPath))
                 {
-                    await store.DisposeAsync();
-                    return;
+                    throw new IOException(
+                        "The project document could not be opened, so the novel project workspace was not activated.");
                 }
 
                 await CloseActiveNovelProjectAsync();
