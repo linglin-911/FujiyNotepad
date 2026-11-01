@@ -196,6 +196,58 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return id;
     }
 
+    public async Task UpsertChapterAsync(NovelChapter chapter, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(chapter);
+        if (chapter.StartOffset < 0 || chapter.EndOffset < chapter.StartOffset)
+            throw new ArgumentOutOfRangeException(nameof(chapter), "Chapter offsets are invalid.");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
+            VALUES ($id, $title, $start, $end, $number, $revision)
+            ON CONFLICT(Id) DO UPDATE SET
+                Title = excluded.Title,
+                StartOffset = excluded.StartOffset,
+                EndOffset = excluded.EndOffset,
+                ChapterNumber = excluded.ChapterNumber,
+                DocumentRevision = excluded.DocumentRevision;
+            """;
+        command.Parameters.AddWithValue("$id", chapter.Id.ToString("D"));
+        command.Parameters.AddWithValue("$title", chapter.Title);
+        command.Parameters.AddWithValue("$start", chapter.StartOffset);
+        command.Parameters.AddWithValue("$end", chapter.EndOffset);
+        command.Parameters.AddWithValue("$number", chapter.ChapterNumber);
+        command.Parameters.AddWithValue("$revision", chapter.DocumentRevision);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
+            FROM Chapters ORDER BY StartOffset, ChapterNumber;
+            """;
+        var result = new List<NovelChapter>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            result.Add(new NovelChapter(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt32(4),
+                reader.GetInt64(5)));
+        }
+        return result;
+    }
+
     public async Task<Guid> AddAnchorAsync(Guid annotationId, long startOffset, long endOffset, string quote,
         Guid? chapterId = null, long documentRevision = 1, CancellationToken cancellationToken = default)
     {
