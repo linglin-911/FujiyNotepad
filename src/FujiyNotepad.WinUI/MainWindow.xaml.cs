@@ -117,6 +117,7 @@ namespace FujiyNotepad.WinUI
         public MainWindow()
         {
             this.InitializeComponent();
+            UpdateNovelProjectMenu();
 
             string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "FujiyNotepad.ico");
             if (File.Exists(iconPath))
@@ -236,39 +237,65 @@ namespace FujiyNotepad.WinUI
 
         private async void CreateNovelProject_Click(object sender, RoutedEventArgs e)
         {
-            if (currentFilePath is not { } sourcePath || stdinTempPath is not null)
-                return;
-
             try
             {
-                var folderPicker = new FolderPicker(AppWindow.Id)
+                var picker = new FileOpenPicker(AppWindow.Id)
                 {
-                    Title = "Choose where to create the novel project",
-                    CommitButtonText = "Choose parent folder",
+                    Title = "Select the original novel TXT file",
+                    CommitButtonText = "Create project from this TXT",
                     SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                    ViewMode = PickerViewMode.List,
                 };
-                var parentFolder = await folderPicker.PickSingleFolderAsync();
-                if (parentFolder is null)
+                picker.FileTypeFilter.Add(".txt");
+                picker.FileTypeFilter.Add(".text");
+
+                PickFileResult? selectedFile = await picker.PickSingleFileAsync();
+                if (selectedFile is null || string.IsNullOrWhiteSpace(selectedFile.Path))
                     return;
 
-                string title = Path.GetFileNameWithoutExtension(sourcePath);
-                if (string.IsNullOrWhiteSpace(title))
-                    title = "Novel";
-                string projectFolder = Path.Combine(parentFolder.Path, title + ".fujiyproject");
-
-                NovelProject project = await NovelProject.ImportAsync(sourcePath, projectFolder);
+                string projectFolder = CreateUniqueNovelProjectFolder(selectedFile.Path);
+                NovelProject project = await NovelProject.ImportAsync(selectedFile.Path, projectFolder);
                 await ActivateNovelProjectAsync(project);
                 if (activeNovelProject is not null)
                 {
                     await ShowNovelProjectMessageAsync("Novel project created",
-                        $"A project copy has been created and opened.\n\nProject: {project.RootPath}\nDocument: {project.DocumentPath}\n\nThe original source file was not changed.");
+                        $"The original TXT has been copied into a new project and opened.\n\nProject folder: {project.RootPath}\nProject document: {project.DocumentPath}\n\nThe original source file was not changed.");
                 }
             }
             catch (Exception ex)
             {
                 await ShowNovelProjectMessageAsync("Could not create novel project", ex.Message);
             }
+        }
+
+        private static string CreateUniqueNovelProjectFolder(string sourceFilePath)
+        {
+            string baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+                baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+                throw new IOException("Windows did not provide a writable user data directory.");
+
+            string projectsDirectory = Path.Combine(baseDirectory, "FujiyNotepad", "NovelProjects");
+            Directory.CreateDirectory(projectsDirectory);
+
+            string title = Path.GetFileNameWithoutExtension(sourceFilePath);
+            if (string.IsNullOrWhiteSpace(title))
+                title = "Novel";
+
+            string candidate = Path.Combine(projectsDirectory, title + ".fujiyproject");
+            if (!Directory.Exists(candidate) && !File.Exists(candidate))
+                return candidate;
+
+            string suffix = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            candidate = Path.Combine(projectsDirectory, $"{title}_{suffix}.fujiyproject");
+            int sequence = 2;
+            while (Directory.Exists(candidate) || File.Exists(candidate))
+            {
+                candidate = Path.Combine(projectsDirectory, $"{title}_{suffix}_{sequence}.fujiyproject");
+                sequence++;
+            }
+
+            return candidate;
         }
 
         private async void OpenNovelProject_Click(object sender, RoutedEventArgs e)
@@ -479,9 +506,7 @@ namespace FujiyNotepad.WinUI
         private void UpdateNovelProjectMenu()
         {
             bool hasProject = activeNovelProject is not null && activeAnnotationStore is not null;
-            CreateProjectItem.IsEnabled = currentFilePath is not null
-                && stdinTempPath is null
-                && !hasProject;
+            CreateProjectItem.IsEnabled = !hasProject;
             ExportMarkedCopyItem.IsEnabled = hasProject;
             ValidateEditedCopyItem.IsEnabled = hasProject;
             CloseProjectItem.IsEnabled = hasProject;
