@@ -805,7 +805,14 @@ namespace FujiyNotepad.Presentation
         }
 
         /// <summary>Selects the whole word (or run of same-class characters) under a double-clicked point.</summary>
-        public void SelectWordAt(double x, double y) => SelectWordAt(HitTest(x, y));
+        public void SelectWordAt(double x, double y)
+        {
+            if (lineHeight <= 0)
+            {
+                return;
+            }
+            SelectWordAt(HitTest(x, y));
+        }
 
         /// <summary>Selects the whole word (or run of same-class characters) at a source position.</summary>
         public void SelectWordAt(TextPosition pos)
