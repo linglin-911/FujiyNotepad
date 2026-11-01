@@ -27,23 +27,42 @@ One annotation can have many anchors. Multiple annotations may have identical, n
 
 SQLite is the durable store. Anchor indexes cover annotation ID, start offset, end offset and chapter ID. An edit queries anchors whose ranges intersect or follow the edit point and updates them in one database transaction.
 
-## Edit coordinate semantics
+## External editing workflow
 
-All document positions are UTF-16 code-unit offsets, matching .NET string indexing. Ranges are half-open: [start, end).
+The reader is read-only. Users export a working copy, edit it in a third-party editor, then select the edited file in FujiyNotepad for comparison. The project document remains untouched until the user reviews and applies the diff.
 
-- Insert before or exactly at an anchor start: shift the anchor right, preserving the original quote.
-- Insert strictly inside an anchor: extend its end.
-- Insert at its end: leave it outside the anchor.
-- Delete before an anchor: shift it left.
-- Delete part of an anchor: shrink it.
-- Replace text inside an anchor: include the replacement in the anchor.
-- Delete or replace the entire anchored quote: retain the anchor and mark it orphaned. Never silently retarget it to unrelated text.
+Each export creates an immutable baseline snapshot under `edit_sessions/<session-id>/baseline.txt`, plus a manifest containing project ID, document revision, byte length, SHA-256 and export filename. The edited file is kept outside the project until apply. Before any diff is applied, the app verifies that the active project document still matches the exported baseline. A stale session must be rejected and re-exported or explicitly reconciled; it must never be silently applied.
 
-The current implementation supplies the streaming project-copy model, SQLite schema/store, category and annotation queries, overlapping-range lookup, chapter persistence, indexed anchor/chapter transforms, and pure edit mapping with unit tests. It does not yet connect a text editor to disk writes. That integration must use a single edit coordinator that stages the document change, applies the anchor/chapter transaction, commits the document atomically, and records inverse snapshots for undo/redo. The current reader remains read-only until that coordinator is implemented.
+The external export is streamed in 1 MiB buffers and uses a temporary file followed by a move, so the app does not overwrite an existing export or the active project document.
 
-The schema enforces uniqueness only for an identical range attached twice to the *same* annotation. Identical or overlapping ranges attached to different annotations are valid. A query range returns every intersecting anchor and every distinct note linked to those anchors.
+## Diff and anchor remapping
 
-Project import refuses to overwrite an existing project document. The copy is streamed in 1 MiB buffers and fingerprinted with SHA-256 without loading the full file into memory. The project metadata tracks the document revision, byte length and fingerprint. The source path is not required to reopen a project.
+Diff generation and coordinate mapping are separate responsibilities:
+
+- The diff engine compares baseline and edited text and emits ordered hunks in UTF-16 coordinates: old start/end and new start/end.
+- `DocumentDiffMapper` maps unchanged anchor and chapter ranges through those hunks.
+- Anchors that intersect changed text are not silently attached to replacement text. They are marked `NeedsReview` for quote/context re-anchoring.
+- Anchors whose entire source quote was deleted are retained as orphaned.
+- Overlapping, nested and crossing anchors are mapped independently, so one note's range does not suppress another.
+- A note with several anchors is retained even if one anchor becomes orphaned.
+
+For a range untouched by any hunk, cumulative length deltas before that range determine its new offset. Insertions exactly at an anchor's start are treated as preceding the quote; insertions at its end are outside it. Insertions strictly inside an anchor require review because the selected source text changed.
+
+The first implementation adds the baseline snapshot/export workflow and pure diff-hunk mapping. It does not yet generate the hunks from two large files, show a visual diff, re-anchor changed quotes, apply the new document, or rebuild the reader indexes. Those are subsequent stages.
+
+## Apply and recovery requirements
+
+Applying a reviewed diff must be a recoverable operation:
+
+1. Revalidate the project ID, revision, length and SHA-256 against the session baseline.
+2. Generate and validate all diff hunks and anchor/chapter remap outcomes.
+3. Back up the current project document and SQLite database.
+4. Write the edited content to a temporary file inside the project folder and flush it.
+5. Apply all anchor/chapter updates and revision changes in one SQLite transaction.
+6. Atomically replace the project document and record a durable apply journal so startup can finish or roll back an interrupted apply.
+7. Rebuild or incrementally update line/viewport indexes, then update project metadata and session status.
+
+The document and SQLite cannot participate in one native filesystem/database transaction. The apply journal and backups are therefore mandatory; simply replacing the text file and then updating SQLite is not sufficiently safe.
 
 ## Large-file requirements
 
@@ -53,15 +72,3 @@ Project import refuses to overwrite an existing project document. The copy is st
 - Large edits may affect many later absolute offsets. The database index narrows the work to the affected suffix; it cannot make every affected offset update constant-time.
 
 
-## Piece-table editing foundation
-
-The first editing-storage layer is `PieceTableDocument`, which implements the existing positional `IByteSource` contract. The imported project document is treated as immutable. Inserted/replacement bytes are appended to `document.add`; `document.pieces.json` stores the ordered logical pieces. Viewport reads resolve only the requested byte window and can therefore be used by the existing line-index/render pipeline without loading the full novel.
-
-- Replacements split and coalesce pieces; adjacent ranges from the same backing file are merged.
-- Reads use a prefix-offset index and positional reads from the original and additions files.
-- The manifest is written to a temporary file, flushed, then atomically replaced.
-- Session undo/redo swaps piece-list snapshots; appended bytes are intentionally not reclaimed.
-- The current API is byte-oriented. The UI bridge must encode inserted text using the detected document encoding and translate the selected UTF-16 range into byte offsets before invoking it.
-- Annotation offsets remain UTF-16. The edit coordinator must pass the matching `DocumentEdit` to SQLite and coordinate manifest persistence with the anchor transaction before enabling editing in the UI.
-
-This is an editing-storage foundation, not yet the complete transactional editor. In particular, undo history is currently session-only, and crash-recovery coordination between the piece manifest and SQLite anchor transaction remains a required next step. The original project file must not be compacted/rewritten until a verified save/compaction protocol exists.
