@@ -39,7 +39,11 @@ All document positions are UTF-16 code-unit offsets, matching .NET string indexi
 - Replace text inside an anchor: include the replacement in the anchor.
 - Delete or replace the entire anchored quote: retain the anchor and mark it orphaned. Never silently retarget it to unrelated text.
 
-The current implementation supplies the project-copy model, SQLite schema/store, indexed anchor lookup, and pure anchor transformation. It does not yet connect a text editor to disk writes. That integration must use a single edit coordinator that stages the document change, applies the anchor transaction, commits the document atomically, and records enough inverse data for undo/redo. The current reader remains read-only until that coordinator is implemented.
+The current implementation supplies the streaming project-copy model, SQLite schema/store, category and annotation queries, overlapping-range lookup, chapter persistence, indexed anchor/chapter transforms, and pure edit mapping with unit tests. It does not yet connect a text editor to disk writes. That integration must use a single edit coordinator that stages the document change, applies the anchor/chapter transaction, commits the document atomically, and records inverse snapshots for undo/redo. The current reader remains read-only until that coordinator is implemented.
+
+The schema enforces uniqueness only for an identical range attached twice to the *same* annotation. Identical or overlapping ranges attached to different annotations are valid. A query range returns every intersecting anchor and every distinct note linked to those anchors.
+
+Project import refuses to overwrite an existing project document. The copy is streamed in 1 MiB buffers and fingerprinted with SHA-256 without loading the full file into memory. The project metadata tracks the document revision, byte length and fingerprint. The source path is not required to reopen a project.
 
 ## Large-file requirements
 
