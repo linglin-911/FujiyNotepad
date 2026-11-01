@@ -154,4 +154,94 @@ public sealed class NovelAnnotationStoreTests
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
+
+    [Fact]
+    public async Task CreateAnnotationWithAnchor_IsAtomicAndAppearsInSummarySearch()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid category = await store.CreateCategoryAsync("人物");
+
+            Guid id = await store.CreateAnnotationWithAnchorAsync(
+                "这段体现了人物性格。", 120, 135, "他没有回头，只把剑收了起来。",
+                category, "人物性格", documentRevision: 3);
+
+            NovelAnnotationSummary summary = Assert.Single(
+                await store.GetAnnotationSummariesAsync(category, "收了起来"));
+            Assert.Equal(id, summary.Annotation.Id);
+            Assert.Equal("人物性格", summary.Annotation.Title);
+            Assert.Equal(1, summary.AnchorCount);
+            Assert.Equal(0, summary.OrphanedAnchorCount);
+            Assert.Equal(120, summary.FirstActiveAnchorOffset);
+            Assert.Single(await store.GetAnchorsForAnnotationAsync(id));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task CategoryCrudAndMerge_PreserveNotesAndUpdateTheirCategory()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid source = await store.CreateCategoryAsync("旧分类");
+            Guid target = await store.CreateCategoryAsync("新分类");
+            Guid note = await store.CreateAnnotationAsync("note", source, "title");
+
+            await store.UpdateCategoryAsync(target, "目标分类", "#AABBCC", 2);
+            await store.MergeCategoriesAsync(source, target);
+
+            NovelAnnotation moved = Assert.Single(await store.GetAnnotationsAsync(target));
+            Assert.Equal(note, moved.Id);
+            Assert.Equal("目标分类", Assert.Single(await store.GetCategoriesAsync()).Name);
+
+            await store.DeleteCategoryAsync(target);
+            NovelAnnotation uncategorized = Assert.Single(await store.GetAnnotationsAsync());
+            Assert.Null(uncategorized.CategoryId);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task AddAnchorToExistingNote_UpdatesItsTimestampAndDeleteCascades()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid note = await store.CreateAnnotationAsync("note");
+            Guid first = await store.AddAnchorAsync(note, 10, 20, "first");
+            await store.AddAnchorAsync(note, 30, 40, "second");
+
+            Assert.Equal(2, (await store.GetAnnotationSummariesAsync()).Single().AnchorCount);
+            await store.RemoveAnchorAsync(first);
+            Assert.Equal(1, (await store.GetAnnotationSummariesAsync()).Single().AnchorCount);
+
+            await store.DeleteAnnotationAsync(note);
+            Assert.Empty(await store.GetAnnotationSummariesAsync());
+            Assert.Empty(await store.GetAllAnchorsAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
 }
