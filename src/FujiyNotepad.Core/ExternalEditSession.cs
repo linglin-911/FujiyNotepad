@@ -168,13 +168,21 @@ public sealed class ExternalEditSession
             || string.IsNullOrWhiteSpace(metadata.BaseDocumentSha256))
             throw new InvalidDataException("The external-edit session manifest is missing or invalid.");
 
-        string baselineName = metadata.BaselineFileName ?? "";
+        string? baselineName = metadata.BaselineFileName;
+        if (string.IsNullOrWhiteSpace(baselineName))
+            baselineName = Directory.EnumerateFiles(directory, "baseline.*").Select(Path.GetFileName).SingleOrDefault();
         if (string.IsNullOrWhiteSpace(baselineName) || !string.Equals(Path.GetFileName(baselineName), baselineName, StringComparison.Ordinal))
             throw new InvalidDataException("The external-edit session baseline filename is invalid.");
         string baselinePath = Path.GetFullPath(Path.Combine(directory, baselineName));
         if (!baselinePath.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             || !File.Exists(baselinePath))
             throw new InvalidDataException("The external-edit session baseline is missing or points outside the session folder.");
+        var baselineInfo = new FileInfo(baselinePath);
+        if (baselineInfo.Length != metadata.BaseDocumentLength)
+            throw new InvalidDataException("The external-edit session baseline length does not match its manifest.");
+        string baselineHash = await NovelProject.ComputeSha256Async(baselinePath, cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(baselineHash, metadata.BaseDocumentSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The external-edit session baseline hash does not match its manifest.");
 
         return new ExternalEditSession(directory, baselinePath, Path.GetFullPath(editedFilePath), metadata);
     }
