@@ -300,6 +300,54 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 affected.Add(ReadAnchor(reader));
         }
 
+        var affectedChapters = new List<NovelChapter>();
+        await using (var selectChapters = connection.CreateCommand())
+        {
+            selectChapters.Transaction = (SqliteTransaction)transaction;
+            selectChapters.CommandText = """
+                SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
+                FROM Chapters
+                WHERE EndOffset > $start OR StartOffset >= $start;
+                """;
+            selectChapters.Parameters.AddWithValue("$start", edit.StartOffset);
+            await using var reader = await selectChapters.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                affectedChapters.Add(new NovelChapter(
+                    Guid.Parse(reader.GetString(0)),
+                    reader.GetString(1),
+                    reader.GetInt64(2),
+                    reader.GetInt64(3),
+                    reader.GetInt32(4),
+                    reader.GetInt64(5)));
+            }
+        }
+
+        await using (var updateChapters = connection.CreateCommand())
+        {
+            updateChapters.Transaction = (SqliteTransaction)transaction;
+            updateChapters.CommandText = """
+                UPDATE Chapters
+                SET StartOffset = $start, EndOffset = $end, DocumentRevision = $revision
+                WHERE Id = $id;
+                """;
+            var startParameter = updateChapters.Parameters.Add("$start", SqliteType.Integer);
+            var endParameter = updateChapters.Parameters.Add("$end", SqliteType.Integer);
+            var revisionParameter = updateChapters.Parameters.Add("$revision", SqliteType.Integer);
+            var idParameter = updateChapters.Parameters.Add("$id", SqliteType.Text);
+
+            foreach (NovelChapter chapter in affectedChapters)
+            {
+                AnchorTransformResult transformed = AnnotationAnchorTransformer.TransformRange(
+                    chapter.StartOffset, chapter.EndOffset, edit);
+                startParameter.Value = transformed.StartOffset;
+                endParameter.Value = transformed.EndOffset;
+                revisionParameter.Value = newDocumentRevision;
+                idParameter.Value = chapter.Id.ToString("D");
+                await updateChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         await using (var update = connection.CreateCommand())
         {
             update.Transaction = (SqliteTransaction)transaction;
