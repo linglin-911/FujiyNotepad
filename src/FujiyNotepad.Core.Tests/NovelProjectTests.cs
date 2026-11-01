@@ -5,6 +5,29 @@ namespace FujiyNotepad.Core.Tests;
 public sealed class NovelProjectTests
 {
     [Fact]
+    public async Task ImportAsync_RefusesToUseANonEmptyProjectFolder()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "FujiyProjectTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string source = Path.Combine(root, "source.txt");
+        string projectPath = Path.Combine(root, "project");
+        Directory.CreateDirectory(projectPath);
+        await File.WriteAllTextAsync(source, "novel");
+        string existing = Path.Combine(projectPath, "keep.txt");
+        await File.WriteAllTextAsync(existing, "keep");
+
+        try
+        {
+            await Assert.ThrowsAsync<IOException>(() => NovelProject.ImportAsync(source, projectPath));
+            Assert.Equal("keep", await File.ReadAllTextAsync(existing));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ImportAsync_CopiesSourceAndKeepsProjectIndependent()
     {
         string root = Path.Combine(Path.GetTempPath(), "FujiyProjectTests", Guid.NewGuid().ToString("N"));
