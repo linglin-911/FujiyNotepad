@@ -122,12 +122,39 @@ public sealed class ExternalEditMarkerCodecTests
         string tampered = encoded.Replace(char.ConvertFromUtf32(0xE0046), char.ConvertFromUtf32(0xE0047), StringComparison.Ordinal);
 
         var parsedTampered = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(tampered));
-        var parsedTruncated = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(encoded[..^1]));
+        var parsedTruncated = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(encoded[..^2]));
 
         Assert.Equal(1, parsedTampered.MalformedCount);
         Assert.Empty(parsedTampered.Markers);
         Assert.Equal(1, parsedTruncated.MalformedCount);
-        Assert.Empty(parsedTruncated.Markers);
+        ExternalEditMarkerOccurrence survivingStart = Assert.Single(parsedTruncated.Markers);
+        Assert.Equal(ExternalEditMarkerEndpoint.Start, survivingStart.Marker.Endpoint);
+
+        var expectedPair = new[]
+        {
+            survivingStart.Marker,
+            survivingStart.Marker with { Endpoint = ExternalEditMarkerEndpoint.End }
+        };
+        ExternalEditMarkerValidationResult missingEnd = ExternalEditMarkerCodec.Validate(
+            sessionId, expectedPair, parsedTruncated.Markers, parsedTruncated.MalformedCount);
+        Assert.Contains(missingEnd.Targets, item => item.Status == ExternalEditMarkerTargetStatus.MissingEnd);
+    }
+
+    [Fact]
+    public async Task StrayEndTokenIsRemovedAndDoesNotShiftLaterMarkerOffsets()
+    {
+        Guid sessionId = Guid.NewGuid();
+        var marker = new ExternalEditMarker(sessionId, Guid.NewGuid(),
+            ExternalEditMarkerTargetKind.Chapter, ExternalEditMarkerEndpoint.Start);
+        string strayEnd = char.ConvertFromUtf32(0xE007F);
+        string text = "abc" + strayEnd + ExternalEditMarkerCodec.Encode(marker) + "xyz";
+
+        var parsed = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(text));
+
+        Assert.Equal(1, parsed.MalformedCount);
+        Assert.Single(parsed.Markers);
+        Assert.Equal(3, parsed.Markers[0].Offset);
+        Assert.Equal(marker, parsed.Markers[0].Marker);
     }
 
     private static ExternalEditMarker[] Pair(Guid sessionId, Guid targetId)
