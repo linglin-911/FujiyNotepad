@@ -51,3 +51,17 @@ Project import refuses to overwrite an existing project document. The copy is st
 - Import, hashing, backups and future text edits must stream or operate on bounded regions.
 - SQLite updates only anchors whose ranges intersect or follow the edit point; earlier anchors are not enumerated.
 - Large edits may affect many later absolute offsets. The database index narrows the work to the affected suffix; it cannot make every affected offset update constant-time.
+
+
+## Piece-table editing foundation
+
+The first editing-storage layer is `PieceTableDocument`, which implements the existing positional `IByteSource` contract. The imported project document is treated as immutable. Inserted/replacement bytes are appended to `document.add`; `document.pieces.json` stores the ordered logical pieces. Viewport reads resolve only the requested byte window and can therefore be used by the existing line-index/render pipeline without loading the full novel.
+
+- Replacements split and coalesce pieces; adjacent ranges from the same backing file are merged.
+- Reads use a prefix-offset index and positional reads from the original and additions files.
+- The manifest is written to a temporary file, flushed, then atomically replaced.
+- Session undo/redo swaps piece-list snapshots; appended bytes are intentionally not reclaimed.
+- The current API is byte-oriented. The UI bridge must encode inserted text using the detected document encoding and translate the selected UTF-16 range into byte offsets before invoking it.
+- Annotation offsets remain UTF-16. The edit coordinator must pass the matching `DocumentEdit` to SQLite and coordinate manifest persistence with the anchor transaction before enabling editing in the UI.
+
+This is an editing-storage foundation, not yet the complete transactional editor. In particular, undo history is currently session-only, and crash-recovery coordination between the piece manifest and SQLite anchor transaction remains a required next step. The original project file must not be compacted/rewritten until a verified save/compaction protocol exists.
