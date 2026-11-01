@@ -141,6 +141,27 @@ public sealed class ExternalEditMarkerCodecTests
     }
 
     [Fact]
+    public async Task MissingEndTokenDoesNotConsumeFollowingNovelTextOrShiftLaterMarkers()
+    {
+        Guid sessionId = Guid.NewGuid();
+        var truncatedStart = new ExternalEditMarker(sessionId, Guid.NewGuid(),
+            ExternalEditMarkerTargetKind.AnnotationAnchor, ExternalEditMarkerEndpoint.Start);
+        var laterMarker = new ExternalEditMarker(sessionId, Guid.NewGuid(),
+            ExternalEditMarkerTargetKind.Chapter, ExternalEditMarkerEndpoint.Start);
+        string missingEnd = ExternalEditMarkerCodec.Encode(truncatedStart)[..^2];
+        string text = missingEnd + "正文" + ExternalEditMarkerCodec.Encode(laterMarker);
+
+        var parsed = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(text));
+
+        Assert.Equal(1, parsed.MalformedCount);
+        Assert.Equal(2, parsed.Markers.Count);
+        Assert.Equal(truncatedStart, parsed.Markers[0].Marker);
+        Assert.Equal(0, parsed.Markers[0].Offset);
+        Assert.Equal(laterMarker, parsed.Markers[1].Marker);
+        Assert.Equal(2, parsed.Markers[1].Offset);
+    }
+
+    [Fact]
     public async Task StrayEndTokenIsRemovedAndDoesNotShiftLaterMarkerOffsets()
     {
         Guid sessionId = Guid.NewGuid();
