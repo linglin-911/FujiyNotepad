@@ -36,8 +36,8 @@ public sealed class ExternalEditMarkerCodecTests
         ExternalEditMarkerValidationResult validation = ExternalEditMarkerCodec.Validate(
             sessionId, insertions.Select(item => item.Marker).ToArray(), parsed.Markers, parsed.MalformedCount);
         Assert.False(validation.HasIssues);
-        Assert.Equal(5, validation.Targets[0].StartOffset);
-        Assert.Equal(18, validation.Targets[0].EndOffset);
+        Assert.Equal(5L, validation.Targets[0].StartOffset);
+        Assert.Equal(18L, validation.Targets[0].EndOffset);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class ExternalEditMarkerCodecTests
     }
 
     [Fact]
-    public async Task ValidationReportsMissingDuplicateAndReversedMarkerPairs()
+    public void ValidationReportsMissingDuplicateAndReversedMarkerPairs()
     {
         Guid sessionId = Guid.NewGuid();
         Guid missingId = Guid.NewGuid();
@@ -119,7 +119,7 @@ public sealed class ExternalEditMarkerCodecTests
         Guid sessionId = Guid.NewGuid();
         string encoded = ExternalEditMarkerCodec.Encode(new ExternalEditMarker(
             sessionId, Guid.NewGuid(), ExternalEditMarkerTargetKind.Chapter, ExternalEditMarkerEndpoint.Start));
-        string tampered = encoded[..^2] + "\uDC7E" + encoded[^1];
+        string tampered = encoded.Replace(char.ConvertFromUtf32(0xE0046), char.ConvertFromUtf32(0xE0047), StringComparison.Ordinal);
 
         var parsedTampered = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(tampered));
         var parsedTruncated = await ExternalEditMarkerCodec.ReadMarkersAsync(new StringReader(encoded[..^1]));
