@@ -52,6 +52,39 @@ namespace FujiyNotepad.Presentation.Tests
         }
 
         [Fact]
+        public async Task WrappedSelection_DoesNotPaintPreviousRowWhenStartingAtWrapBoundary()
+        {
+            TextLayoutEngine engine = await NewEngineAsync("ABCDEFGHIJ", vw: 60);
+            engine.WordWrap = true;
+            engine.SelectMatch(0, 4, 4); // Select exactly the second wrapped row.
+
+            IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+            Assert.False(rows[0].HasSelection);
+            Assert.True(rows[1].HasSelection);
+            Assert.Equal(0, rows[1].SelectionStartIndex);
+            Assert.Equal(4, rows[1].SelectionLength);
+            Assert.False(rows[1].SelectionContinuesPastRow);
+            Assert.False(rows[2].HasSelection);
+        }
+
+        [Fact]
+        public async Task WrappedSelection_IncludesNewlineOnAnEmptyIntermediateLine()
+        {
+            TextLayoutEngine engine = await NewEngineAsync("A\n\nB");
+            engine.WordWrap = true;
+            engine.PointerPress(new TextPosition(0, 0), shift: false);
+            engine.PointerDrag(new TextPosition(2, 0));
+
+            IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+            Assert.True(rows[0].SelectionContinuesPastRow);
+            Assert.True(rows[1].HasSelection);
+            Assert.True(rows[1].SelectionContinuesPastRow);
+            Assert.False(rows[2].HasSelection);
+        }
+
+        [Fact]
         public async Task WrappedSelectionMetadata_IsLocalToEachDisplayRow()
         {
             TextLayoutEngine engine = await NewEngineAsync("ABCDEFGHIJ", vw: 60);
