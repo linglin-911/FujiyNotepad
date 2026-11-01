@@ -976,11 +976,14 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        // The horizontal scrollbar is meaningless while word-wrap is on (there is no horizontal overflow), so
-        // hide it; show it again when wrap is off.
+        // Word wrap removes horizontal overflow. Reading mode also hides the vertical scrollbar and its
+        // overview-ruler strip; mouse-wheel and keyboard scrolling continue to work on the canvas.
         private void UpdateScrollBarVisibility()
         {
+            bool readingMode = settings.ReadingMode && View.WordWrap;
             HScroll.Visibility = View.WordWrap ? Visibility.Collapsed : Visibility.Visible;
+            VScroll.Visibility = readingMode ? Visibility.Collapsed : Visibility.Visible;
+            MarkerMargin.Visibility = readingMode ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void UpdateCursorStatus(TextPosition pos)
@@ -2732,10 +2735,36 @@ namespace FujiyNotepad.WinUI
             View.FocusCanvas();
         }
 
+        private void ReadingMode_Click(object sender, RoutedEventArgs e)
+        {
+            bool enabled = ReadingModeToggle.IsChecked;
+            settings.ReadingMode = enabled;
+            if (enabled)
+            {
+                // Reading mode is always a wrapped view; preserve that choice when reading mode is later turned off.
+                settings.WordWrap = true;
+                WordWrapToggle.IsChecked = true;
+                View.WordWrap = true;
+            }
+
+            settingsStore.Save(settings);
+            UpdateScrollBarVisibility();
+            SyncScrollBars();
+            View.FocusCanvas();
+        }
+
         private void WordWrap_Click(object sender, RoutedEventArgs e)
         {
-            View.WordWrap = WordWrapToggle.IsChecked;
-            settings.WordWrap = WordWrapToggle.IsChecked;
+            bool enabled = WordWrapToggle.IsChecked;
+            if (!enabled && settings.ReadingMode)
+            {
+                // Turning wrap off would make reading mode unusable, so leave reading mode at the same time.
+                settings.ReadingMode = false;
+                ReadingModeToggle.IsChecked = false;
+            }
+
+            View.WordWrap = enabled;
+            settings.WordWrap = enabled;
             settingsStore.Save(settings);
             UpdateScrollBarVisibility();
             SyncScrollBars();
@@ -3010,6 +3039,12 @@ namespace FujiyNotepad.WinUI
             WhitespaceToggle.IsChecked = settings.ShowWhitespace;
             View.ShowWhitespace = settings.ShowWhitespace;
 
+            // Reading mode always implies word wrap, even if a settings file was edited manually.
+            if (settings.ReadingMode)
+            {
+                settings.WordWrap = true;
+            }
+            ReadingModeToggle.IsChecked = settings.ReadingMode;
             WordWrapToggle.IsChecked = settings.WordWrap;
             View.WordWrap = settings.WordWrap;
             UpdateScrollBarVisibility();
