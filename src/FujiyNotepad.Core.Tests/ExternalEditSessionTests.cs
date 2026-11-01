@@ -35,6 +35,34 @@ public sealed class ExternalEditSessionTests
     }
 
     [Fact]
+    public async Task OpenAsync_RestoresSessionManifestAfterApplicationRestart()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "FujiyExternalEditTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string source = Path.Combine(root, "source.txt");
+        string projectFolder = Path.Combine(root, "project");
+        string export = Path.Combine(root, "external", "novel-edit.txt");
+        await File.WriteAllTextAsync(source, "第一章\r\n正文内容");
+
+        try
+        {
+            NovelProject project = await NovelProject.ImportAsync(source, projectFolder);
+            ExternalEditSession created = await ExternalEditSession.CreateAsync(project, export);
+            ExternalEditSession reopened = await ExternalEditSession.OpenAsync(created.SessionDirectory, export);
+
+            Assert.Equal(created.Metadata.Id, reopened.Metadata.Id);
+            Assert.Equal(created.Metadata.ProjectId, reopened.Metadata.ProjectId);
+            Assert.Equal(created.Metadata.BaseDocumentSha256, reopened.Metadata.BaseDocumentSha256);
+            Assert.Equal(created.BaselinePath, reopened.BaselinePath);
+            await reopened.ValidateProjectBaselineAsync(project);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ValidateProjectBaselineAsync_RejectsProjectChangedAfterExport()
     {
         string root = Path.Combine(Path.GetTempPath(), "FujiyExternalEditTests", Guid.NewGuid().ToString("N"));
