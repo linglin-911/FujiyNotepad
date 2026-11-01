@@ -49,13 +49,14 @@ public sealed class NovelProject
         }
 
         Directory.CreateDirectory(root);
+        if (Directory.EnumerateFileSystemEntries(root).Any())
+        {
+            throw new IOException("Choose an empty folder for the new novel project. Existing files will not be overwritten.");
+        }
+
         string documentName = "novel" + (Path.GetExtension(source).Length == 0 ? ".txt" : Path.GetExtension(source));
         string destination = Path.Combine(root, documentName);
         string temporary = destination + ".importing";
-        if (File.Exists(destination) || File.Exists(Path.Combine(root, "project.json")))
-        {
-            throw new IOException("The target folder already contains a novel project or a file with the import name.");
-        }
 
         bool documentCreated = false;
         try
