@@ -16,8 +16,8 @@ public sealed class DocumentDiffMapperTests
     [Fact]
     public void InsertAtAnchorStart_IsBeforeAnchor_ButInsertAtEndIsAfterAnchor()
     {
-        var atStart = new[] { new DocumentDiffHunk(10, 10, 10, 3, DocumentDiffKind.Inserted) };
-        var atEnd = new[] { new DocumentDiffHunk(20, 20, 20, 3, DocumentDiffKind.Inserted) };
+        var atStart = new[] { new DocumentDiffHunk(10, 10, 10, 13, DocumentDiffKind.Inserted) };
+        var atEnd = new[] { new DocumentDiffHunk(20, 20, 20, 23, DocumentDiffKind.Inserted) };
 
         AnchorRemapResult startResult = DocumentDiffMapper.MapRange(10, 20, atStart);
         AnchorRemapResult endResult = DocumentDiffMapper.MapRange(10, 20, atEnd);
