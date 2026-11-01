@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using FujiyNotepad.Core;
 
 namespace FujiyNotepad.Core.Tests;
@@ -29,6 +30,7 @@ public sealed class NovelAnnotationStoreTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             foreach (string suffix in new[] { "", "-wal", "-shm" })
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
@@ -60,6 +62,7 @@ public sealed class NovelAnnotationStoreTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             foreach (string suffix in new[] { "", "-wal", "-shm" })
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
@@ -84,6 +87,7 @@ public sealed class NovelAnnotationStoreTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             foreach (string suffix in new[] { "", "-wal", "-shm" })
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
@@ -114,6 +118,7 @@ public sealed class NovelAnnotationStoreTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             foreach (string suffix in new[] { "", "-wal", "-shm" })
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
@@ -144,6 +149,7 @@ public sealed class NovelAnnotationStoreTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             foreach (string suffix in new[] { "", "-wal", "-shm" })
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
