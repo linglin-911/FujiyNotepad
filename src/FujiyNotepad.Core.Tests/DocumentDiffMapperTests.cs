@@ -16,6 +16,7 @@ public sealed class DocumentDiffMapperTests
     [Fact]
     public void InsertAtAnchorStart_IsBeforeAnchor_ButInsertAtEndIsAfterAnchor()
     {
+        // Old range is empty; new range spans the three inserted characters [position, position + 3).
         var atStart = new[] { new DocumentDiffHunk(10, 10, 10, 13, DocumentDiffKind.Inserted) };
         var atEnd = new[] { new DocumentDiffHunk(20, 20, 20, 23, DocumentDiffKind.Inserted) };
 
