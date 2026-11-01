@@ -9,8 +9,6 @@ namespace FujiyNotepad.Core;
 /// </summary>
 public sealed class ExternalEditSession
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-
     private ExternalEditSession(string sessionDirectory, string baselinePath, string exportPath,
         ExternalEditSessionMetadata metadata)
     {
@@ -162,8 +160,8 @@ public sealed class ExternalEditSession
         string manifestPath = Path.Combine(directory, "session.json");
         await using var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read,
             16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        ExternalEditSessionMetadata? metadata = await JsonSerializer.DeserializeAsync<ExternalEditSessionMetadata>(
-            stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        ExternalEditSessionMetadata? metadata = await JsonSerializer.DeserializeAsync(
+            stream, NovelProjectJsonContext.Default.ExternalEditSessionMetadata, cancellationToken).ConfigureAwait(false);
         if (metadata is null || metadata.Id == Guid.Empty || metadata.ProjectId == Guid.Empty
             || string.IsNullOrWhiteSpace(metadata.BaseDocumentSha256))
             throw new InvalidDataException("The external-edit session manifest is missing or invalid.");
@@ -234,14 +232,23 @@ public sealed class ExternalEditSession
     private async Task SaveManifestAsync(CancellationToken cancellationToken)
     {
         string temporary = ManifestPath + ".tmp";
-        await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-            16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+        try
         {
-            await JsonSerializer.SerializeAsync(stream, Metadata, JsonOptions, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            stream.Flush(flushToDisk: true);
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await JsonSerializer.SerializeAsync(stream, Metadata,
+                    NovelProjectJsonContext.Default.ExternalEditSessionMetadata, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, ManifestPath);
         }
-        File.Move(temporary, ManifestPath);
+        catch
+        {
+            TryDelete(temporary);
+            throw;
+        }
     }
 
     private static string ValidateExportPath(NovelProject project, string exportPath)
