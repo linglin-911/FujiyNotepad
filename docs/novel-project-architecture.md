@@ -42,6 +42,8 @@ The main window exposes a `Novel Project` menu:
 - `Validate Edited Copy...` asks for the session's `session.json` and the third-party-edited text file, checks that the session belongs to the active project and that the project baseline has not changed, then displays intact and damaged marker counts.
 - `Close Novel Project` closes the annotation workspace but leaves the current document open in the ordinary read-only viewer.
 
+The active project folder is persisted alongside the last-session document path in user settings. On startup, the app restores the project workspace (including its SQLite annotation store) before restoring the saved scroll/caret position, rather than reopening only the document as a plain text file. Explicitly closing a project clears this project association while leaving the document open. Project activation failures are surfaced instead of silently leaving the menu in ordinary-file mode.
+
 This first UI slice deliberately does not apply an edited file. It only validates marker integrity. The annotation authoring panes, chapter detection/management UI, diff preview, marker stripping, and confirmed apply/recovery workflow remain future work. At present, if a project has no saved anchors or chapter ranges, a marked export contains no marker pairs and is effectively a plain text copy.
 
 ## External editing workflow
