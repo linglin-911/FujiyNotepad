@@ -36,6 +36,12 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly CanvasControl canvas;
         private readonly CanvasTextFormat textFormat;
 
+        // Text layouts are retained only for the current viewport. Drawing, selection geometry, caret placement
+        // and pointer hit-testing all query the same DirectWrite layout instead of estimating glyph widths.
+        private readonly Dictionary<TextLayoutKey, CanvasTextLayout> textLayoutCache = new();
+        private readonly HashSet<TextLayoutKey> activeTextLayouts = new();
+        private readonly record struct TextLayoutKey(int LineIndex, int DisplayStartIndex, int DisplayLength);
+
         private double charWidth;
         private double lineHeight;
         private double lineHeightRaw;     // unsnapped line height straight from the font probe
@@ -278,7 +284,14 @@ namespace FujiyNotepad.WinUI.Controls
         public int TabSize
         {
             get => engine.TabSize;
-            set => engine.TabSize = value;
+            set
+            {
+                if (engine.TabSize != value)
+                {
+                    engine.TabSize = value;
+                    ClearTextLayoutCache();
+                }
+            }
         }
 
         // Font size bounds and the "100% zoom" baseline (the default size). Zoom changes the font size.
@@ -331,6 +344,7 @@ namespace FujiyNotepad.WinUI.Controls
         // Re-measure the monospace cell, push the new metrics, refresh the scrollbars, and repaint.
         private void RefreshFont()
         {
+            ClearTextLayoutCache();
             metricsValid = false;
             EnsureMetrics();
             ViewChanged?.Invoke();
@@ -341,6 +355,7 @@ namespace FujiyNotepad.WinUI.Controls
         public void SetProvider(ILineSource? newProvider)
         {
             Ready();
+            ClearTextLayoutCache();
             lastAccessibilityLine = -1; // a new file: re-announce the caret line even if it lands on line 0 again
             engine.SetProvider(newProvider);
         }
@@ -472,7 +487,7 @@ namespace FujiyNotepad.WinUI.Controls
             Ready();
             lastPointer = e.GetCurrentPoint(this).Position;
             bool shift = IsDown(VirtualKey.Shift);
-            engine.PointerPress(lastPointer.X, lastPointer.Y, shift);
+            engine.PointerPress(HitTestText(lastPointer.X, lastPointer.Y), shift);
             isSelecting = true;
             CapturePointer(e.Pointer);
             e.Handled = true;
@@ -486,7 +501,8 @@ namespace FujiyNotepad.WinUI.Controls
             }
             Ready();
             lastPointer = e.GetCurrentPoint(this).Position;
-            engine.PointerDrag(lastPointer.X, lastPointer.Y);
+            engine.ScrollForPointer(lastPointer.Y);
+            engine.PointerDrag(HitTestText(lastPointer.X, lastPointer.Y));
             UpdateAutoScroll();
         }
 
@@ -527,7 +543,7 @@ namespace FujiyNotepad.WinUI.Controls
         {
             Ready();
             Point p = e.GetPosition(this);
-            engine.SelectWordAt(p.X, p.Y);
+            engine.SelectWordAt(HitTestText(p.X, p.Y));
             e.Handled = true;
         }
 
@@ -553,7 +569,8 @@ namespace FujiyNotepad.WinUI.Controls
                 return;
             }
             Ready();
-            engine.PointerDrag(lastPointer.X, lastPointer.Y);
+            engine.ScrollForPointer(lastPointer.Y);
+            engine.PointerDrag(HitTestText(lastPointer.X, lastPointer.Y));
         }
 
         #endregion
@@ -683,60 +700,94 @@ namespace FujiyNotepad.WinUI.Controls
             EnsureMetrics();
             SyncViewport();
 
+            // Keep only layouts used by this viewport after the draw completes. A scrolling novel therefore
+            // never accumulates one native DirectWrite layout per line in a multi-hundred-thousand-line file.
+            activeTextLayouts.Clear();
+
             // The selection keeps its colour even when the canvas isn't focused (e.g. the menu has focus), so
             // it stays clearly visible; only the caret is hidden while unfocused.
             double dpiScale = (canvas.Dpi > 0 ? canvas.Dpi : 96.0) / 96.0;
-            // Always ask for the caret (caretVisible: true) so its line is reported whenever the surface is
-            // focused; the blink itself is handled by the overlay's opacity, not by toggling this flag, so the
-            // text layout the canvas draws is identical on every redraw.
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocusInternal, caretVisible: true);
             bool caretShown = false;
             double caretLeftPx = 0, caretTopPx = 0;
             foreach (VisibleLine line in lines)
             {
-                // Snap this line's top to a whole device pixel so the text never lands on a sub-pixel (and so
-                // every decoration on the line shares one stable top), guarding against any float drift even
-                // though the device-snapped line height already keeps tops aligned. Keeps the text from
-                // jittering vertically as the canvas repaints (see PixelSnap / EnsureMetrics).
                 float ty = (float)PixelSnap.SnapToDevicePixels(line.Y, dpiScale);
+                CanvasTextLayout? layout = GetTextLayout(line);
 
-                // Persistent highlight-rule backgrounds (under everything), each in its own colour. Painted
-                // before the Find highlight so an active search still stands out over a coloured line.
+                // Persistent rules, Find matches, selected-occurrence matches and the active selection all use
+                // character positions from this exact layout. No fixed-width estimate is used for their X edges.
                 if (line.RuleHighlights is { Count: > 0 })
                 {
                     foreach (RuleHighlightRect r in line.RuleHighlights)
                     {
-                        ds.FillRectangle((float)r.X, ty, (float)r.Width, (float)lineHeight, ToColor(r.Argb));
+                        if (layout != null && r.StartIndex >= 0 && r.Length > 0)
+                        {
+                            DrawTextRangeHighlight(ds, layout, line, r.StartIndex, r.Length, ToColor(r.Argb), ty);
+                        }
+                        else
+                        {
+                            ds.FillRectangle((float)r.X, ty, (float)r.Width, (float)lineHeight, ToColor(r.Argb));
+                        }
                     }
                 }
 
-                // Highlight every Find match (under the text); the selected match is drawn over its highlight
-                // by the selection layer below, so the current match reads as the selection colour.
                 if (line.Matches is { Count: > 0 })
                 {
                     foreach (HighlightRect h in line.Matches)
                     {
-                        ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, matchHighlightColor);
+                        if (layout != null && h.StartIndex >= 0 && h.Length > 0)
+                        {
+                            DrawTextRangeHighlight(ds, layout, line, h.StartIndex, h.Length, matchHighlightColor, ty);
+                        }
+                        else
+                        {
+                            ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, matchHighlightColor);
+                        }
                     }
                 }
 
-                // Highlight every occurrence of the selected text (issue #130), under the active selection so the
-                // selected occurrence itself reads as the selection colour. The engine leaves this empty while a
-                // Find highlight is active, so Find and selection-occurrence highlighting never paint at once.
                 if (line.SelectionMatches is { Count: > 0 })
                 {
                     foreach (HighlightRect h in line.SelectionMatches)
                     {
-                        ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, selectionOccurrenceColor);
+                        if (layout != null && h.StartIndex >= 0 && h.Length > 0)
+                        {
+                            DrawTextRangeHighlight(ds, layout, line, h.StartIndex, h.Length, selectionOccurrenceColor, ty);
+                        }
+                        else
+                        {
+                            ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, selectionOccurrenceColor);
+                        }
                     }
                 }
 
                 if (line.HasSelection)
                 {
-                    ds.FillRectangle((float)line.SelectionX, ty, (float)line.SelectionWidth, (float)lineHeight, selectionColor);
+                    if (layout != null)
+                    {
+                        DrawTextRangeHighlight(ds, layout, line, line.SelectionStartIndex, line.SelectionLength, selectionColor, ty);
+                        if (line.SelectionContinuesPastRow)
+                        {
+                            Vector2 end = layout.GetCaretPosition(line.Display.Length, trailingSideOfCharacter: false);
+                            ds.FillRectangle((float)(line.TextX + end.X), ty, (float)Math.Max(1.0, charWidth), (float)lineHeight, selectionColor);
+                        }
+                    }
+                    else
+                    {
+                        ds.FillRectangle((float)line.SelectionX, ty, (float)line.SelectionWidth, (float)lineHeight, selectionColor);
+                    }
                 }
 
-                ds.DrawText(line.Display, new Vector2((float)line.TextX, ty), textColor, textFormat);
+                // Draw the same CanvasTextLayout that supplied the hit-test and highlight geometry.
+                if (layout != null)
+                {
+                    ds.DrawTextLayout(layout, (float)line.TextX, ty, textColor);
+                }
+                else
+                {
+                    ds.DrawText(line.Display, new Vector2((float)line.TextX, ty), textColor, textFormat);
+                }
 
                 if (line.Whitespace is { Count: > 0 })
                 {
@@ -745,17 +796,167 @@ namespace FujiyNotepad.WinUI.Controls
 
                 if (line.HasCaret)
                 {
-                    // The caret is painted as a composition overlay (see UpdateCaretOverlay), not on this
-                    // surface, so a blink never touches the text. Just record where it should go.
                     caretShown = true;
-                    caretLeftPx = line.CaretX;
+                    if (layout != null)
+                    {
+                        Vector2 caret = layout.GetCaretPosition(line.CaretDisplayIndex, trailingSideOfCharacter: false);
+                        caretLeftPx = line.TextX + caret.X;
+                    }
+                    else
+                    {
+                        caretLeftPx = line.CaretX;
+                    }
                     caretTopPx = ty;
                 }
             }
 
+            PruneTextLayoutCache();
             DrawGutter(ds, sender, lines);
-
             UpdateCaretOverlay(caretShown, caretLeftPx, caretTopPx, dpiScale);
+        }
+
+        private CanvasTextLayout? GetTextLayout(VisibleLine line)
+        {
+            var key = new TextLayoutKey(line.LineIndex, line.DisplayStartIndex, line.Display.Length);
+            activeTextLayouts.Add(key);
+            if (textLayoutCache.TryGetValue(key, out CanvasTextLayout? cached))
+            {
+                return cached;
+            }
+
+            try
+            {
+                // Reading mode produces short visual rows; the larger estimate also supports long unwrapped
+                // lines without allowing DirectWrite to wrap them a second time.
+                double estimatedWidth = Math.Max(
+                    ActualWidth + engine.HorizontalOffset + 64,
+                    line.Display.Length * Math.Max(charWidth, textFormat.FontSize) * 2 + 64);
+                float layoutWidth = (float)Math.Clamp(estimatedWidth, 256, 10_000_000);
+                float layoutHeight = (float)Math.Max(lineHeight * 2, textFormat.FontSize * 4);
+                var layout = new CanvasTextLayout(
+                    CanvasDevice.GetSharedDevice(), line.Display, textFormat, layoutWidth, layoutHeight)
+                {
+                    WordWrapping = CanvasWordWrapping.NoWrap,
+                };
+                textLayoutCache.Add(key, layout);
+                return layout;
+            }
+            catch (Exception)
+            {
+                // Device loss or an invalid native layout must not make the read-only viewer unusable.
+                ClearTextLayoutCache();
+                return null;
+            }
+        }
+
+        private static void DrawTextRangeHighlight(
+            CanvasDrawingSession ds,
+            CanvasTextLayout layout,
+            VisibleLine line,
+            int startIndex,
+            int length,
+            Color color,
+            float top)
+        {
+            if (length <= 0 || line.Display.Length == 0)
+            {
+                return;
+            }
+
+            startIndex = Math.Clamp(startIndex, 0, line.Display.Length);
+            int endIndex = Math.Clamp(startIndex + length, startIndex, line.Display.Length);
+            if (endIndex == startIndex)
+            {
+                return;
+            }
+
+            // Caret positions include trailing whitespace, unlike glyph ink bounds, so copied spaces and
+            // selected spaces receive the same accurate background as visible glyphs.
+            Vector2 start = layout.GetCaretPosition(startIndex, trailingSideOfCharacter: false);
+            Vector2 end = layout.GetCaretPosition(endIndex, trailingSideOfCharacter: false);
+            float left = Math.Min(start.X, end.X);
+            float right = Math.Max(start.X, end.X);
+            if (right > left)
+            {
+                ds.FillRectangle((float)(line.TextX + left), top, right - left, (float)lineHeight, color);
+            }
+        }
+
+        private TextPosition HitTestText(double x, double y)
+        {
+            IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            if (lines.Count == 0)
+            {
+                return engine.HitTest(x, y);
+            }
+
+            VisibleLine hitLine = lines[0];
+            foreach (VisibleLine candidate in lines)
+            {
+                if (y >= candidate.Y && y < candidate.Y + lineHeight)
+                {
+                    hitLine = candidate;
+                    break;
+                }
+                if (y >= candidate.Y)
+                {
+                    hitLine = candidate;
+                }
+            }
+
+            if (hitLine.Display.Length == 0)
+            {
+                return engine.PositionFromDisplayIndex(hitLine.LineIndex, hitLine.DisplayStartIndex, trailing: false);
+            }
+
+            CanvasTextLayout? layout = GetTextLayout(hitLine);
+            if (layout == null)
+            {
+                return engine.HitTest(x, y);
+            }
+
+            float localX = (float)(x - hitLine.TextX);
+            float localY = (float)Math.Clamp(y - hitLine.Y, 0, Math.Max(0, lineHeight - 0.1));
+            if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out bool trailing))
+            {
+                int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
+                int characterCount = Math.Max(1, region.CharacterCount);
+                return engine.PositionFromDisplayIndex(
+                    hitLine.LineIndex,
+                    hitLine.DisplayStartIndex + localIndex,
+                    trailing,
+                    characterCount);
+            }
+
+            // Clicks before or after the painted text still place the caret at the nearest line boundary.
+            int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
+                ? 0
+                : hitLine.Display.Length;
+            return engine.PositionFromDisplayIndex(
+                hitLine.LineIndex, hitLine.DisplayStartIndex + boundary, trailing: false);
+        }
+
+        private void PruneTextLayoutCache()
+        {
+            foreach (var pair in textLayoutCache.ToArray())
+            {
+                if (!activeTextLayouts.Contains(pair.Key))
+                {
+                    pair.Value.Dispose();
+                    textLayoutCache.Remove(pair.Key);
+                }
+            }
+            activeTextLayouts.Clear();
+        }
+
+        private void ClearTextLayoutCache()
+        {
+            foreach (CanvasTextLayout layout in textLayoutCache.Values)
+            {
+                layout.Dispose();
+            }
+            textLayoutCache.Clear();
+            activeTextLayouts.Clear();
         }
 
         // Overlays markers for spaces (dot), tabs (arrow) and other control chars (box) when "Show Whitespace"
