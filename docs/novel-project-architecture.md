@@ -35,6 +35,16 @@ Each export creates an immutable baseline snapshot under `edit_sessions/<session
 
 The external export is streamed in 1 MiB buffers and uses a temporary file followed by a move, so the app does not overwrite an existing export or the active project document.
 
+## Invisible external-edit markers
+
+Marked exports use Unicode tag characters (U+E0001 start tag, U+E0000..U+E007E payload tags, U+E007F cancel tag). The tag sequence is default-ignorable in normal text rendering, unlike visible HTML comments or private-use glyphs. It is still not guaranteed to survive every editor: sanitizers, format conversion, or text normalization may remove it. Marker integrity is therefore validated after the edited file is selected; markers are never treated as trusted input.
+
+Each tracked range receives an independent start/end pair carrying a format version, external-edit session ID, target ID (annotation-anchor or chapter), endpoint kind, and short checksum. The design does not depend on marker nesting, so overlapping, nested, crossing, and same-offset ranges are supported. Orphaned anchors are not exported as active ranges.
+
+Marker writing and scanning operate on TextReader/TextWriter buffers and UTF-16 document offsets, not on a whole-file string. The writer inserts all markers at a sorted list of offsets. The scanner reports each marker's offset in the marker-free text, malformed sequences, and then validation detects missing, duplicate, reversed, or unexpected pairs. A complete pair supplies the edited range directly; a damaged pair must be reviewed or reconciled using diff/context matching.
+
+The marker codec and planner are implemented as a core foundation with tests. The current export action is not yet wired to query SQLite anchors/chapters and emit a marked file; the UI, manifest persistence of the expected marker set, marker stripping, diff generation, and safe apply/recovery are still pending. Do not assume ordinary exports contain markers until that integration is implemented.
+
 ## Diff and anchor remapping
 
 Diff generation and coordinate mapping are separate responsibilities:
