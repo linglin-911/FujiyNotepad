@@ -1479,8 +1479,10 @@ namespace FujiyNotepad.Presentation
                         int selEndChar = srcLine == selEnd.Line ? selEnd.Column : columns.Source.Length;
                         int s = Math.Max(selStartChar, row.StartChar);
                         int e = Math.Min(selEndChar, row.EndChar);
-                        bool crossesRow = selStartChar < row.EndChar
-                                          && (srcLine < selEnd.Line || selEndChar > row.EndChar);
+                        bool crossesSoftWrap = selStartChar < row.EndChar && selEndChar > row.EndChar;
+                        bool crossesSourceLine = srcLine < selEnd.Line && r == rows.Count - 1
+                                                 && selStartChar <= row.EndChar;
+                        bool crossesRow = crossesSoftWrap || crossesSourceLine;
                         if (e > s || crossesRow)
                         {
                             selectionStartIndex = columns.DisplayIndexOfCharIndex(s) - displayStartIndex;
