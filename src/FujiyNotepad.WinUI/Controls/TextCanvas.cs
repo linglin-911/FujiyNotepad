@@ -363,6 +363,7 @@ namespace FujiyNotepad.WinUI.Controls
         public void UpdateTotalLines(int count)
         {
             Ready();
+            ClearTextLayoutCache();
             engine.UpdateTotalLines(count);
         }
 
