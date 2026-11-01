@@ -72,7 +72,7 @@ public sealed class DocumentDiffMapperTests
         };
 
         AnchorRemapResult result = DocumentDiffMapper.MapRange(30, 40, hunks);
-        Assert.Equal((29L, 39L), (result.StartOffset, result.EndOffset));
+        Assert.Equal((27L, 37L), (result.StartOffset, result.EndOffset));
         Assert.Equal(AnchorRemapStatus.Mapped, result.Status);
     }
 
