@@ -52,7 +52,8 @@ namespace FujiyNotepad.Core
         /// </summary>
         public int CharIndexOfDisplayIndex(int displayIndex, bool trailing, int displayCharacterCount = 1)
         {
-            if (displayIndex <= 0 && !trailing)
+            displayIndex = Math.Clamp(displayIndex, 0, Display.Length);
+            if (displayIndex == 0 && !trailing)
             {
                 return 0;
             }
