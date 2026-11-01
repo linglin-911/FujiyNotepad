@@ -75,6 +75,12 @@ namespace FujiyNotepad.Presentation
         /// </summary>
         public string LastSessionFilePath { get; set; } = "";
 
+        /// <summary>
+        /// The active novel project folder associated with <see cref="LastSessionFilePath"/>.
+        /// Empty means the last file should be restored as an ordinary text file.
+        /// </summary>
+        public string LastSessionProjectFolderPath { get; set; } = "";
+
         /// <summary>The first visible line (0-based scroll position) of the last file when it was closed.</summary>
         public int LastSessionFirstVisibleLine { get; set; }
 
