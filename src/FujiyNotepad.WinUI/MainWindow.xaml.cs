@@ -31,6 +31,8 @@ namespace FujiyNotepad.WinUI
         private string? currentFilePath;
         private NovelProject? activeNovelProject;
         private NovelAnnotationStore? activeAnnotationStore;
+        private DocumentTextOffsetMap? annotationOffsetMap;
+        private bool refreshingSmallAnnotationUi;
         private TextEncoding currentEncoding = TextEncoding.Utf8;
         private bool encodingAutoDetect = true;
 
@@ -131,6 +133,8 @@ namespace FujiyNotepad.WinUI
             View.ViewChanged += SyncScrollBars;
             View.CaretChanged += UpdateCursorStatus;
             View.FontChanged += OnFontChanged;
+            View.CreateSmallAnnotationRequested += CreateSmallAnnotationFromSelection;
+            View.AddSelectionToSmallAnnotationRequested += AddSelectionToExistingSmallAnnotation;
 
             indexRefreshTimer = DispatcherQueue.CreateTimer();
             indexRefreshTimer.Interval = TimeSpan.FromMilliseconds(150);
@@ -160,6 +164,7 @@ namespace FujiyNotepad.WinUI
                     _ = store.DisposeAsync();
                 activeAnnotationStore = null;
                 activeNovelProject = null;
+                annotationOffsetMap = null;
                 CleanupStdin();
             };
 
@@ -342,6 +347,7 @@ namespace FujiyNotepad.WinUI
                 await CloseActiveNovelProjectAsync();
                 activeNovelProject = project;
                 activeAnnotationStore = store;
+                annotationOffsetMap = provider is null ? null : new DocumentTextOffsetMap(provider);
                 Title = $"{Path.GetFileName(project.DocumentPath)} - Fujiy Notepad [{project.Metadata.Title}]";
                 UpdateNovelProjectMenu();
                 LblStatus.Text = $"Novel project: {project.Metadata.Title}";
@@ -504,6 +510,9 @@ namespace FujiyNotepad.WinUI
             NovelAnnotationStore? store = activeAnnotationStore;
             activeAnnotationStore = null;
             activeNovelProject = null;
+            annotationOffsetMap = null;
+            SmallAnnotationPane.Visibility = Visibility.Collapsed;
+            SmallAnnotationsItem.IsChecked = false;
             if (store is not null)
                 await store.DisposeAsync();
 
@@ -539,6 +548,13 @@ namespace FujiyNotepad.WinUI
             ExportMarkedCopyItem.IsEnabled = hasProject;
             ValidateEditedCopyItem.IsEnabled = hasProject;
             CloseProjectItem.IsEnabled = hasProject;
+            SmallAnnotationsItem.IsEnabled = hasProject;
+            View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
+            if (!hasProject)
+            {
+                SmallAnnotationPane.Visibility = Visibility.Collapsed;
+                SmallAnnotationsItem.IsChecked = false;
+            }
         }
 
         private async Task ShowNovelProjectMessageAsync(string title, string message)
