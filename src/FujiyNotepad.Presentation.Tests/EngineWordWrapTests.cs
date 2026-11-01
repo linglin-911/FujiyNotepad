@@ -121,6 +121,21 @@ namespace FujiyNotepad.Presentation.Tests
         }
 
         [Fact]
+        public async Task WordWrap_ReflowsWhenViewportWidthChanges()
+        {
+            TextLayoutEngine e = await NewEngineAsync("ABCDEFGHIJKLMNOPQRST");
+            e.WordWrap = true;
+
+            Assert.Equal(new[] { "ABCDEFGH", "IJKLMNOP", "QRST" },
+                e.GetVisibleLines(false, false).Select(line => line.Display));
+
+            // Widening the canvas changes the wrap budget from 8 to 12 columns without rebuilding the file index.
+            e.ViewportWidth = 140;
+            Assert.Equal(new[] { "ABCDEFGHIJKL", "MNOPQRST" },
+                e.GetVisibleLines(false, false).Select(line => line.Display));
+        }
+
+        [Fact]
         public async Task WordWrap_TogglingBackToOff_RestoresFullLine()
         {
             TextLayoutEngine e = await NewEngineAsync("ABCDEFGHIJKLMNOPQRST\n");

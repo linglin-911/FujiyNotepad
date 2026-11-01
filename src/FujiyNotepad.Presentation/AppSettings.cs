@@ -21,6 +21,9 @@ namespace FujiyNotepad.Presentation
         /// <summary>Whether whitespace/control markers are overlaid on the text. Off by default.</summary>
         public bool ShowWhitespace { get; set; }
 
+        /// <summary>Whether reading mode is active. It enables word wrap and hides both scrollbars.</summary>
+        public bool ReadingMode { get; set; }
+
         /// <summary>Whether long lines are wrapped to the viewport width (issue #31). Off by default.</summary>
         public bool WordWrap { get; set; }
 
