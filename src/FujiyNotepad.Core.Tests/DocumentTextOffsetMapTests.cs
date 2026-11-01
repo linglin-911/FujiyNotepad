@@ -15,9 +15,9 @@ public sealed class DocumentTextOffsetMapTests
 
         Assert.Equal(0, map.GetOffset(0, 0));
         Assert.Equal(2, map.GetOffset(0, 2));
-        Assert.Equal(4, map.GetLineStartOffset(1)); // 2 UTF-16 chars + CRLF
-        Assert.Equal(10, map.GetLineStartOffset(2)); // + 6 chars + LF
-        Assert.Equal(13, map.GetOffset(2, 3));
+        Assert.Equal(5, map.GetLineStartOffset(1)); // 3 UTF-16 chars + CRLF
+        Assert.Equal(12, map.GetLineStartOffset(2)); // + 6 chars + LF
+        Assert.Equal(15, map.GetOffset(2, 3));
     }
 
     [Fact]
@@ -30,9 +30,9 @@ public sealed class DocumentTextOffsetMapTests
         var map = new DocumentTextOffsetMap(lines, checkpointInterval: 1);
 
         Assert.Equal(3, map.GetOffset(0, 3));
-        Assert.Equal(5, map.GetLineStartOffset(1)); // A + surrogate pair + B + CRLF
+        Assert.Equal(6, map.GetLineStartOffset(1)); // A + surrogate pair + B + CRLF
         Assert.Equal((0, 2), map.GetPosition(2));
-        Assert.Equal((1, 0), map.GetPosition(5));
+        Assert.Equal((1, 0), map.GetPosition(6));
     }
 
     [Fact]
