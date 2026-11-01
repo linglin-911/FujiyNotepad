@@ -257,11 +257,10 @@ public static class ExternalEditMarkerCodec
             }
         }
 
-        if (pendingTagHigh)
-        {
-            if (inMarker) payload.Append('\0');
-            else textOffset++;
-        }
+        if (pendingTagHigh && !inMarker)
+            textOffset++;
+        // A dangling tag high-surrogate at EOF may be the first half of a deleted end token.
+        // Do not poison a complete payload: FinishTruncatedMarker will report the missing end.
         if (inMarker) FinishTruncatedMarker();
         return (markers, malformed);
     }
