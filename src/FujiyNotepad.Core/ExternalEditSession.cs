@@ -44,13 +44,17 @@ public sealed class ExternalEditSession
         Directory.CreateDirectory(sessionDirectory);
         string baseline = Path.Combine(sessionDirectory, "baseline" + Path.GetExtension(project.DocumentPath));
         string temporaryBaseline = baseline + ".tmp";
+        string temporaryExport = export + "." + sessionId + ".exporting";
+        bool exportCreated = false;
         try
         {
             await CopyFileAsync(project.DocumentPath, temporaryBaseline, cancellationToken).ConfigureAwait(false);
             File.Move(temporaryBaseline, baseline);
             string hash = await NovelProject.ComputeSha256Async(baseline, cancellationToken).ConfigureAwait(false);
             long length = new FileInfo(baseline).Length;
-            await CopyFileAsync(baseline, export, cancellationToken).ConfigureAwait(false);
+            await CopyFileAsync(baseline, temporaryExport, cancellationToken).ConfigureAwait(false);
+            File.Move(temporaryExport, export);
+            exportCreated = true;
 
             var metadata = new ExternalEditSessionMetadata(
                 Guid.NewGuid(), project.Metadata.Id, project.Metadata.DocumentRevision,
@@ -62,8 +66,11 @@ public sealed class ExternalEditSession
         catch
         {
             TryDelete(temporaryBaseline);
+            TryDelete(temporaryExport);
             TryDelete(baseline);
-            TryDelete(export);
+            if (exportCreated) TryDelete(export);
+            TryDelete(ManifestPathFor(sessionDirectory));
+            TryDelete(ManifestPathFor(sessionDirectory) + ".tmp");
             TryDeleteDirectoryIfEmpty(sessionDirectory);
             throw;
         }
@@ -99,6 +106,8 @@ public sealed class ExternalEditSession
         }
         File.Move(temporary, ManifestPath);
     }
+
+    private static string ManifestPathFor(string sessionDirectory) => Path.Combine(sessionDirectory, "session.json");
 
     private static async Task CopyFileAsync(string source, string destination, CancellationToken cancellationToken)
     {
