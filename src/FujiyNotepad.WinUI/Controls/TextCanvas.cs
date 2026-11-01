@@ -850,7 +850,7 @@ namespace FujiyNotepad.WinUI.Controls
             }
         }
 
-        private static void DrawTextRangeHighlight(
+        private void DrawTextRangeHighlight(
             CanvasDrawingSession ds,
             CanvasTextLayout layout,
             VisibleLine line,
