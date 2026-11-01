@@ -151,7 +151,7 @@ try {
 
     # 3) The menu bar rendered with its top-level menus.
     $menuText = (winapp ui inspect window -w $hwnd 2>$null | Out-String)
-    foreach ($m in 'File', 'Edit', 'View', 'Encoding', 'Help') {
+    foreach ($m in 'File', 'Novel Project', 'Edit', 'View', 'Encoding', 'Help') {
         Assert ($menuText -match "\b$m\b") "Menu '$m' is present"
     }
 
