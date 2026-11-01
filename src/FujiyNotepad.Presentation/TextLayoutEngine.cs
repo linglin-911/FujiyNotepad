@@ -541,11 +541,11 @@ namespace FujiyNotepad.Presentation
                     string terminator = provider is ILineEndingSource endings
                         ? endings.GetLineEnding(lineIndex) switch
                         {
-                            LineEnding.CrLf => "\\r\\n",
-                            LineEnding.Lf => "\\n",
-                            _ => "\\n",
+                            LineEnding.CrLf => "\r\n",
+                            LineEnding.Lf => "\n",
+                            _ => "\n",
                         }
-                        : "\\n";
+                        : "\n";
                     builder.Append(terminator);
                 }
             }
