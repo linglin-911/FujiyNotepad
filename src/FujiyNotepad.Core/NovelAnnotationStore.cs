@@ -103,6 +103,69 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return id;
     }
 
+    public async Task UpdateCategoryAsync(Guid categoryId, string name, string? color = null, int sortOrder = 0,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE AnnotationCategories
+            SET Name = $name, Color = $color, SortOrder = $sort
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", categoryId.ToString("D"));
+        command.Parameters.AddWithValue("$name", name.Trim());
+        command.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
+        command.Parameters.AddWithValue("$sort", sortOrder);
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            throw new KeyNotFoundException($"Annotation category {categoryId} was not found.");
+    }
+
+    /// <summary>Deletes a category; its annotations are retained and become uncategorized.</summary>
+    public async Task DeleteCategoryAsync(Guid categoryId, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM AnnotationCategories WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", categoryId.ToString("D"));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Moves every note from one category into another, then removes the source category atomically.</summary>
+    public async Task MergeCategoriesAsync(Guid sourceCategoryId, Guid targetCategoryId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        if (sourceCategoryId == targetCategoryId)
+            return;
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (var move = connection.CreateCommand())
+        {
+            move.Transaction = (SqliteTransaction)transaction;
+            move.CommandText = "UPDATE Annotations SET CategoryId = $target, UpdatedAt = $updated WHERE CategoryId = $source;";
+            move.Parameters.AddWithValue("$target", targetCategoryId.ToString("D"));
+            move.Parameters.AddWithValue("$source", sourceCategoryId.ToString("D"));
+            move.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+            await move.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = (SqliteTransaction)transaction;
+            delete.CommandText = "DELETE FROM AnnotationCategories WHERE Id = $source;";
+            delete.Parameters.AddWithValue("$source", sourceCategoryId.ToString("D"));
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<AnnotationCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
@@ -155,6 +218,58 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    /// <summary>
+    /// Returns note summaries with anchor counts in one query, including optional text search across note
+    /// content, titles and linked source quotations.
+    /// </summary>
+    public async Task<IReadOnlyList<NovelAnnotationSummary>> GetAnnotationSummariesAsync(
+        Guid? categoryId = null, string? searchText = null, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT n.Id, n.CategoryId, n.Title, n.Content, n.CreatedAt, n.UpdatedAt,
+                   COUNT(a.Id),
+                   COALESCE(SUM(CASE WHEN a.IsOrphaned = 1 THEN 1 ELSE 0 END), 0),
+                   MIN(CASE WHEN a.IsOrphaned = 0 THEN a.StartOffset END)
+            FROM Annotations n
+            LEFT JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
+            WHERE ($category IS NULL OR n.CategoryId = $category)
+              AND ($search IS NULL
+                   OR n.Title LIKE $search ESCAPE '\\'
+                   OR n.Content LIKE $search ESCAPE '\\'
+                   OR EXISTS (
+                       SELECT 1 FROM AnnotationAnchors q
+                       WHERE q.AnnotationId = n.Id AND q.Quote LIKE $search ESCAPE '\\'
+                   ))
+            GROUP BY n.Id
+            ORDER BY n.UpdatedAt DESC;
+            """;
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        string? pattern = string.IsNullOrWhiteSpace(searchText) ? null : "%" + EscapeLike(searchText.Trim()) + "%";
+        command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
+
+        var result = new List<NovelAnnotationSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var annotation = new NovelAnnotation(
+                Guid.Parse(reader.GetString(0)),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4)),
+                DateTimeOffset.Parse(reader.GetString(5)));
+            result.Add(new NovelAnnotationSummary(
+                annotation,
+                reader.GetInt32(6),
+                reader.GetInt32(7),
+                reader.IsDBNull(8) ? null : reader.GetInt64(8)));
+        }
+        return result;
+    }
+
     public async Task<bool> HasAnchorAsync(Guid annotationId, long startOffset, long endOffset,
         CancellationToken cancellationToken = default)
     {
@@ -171,6 +286,92 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.Parameters.AddWithValue("$start", startOffset);
         command.Parameters.AddWithValue("$end", endOffset);
         return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0;
+    }
+
+    public async Task<bool> UpdateAnnotationAsync(Guid annotationId, string content,
+        Guid? categoryId = null, string? title = null, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(content);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Annotations
+            SET CategoryId = $category, Title = $title, Content = $content, UpdatedAt = $updated
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+        command.Parameters.AddWithValue("$content", content);
+        command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
+    public async Task DeleteAnnotationAsync(Guid annotationId, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM Annotations WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Creates a note and its first source anchor in one transaction.</summary>
+    public async Task<Guid> CreateAnnotationWithAnchorAsync(
+        string content, long startOffset, long endOffset, string quote,
+        Guid? categoryId = null, string? title = null, Guid? chapterId = null,
+        long documentRevision = 1, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(quote);
+        if (startOffset < 0 || endOffset <= startOffset)
+            throw new ArgumentOutOfRangeException(nameof(startOffset), "An anchor must be a non-empty [start, end) range.");
+
+        Guid annotationId = Guid.NewGuid();
+        Guid anchorId = Guid.NewGuid();
+        string now = DateTimeOffset.UtcNow.ToString("O");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var note = connection.CreateCommand())
+        {
+            note.Transaction = (SqliteTransaction)transaction;
+            note.CommandText = """
+                INSERT INTO Annotations (Id, CategoryId, Title, Content, CreatedAt, UpdatedAt)
+                VALUES ($id, $category, $title, $content, $created, $updated);
+                """;
+            note.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+            note.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+            note.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+            note.Parameters.AddWithValue("$content", content);
+            note.Parameters.AddWithValue("$created", now);
+            note.Parameters.AddWithValue("$updated", now);
+            await note.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var anchor = connection.CreateCommand())
+        {
+            anchor.Transaction = (SqliteTransaction)transaction;
+            anchor.CommandText = """
+                INSERT INTO AnnotationAnchors
+                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision)
+                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision);
+                """;
+            anchor.Parameters.AddWithValue("$id", anchorId.ToString("D"));
+            anchor.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
+            anchor.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
+            anchor.Parameters.AddWithValue("$start", startOffset);
+            anchor.Parameters.AddWithValue("$end", endOffset);
+            anchor.Parameters.AddWithValue("$quote", quote);
+            anchor.Parameters.AddWithValue("$revision", documentRevision);
+            await anchor.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return annotationId;
     }
 
     public async Task<Guid> CreateAnnotationAsync(string content, Guid? categoryId = null, string? title = null,
@@ -258,20 +459,35 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
         Guid id = Guid.NewGuid();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO AnnotationAnchors
-                (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision)
-            VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision);
-            """;
-        command.Parameters.AddWithValue("$id", id.ToString("D"));
-        command.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
-        command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
-        command.Parameters.AddWithValue("$start", startOffset);
-        command.Parameters.AddWithValue("$end", endOffset);
-        command.Parameters.AddWithValue("$quote", quote);
-        command.Parameters.AddWithValue("$revision", documentRevision);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = (SqliteTransaction)transaction;
+            command.CommandText = """
+                INSERT INTO AnnotationAnchors
+                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision)
+                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision);
+                """;
+            command.Parameters.AddWithValue("$id", id.ToString("D"));
+            command.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
+            command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
+            command.Parameters.AddWithValue("$start", startOffset);
+            command.Parameters.AddWithValue("$end", endOffset);
+            command.Parameters.AddWithValue("$quote", quote);
+            command.Parameters.AddWithValue("$revision", documentRevision);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var touch = connection.CreateCommand())
+        {
+            touch.Transaction = (SqliteTransaction)transaction;
+            touch.CommandText = "UPDATE Annotations SET UpdatedAt = $updated WHERE Id = $id;";
+            touch.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+            touch.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+            await touch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return id;
     }
 
@@ -279,10 +495,35 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     {
         EnsureInitialized();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM AnnotationAnchors WHERE Id = $id;";
-        command.Parameters.AddWithValue("$id", anchorId.ToString("D"));
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        string? annotationId = null;
+        await using (var find = connection.CreateCommand())
+        {
+            find.Transaction = (SqliteTransaction)transaction;
+            find.CommandText = "SELECT AnnotationId FROM AnnotationAnchors WHERE Id = $id;";
+            find.Parameters.AddWithValue("$id", anchorId.ToString("D"));
+            annotationId = (string?)await find.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = (SqliteTransaction)transaction;
+            delete.CommandText = "DELETE FROM AnnotationAnchors WHERE Id = $id;";
+            delete.Parameters.AddWithValue("$id", anchorId.ToString("D"));
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (annotationId is not null)
+        {
+            await using var touch = connection.CreateCommand();
+            touch.Transaction = (SqliteTransaction)transaction;
+            touch.CommandText = "UPDATE Annotations SET UpdatedAt = $updated WHERE Id = $id;";
+            touch.Parameters.AddWithValue("$id", annotationId);
+            touch.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+            await touch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsIntersectingRangeAsync(long startOffset, long endOffset,
