@@ -430,6 +430,9 @@ namespace FujiyNotepad.Presentation
         /// </summary>
         public TextPosition SelectionStart => NormalizedSelection().start;
 
+        /// <summary>The end of the current selection in document order (equals the caret when empty).</summary>
+        public TextPosition SelectionEnd => NormalizedSelection().end;
+
         // A multi-line selection spanning more lines than this isn't character-counted (the count would mean
         // decoding that many lines on the UI thread on every selection change); only its line count is shown.
         private const int MaxSelectionLinesForCharCount = 5000;
@@ -512,6 +515,42 @@ namespace FujiyNotepad.Presentation
             }
 
             return source.Substring(from, to - from);
+        }
+
+        /// <summary>
+        /// Builds the exact selected source text, preserving each line's LF/CRLF terminator. Unlike the clipboard
+        /// copy command, this is used for annotation quotes, which must match the document's decoded text.
+        /// </summary>
+        public string? GetSelectedTextForAnnotation()
+        {
+            if (provider is null || anchor == caret)
+                return null;
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            var builder = new StringBuilder();
+
+            for (int lineIndex = start.Line; lineIndex <= end.Line; lineIndex++)
+            {
+                string line = GetColumns(lineIndex).Source;
+                int from = lineIndex == start.Line ? Math.Clamp(start.Column, 0, line.Length) : 0;
+                int to = lineIndex == end.Line ? Math.Clamp(end.Column, from, line.Length) : line.Length;
+                builder.Append(line.AsSpan(from, to - from));
+
+                if (lineIndex < end.Line)
+                {
+                    string terminator = provider is ILineEndingSource endings
+                        ? endings.GetLineEnding(lineIndex) switch
+                        {
+                            LineEnding.CrLf => "\\r\\n",
+                            LineEnding.Lf => "\\n",
+                            _ => "\\n",
+                        }
+                        : "\\n";
+                    builder.Append(terminator);
+                }
+            }
+
+            return builder.Length == 0 ? null : builder.ToString();
         }
 
         /// <summary>
