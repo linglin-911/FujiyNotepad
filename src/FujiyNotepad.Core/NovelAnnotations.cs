@@ -20,6 +20,13 @@ public sealed record NovelAnnotation(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
+/// <summary>A compact list projection that avoids one database query per note in the annotation pane.</summary>
+public sealed record NovelAnnotationSummary(
+    NovelAnnotation Annotation,
+    int AnchorCount,
+    int OrphanedAnchorCount,
+    long? FirstActiveAnchorOffset);
+
 /// <summary>
 /// One source-text occurrence associated with an annotation. Ranges are UTF-16 offsets in the
 /// project's current document and use [StartOffset, EndOffset). Overlap is intentionally allowed.
