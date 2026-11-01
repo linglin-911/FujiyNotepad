@@ -28,6 +28,30 @@ public sealed class NovelProjectTests
     }
 
     [Fact]
+    public async Task ImportAsync_CleansUpProjectFolderWhenCopyIsCancelled()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "FujiyProjectTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string source = Path.Combine(root, "source.txt");
+        string projectPath = Path.Combine(root, "project");
+        await File.WriteAllTextAsync(source, new string('x', 1024 * 1024));
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                NovelProject.ImportAsync(source, projectPath, cancellation.Token));
+            Assert.False(Directory.Exists(projectPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ImportAsync_CopiesSourceAndKeepsProjectIndependent()
     {
         string root = Path.Combine(Path.GetTempPath(), "FujiyProjectTests", Guid.NewGuid().ToString("N"));
