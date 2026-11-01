@@ -51,7 +51,7 @@ public sealed class PieceTableDocumentTests
             await using var document = await PieceTableDocument.CreateAsync(original, root);
             await document.ReplaceBytesAsync(2, 0, Encoding.UTF8.GetBytes("XX"));
             await document.ReplaceBytesAsync(1, 4, ReadOnlyMemory<byte>.Empty);
-            Assert.Equal("aXef", Encoding.UTF8.GetString(ReadAll(document)));
+            Assert.Equal("adef", Encoding.UTF8.GetString(ReadAll(document)));
         }
         finally
         {
