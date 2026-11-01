@@ -347,8 +347,11 @@ namespace FujiyNotepad.WinUI
                     project, store, result.Path);
                 int markerCount = session.Metadata.ExpectedMarkers?.Count ?? 0;
                 int rangeCount = markerCount / 2;
+                string markerNotice = rangeCount == 0
+                    ? "This project currently has no active annotation anchors or chapter ranges, so this file contains no invisible markers. The annotation authoring UI is a later development step."
+                    : "The clean project document and its annotations were not modified. Edit the exported copy in your preferred text editor. When finished, use “Validate Edited Copy...” to check the markers before any future import/apply step.";
                 await ShowNovelProjectMessageAsync("Marked working copy exported",
-                    $"Export completed.\n\nTracked ranges: {rangeCount}\nInvisible endpoint markers: {markerCount}\n\nThe clean project document and its annotations were not modified. Edit the exported copy in your preferred text editor. When finished, use “Validate Edited Copy...” to check the markers before any future import/apply step.");
+                    $"Export completed.\n\nTracked ranges: {rangeCount}\nInvisible endpoint markers: {markerCount}\n\n{markerNotice}");
             }
             catch (Exception ex)
             {
@@ -422,7 +425,12 @@ namespace FujiyNotepad.WinUI
                     foreach (string issue in issues)
                         summary.AppendLine(issue);
                 }
-                if (validation.HasIssues)
+                if (validation.Targets.Count == 0)
+                {
+                    summary.AppendLine();
+                    summary.Append("No annotation or chapter ranges were recorded in this session, so there were no marker pairs to verify.");
+                }
+                else if (validation.HasIssues)
                 {
                     summary.AppendLine();
                     summary.Append("Do not apply this edited file yet. Missing or damaged markers require manual review.");
@@ -433,9 +441,10 @@ namespace FujiyNotepad.WinUI
                     summary.Append("All expected marker pairs are intact. This is only a marker check; the edited text has not been compared or imported.");
                 }
 
-                await ShowNovelProjectMessageAsync(
-                    validation.HasIssues ? "Marker check needs review" : "Marker check passed",
-                    summary.ToString());
+                string resultTitle = validation.Targets.Count == 0
+                    ? "No markers to validate"
+                    : validation.HasIssues ? "Marker check needs review" : "Marker check passed";
+                await ShowNovelProjectMessageAsync(resultTitle, summary.ToString());
             }
             catch (Exception ex)
             {
