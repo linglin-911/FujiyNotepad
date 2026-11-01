@@ -70,6 +70,8 @@
                 <MenuFlyoutItem x:Name="CreateProjectItem" Text="Import TXT as New Project..." Click="CreateNovelProject_Click" IsEnabled="True" />
                 <MenuFlyoutItem x:Name="OpenProjectItem" Text="Open Project Folder..." Click="OpenNovelProject_Click" />
                 <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Name="SmallAnnotationsItem" Text="小批注面板" Click="SmallAnnotations_Click" IsEnabled="False" />
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Name="ExportMarkedCopyItem" Text="Export Marked Working Copy..." Click="ExportMarkedCopy_Click" IsEnabled="False" />
                 <MenuFlyoutItem x:Name="ValidateEditedCopyItem" Text="Validate Edited Copy..." Click="ValidateEditedCopy_Click" IsEnabled="False" />
                 <MenuFlyoutSeparator />
@@ -308,6 +310,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
@@ -333,6 +336,56 @@
                                   Scroll="HScroll_Scroll" />
 
             <Border Grid.Row="1" Grid.Column="1" Background="{ThemeResource LayerFillColorDefaultBrush}" />
+
+            <Border x:Name="SmallAnnotationPane" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2"
+                    Width="360" Visibility="Collapsed"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+                <Grid Padding="12" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="小批注" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock x:Name="SmallAnnotationCount" Text="0 条批注"
+                                       Style="{ThemeResource CaptionTextBlockStyle}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="×" Click="CloseSmallAnnotations_Click"
+                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭小批注面板" />
+                    </Grid>
+                    <TextBox x:Name="SmallAnnotationSearchBox" Grid.Row="1"
+                             PlaceholderText="搜索标题、批注内容或关联原文..."
+                             TextChanged="SmallAnnotationSearchBox_TextChanged" />
+                    <Grid Grid.Row="2" ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="SmallAnnotationCategoryFilter" HorizontalAlignment="Stretch"
+                                  SelectionChanged="SmallAnnotationCategoryFilter_SelectionChanged" />
+                        <Button Grid.Column="1" Content="分类管理..." Click="ManageSmallAnnotationCategories_Click"
+                                Padding="8,4" />
+                    </Grid>
+                    <ListView x:Name="SmallAnnotationList" Grid.Row="3"
+                              SelectionChanged="SmallAnnotationList_SelectionChanged"
+                              SelectionMode="Single" />
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+                        <Button Content="编辑" Click="EditSelectedSmallAnnotation_Click"
+                                x:Name="EditSmallAnnotationButton" IsEnabled="False" />
+                        <Button Content="删除" Click="DeleteSelectedSmallAnnotation_Click"
+                                x:Name="DeleteSmallAnnotationButton" IsEnabled="False" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 
         <Grid Grid.Row="4" Padding="8,3" Background="{ThemeResource LayerFillColorDefaultBrush}">
