@@ -31,6 +31,18 @@ One annotation can have many anchors. Multiple annotations may have identical, n
 
 SQLite is the durable store. Anchor indexes cover annotation ID, start offset, end offset and chapter ID. An edit queries anchors whose ranges intersect or follow the edit point and updates them in one database transaction.
 
+## WinUI project and marker commands
+
+The main window exposes a `Novel Project` menu:
+
+- `Create Project from Current File...` asks for a parent folder and creates a sibling project directory named `<source-name>.fujiyproject`. It copies the selected/open document into that project and then opens the project copy; the source file is not changed.
+- `Open Project Folder...` opens an existing folder containing `project.json` and loads its project document and SQLite annotation store.
+- `Export Marked Working Copy...` opens a save picker and calls `ExternalEditSession.CreateMarkedAsync`. The marked export is separate from the clean project document.
+- `Validate Edited Copy...` asks for the session's `session.json` and the third-party-edited text file, checks that the session belongs to the active project and that the project baseline has not changed, then displays intact and damaged marker counts.
+- `Close Novel Project` closes the annotation workspace but leaves the current document open in the ordinary read-only viewer.
+
+This first UI slice deliberately does not apply an edited file. It only validates marker integrity. The annotation authoring panes, chapter detection/management UI, diff preview, marker stripping, and confirmed apply/recovery workflow remain future work. At present, if a project has no saved anchors or chapter ranges, a marked export contains no marker pairs and is effectively a plain text copy.
+
 ## External editing workflow
 
 The reader is read-only. Users export a working copy, edit it in a third-party editor, then select the edited file in FujiyNotepad for comparison. The project document remains untouched until the user reviews and applies the diff.
