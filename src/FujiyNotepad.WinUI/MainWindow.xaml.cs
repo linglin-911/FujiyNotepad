@@ -774,6 +774,7 @@ namespace FujiyNotepad.WinUI
             searcher = new TextSearcher(source);
             LineIndexer = new LineIndexer(searcher, currentEncoding);
             provider = new LineProvider(source, LineIndexer, currentEncoding);
+            annotationOffsetMap = activeNovelProject is null ? null : new DocumentTextOffsetMap(provider);
             ResetFindAndCountState();
             ResetFilter();
 
