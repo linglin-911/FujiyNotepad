@@ -175,7 +175,7 @@ public sealed class NovelAnnotationStoreTests
             Assert.Equal("人物性格", summary.Annotation.Title);
             Assert.Equal(1, summary.AnchorCount);
             Assert.Equal(0, summary.OrphanedAnchorCount);
-            Assert.Equal(120, summary.FirstActiveAnchorOffset);
+            Assert.Equal(120L, summary.FirstActiveAnchorOffset);
             Assert.Single(await store.GetAnchorsForAnnotationAsync(id));
         }
         finally
