@@ -54,7 +54,13 @@ public sealed class ExternalEditMarkedExportTests
             ExternalEditMarkerValidationResult initial =
                 await session.ValidateEditedCopyMarkersAsync(export);
             Assert.False(initial.HasIssues);
-            Assert.Equal(6, initial.Targets.Count);
+            // Targets are tracked ranges, not individual start/end marker tokens:
+            // one annotation anchor + two chapters = three targets and six markers.
+            Assert.Equal(3, initial.Targets.Count);
+            Assert.Single(initial.Targets, item =>
+                item.TargetKind == ExternalEditMarkerTargetKind.AnnotationAnchor);
+            Assert.Equal(2, initial.Targets.Count(item =>
+                item.TargetKind == ExternalEditMarkerTargetKind.Chapter));
 
             ExternalEditSession reopened = await ExternalEditSession.OpenAsync(session.SessionDirectory, export);
             Assert.Equal(session.Metadata.Id, reopened.Metadata.Id);
@@ -104,7 +110,7 @@ public sealed class ExternalEditMarkedExportTests
             await store.InitializeAsync();
             Guid annotationId = await store.CreateAnnotationAsync("Cafe note");
             long start = novel.IndexOf("Cafe", StringComparison.Ordinal);
-            await store.AddAnchorAsync(annotationId, start, start + 5, "Cafe\u00E9");
+            Guid anchorId = await store.AddAnchorAsync(annotationId, start, start + 5, "Cafe\u00E9");
 
             ExternalEditSession session = await ExternalEditSession.CreateMarkedAsync(project, store, export);
 
@@ -114,10 +120,15 @@ public sealed class ExternalEditMarkedExportTests
 
             string exported = await File.ReadAllTextAsync(export, Encoding.UTF8);
             Assert.Contains("Cafe\u00E9", exported);
+            Assert.Equal(2, session.Metadata.ExpectedMarkers!.Count);
             ExternalEditMarkerValidationResult validation =
                 await session.ValidateEditedCopyMarkersAsync(export);
             Assert.False(validation.HasIssues);
-            Assert.Equal(2, validation.Targets.Count);
+            // The two endpoint tokens validate one annotation range.
+            ExternalEditMarkerTargetResult target = Assert.Single(validation.Targets);
+            Assert.Equal(anchorId, target.TargetId);
+            Assert.Equal(ExternalEditMarkerTargetKind.AnnotationAnchor, target.TargetKind);
+            Assert.Equal(ExternalEditMarkerTargetStatus.Intact, target.Status);
         }
         finally
         {
