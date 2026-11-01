@@ -88,7 +88,7 @@ public static class ExternalEditMarkerCodec
 
         foreach (NovelChapter chapter in chapters)
         {
-            if (chapter.StartOffset < 0 || chapter.EndOffset <= chapter.StartOffset)
+            if (chapter.StartOffset < 0 || chapter.EndOffset < chapter.StartOffset)
                 throw new ArgumentException("A chapter has an invalid range.", nameof(chapters));
             insertions.Add(new(chapter.StartOffset, new(sessionId, chapter.Id,
                 ExternalEditMarkerTargetKind.Chapter, ExternalEditMarkerEndpoint.Start)));
