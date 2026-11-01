@@ -343,6 +343,25 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    /// <summary>Returns every anchor, including orphaned anchors, for export/session validation.</summary>
+    public async Task<IReadOnlyList<AnnotationAnchor>> GetAllAnchorsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            FROM AnnotationAnchors
+            ORDER BY StartOffset, EndOffset, Id;
+            """;
+        var result = new List<AnnotationAnchor>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            result.Add(ReadAnchor(reader));
+        return result;
+    }
+
     public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsForAnnotationAsync(Guid annotationId,
         CancellationToken cancellationToken = default)
     {
