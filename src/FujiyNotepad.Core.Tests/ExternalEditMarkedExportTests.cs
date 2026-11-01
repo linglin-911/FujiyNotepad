@@ -56,6 +56,11 @@ public sealed class ExternalEditMarkedExportTests
             Assert.False(initial.HasIssues);
             Assert.Equal(6, initial.Targets.Count);
 
+            ExternalEditSession reopened = await ExternalEditSession.OpenAsync(session.SessionDirectory, export);
+            Assert.Equal(session.Metadata.Id, reopened.Metadata.Id);
+            Assert.Equal(session.BaselinePath, reopened.BaselinePath);
+            Assert.False((await reopened.ValidateEditedCopyMarkersAsync(export)).HasIssues);
+
             // Simulate a third-party edit inside the anchored quote while preserving the markers.
             string editedText = markedText.Replace(quote, "张三缓缓来到青云宗。", StringComparison.Ordinal);
             await File.WriteAllTextAsync(export, editedText, new UTF8Encoding(false));
@@ -70,6 +75,8 @@ public sealed class ExternalEditMarkedExportTests
 
             using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(session.ManifestPath));
             Assert.Equal(6, manifest.RootElement.GetProperty("ExpectedMarkers").GetArrayLength());
+            Assert.Equal(Path.GetFileName(session.BaselinePath),
+                manifest.RootElement.GetProperty("BaselineFileName").GetString());
         }
         finally
         {
