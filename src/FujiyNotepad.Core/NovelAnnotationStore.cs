@@ -72,6 +72,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 CHECK (StartOffset >= 0 AND EndOffset >= StartOffset)
             );
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_AnnotationId ON AnnotationAnchors(AnnotationId);
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_AnnotationAnchors_NoDuplicateWithinAnnotation
+                ON AnnotationAnchors(AnnotationId, StartOffset, EndOffset);
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_StartOffset ON AnnotationAnchors(StartOffset);
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_EndOffset ON AnnotationAnchors(EndOffset);
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_ChapterId ON AnnotationAnchors(ChapterId);
@@ -99,6 +101,76 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return id;
+    }
+
+    public async Task<IReadOnlyList<AnnotationCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id, Name, Color, SortOrder, CreatedAt FROM AnnotationCategories ORDER BY SortOrder, Name;";
+        var result = new List<AnnotationCategory>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            result.Add(new AnnotationCategory(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetInt32(3),
+                DateTimeOffset.Parse(reader.GetString(4))));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<NovelAnnotation>> GetAnnotationsAsync(Guid? categoryId = null,
+        string? searchText = null, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, CategoryId, Title, Content, CreatedAt, UpdatedAt
+            FROM Annotations
+            WHERE ($category IS NULL OR CategoryId = $category)
+              AND ($search IS NULL OR Title LIKE $search ESCAPE '\\' OR Content LIKE $search ESCAPE '\\')
+            ORDER BY UpdatedAt DESC;
+            """;
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        string? pattern = string.IsNullOrWhiteSpace(searchText) ? null : "%" + EscapeLike(searchText.Trim()) + "%";
+        command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
+
+        var result = new List<NovelAnnotation>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            result.Add(new NovelAnnotation(
+                Guid.Parse(reader.GetString(0)),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4)),
+                DateTimeOffset.Parse(reader.GetString(5))));
+        }
+        return result;
+    }
+
+    public async Task<bool> HasAnchorAsync(Guid annotationId, long startOffset, long endOffset,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS(
+                SELECT 1 FROM AnnotationAnchors
+                WHERE AnnotationId = $annotation AND StartOffset = $start AND EndOffset = $end
+            );
+            """;
+        command.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
+        command.Parameters.AddWithValue("$start", startOffset);
+        command.Parameters.AddWithValue("$end", endOffset);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0;
     }
 
     public async Task<Guid> CreateAnnotationAsync(string content, Guid? categoryId = null, string? title = null,
@@ -256,6 +328,11 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+             .Replace("%", "\\%", StringComparison.Ordinal)
+             .Replace("_", "\\_", StringComparison.Ordinal);
 
     private static AnnotationAnchor ReadAnchor(SqliteDataReader reader) => new(
         Guid.Parse(reader.GetString(0)),
