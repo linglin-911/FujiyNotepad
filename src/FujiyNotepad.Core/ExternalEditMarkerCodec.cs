@@ -33,7 +33,8 @@ public enum ExternalEditMarkerTargetStatus
     MissingBoth,
     DuplicateStart,
     DuplicateEnd,
-    DuplicateBoth
+    DuplicateBoth,
+    Reversed
 }
 
 public sealed record ExternalEditMarkerTargetResult(
@@ -43,9 +44,11 @@ public sealed record ExternalEditMarkerTargetResult(
     long? StartOffset,
     long? EndOffset);
 
+public sealed record ExternalEditMarkerOccurrence(ExternalEditMarker Marker, long Offset);
+
 public sealed record ExternalEditMarkerValidationResult(
     IReadOnlyList<ExternalEditMarkerTargetResult> Targets,
-    IReadOnlyList<ExternalEditMarker> UnexpectedMarkers,
+    IReadOnlyList<ExternalEditMarkerOccurrence> UnexpectedMarkers,
     int MalformedMarkerCount)
 {
     public bool HasIssues => MalformedMarkerCount > 0 || UnexpectedMarkers.Count > 0
@@ -60,8 +63,6 @@ public sealed record ExternalEditMarkerValidationResult(
 public static class ExternalEditMarkerCodec
 {
     private const int TagBase = 0xE0000;
-    private const char TagSequenceStart = '\uDB40'; // U+E0001 high surrogate
-    private const char TagSequenceEnd = '\uDB40';   // U+E007F low-surrogate pair differs below
     private const string PayloadPrefix = "FJ1";
 
     public static IReadOnlyList<ExternalEditMarkerInsertion> CreateInsertions(
@@ -170,57 +171,74 @@ public static class ExternalEditMarkerCodec
     }
 
     /// <summary>Scans markers incrementally; ordinary document text is discarded by the scanner.</summary>
-    public static async Task<(IReadOnlyList<ExternalEditMarker> Markers, int MalformedCount)> ReadMarkersAsync(
+    public static async Task<(IReadOnlyList<ExternalEditMarkerOccurrence> Markers, int MalformedCount)> ReadMarkersAsync(
         TextReader source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         char[] buffer = new char[16 * 1024];
-        var markers = new List<ExternalEditMarker>();
+        var markers = new List<ExternalEditMarkerOccurrence>();
         var payload = new StringBuilder(128);
         bool inMarker = false;
+        bool pendingTagHigh = false;
+        long textOffset = 0;
+        long markerOffset = 0;
         int malformed = 0;
         int read;
+
         while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             for (int i = 0; i < read; i++)
             {
                 char ch = buffer[i];
-                if (!inMarker)
+                if (pendingTagHigh)
                 {
-                    if (ch == '\uDB40' && i + 1 < read && buffer[i + 1] == '\uDC01')
+                    pendingTagHigh = false;
+                    if (ch == '\uDC01')
                     {
+                        if (inMarker) malformed++;
                         inMarker = true;
+                        markerOffset = textOffset;
                         payload.Clear();
-                        i++;
+                        continue;
                     }
-                    continue;
+                    if (ch == '\uDC7F' && inMarker)
+                    {
+                        if (TryDecodePayload(payload.ToString(), out ExternalEditMarker? marker))
+                            markers.Add(new ExternalEditMarkerOccurrence(marker!, markerOffset));
+                        else
+                            malformed++;
+                        inMarker = false;
+                        payload.Clear();
+                        continue;
+                    }
+                    if (ch >= '\uDC20' && ch <= '\uDC7E' && inMarker)
+                    {
+                        payload.Append((char)(ch - '\uDC00'));
+                        continue;
+                    }
+
+                    if (!inMarker) textOffset++;
+                    else payload.Append('\0');
                 }
 
-                if (ch == '\uDB40' && i + 1 < read && buffer[i + 1] == '\uDC7F')
+                if (ch == '\uDB40')
                 {
-                    if (TryDecodePayload(payload.ToString(), out ExternalEditMarker? marker))
-                        markers.Add(marker!);
-                    else
-                        malformed++;
-                    inMarker = false;
-                    payload.Clear();
-                    i++;
+                    pendingTagHigh = true;
                     continue;
                 }
 
-                if (ch == '\uDB40' && i + 1 < read && buffer[i + 1] >= '\uDC20' && buffer[i + 1] <= '\uDC7E')
-                {
-                    payload.Append((char)(buffer[++i] - '\uDC00'));
-                    continue;
-                }
-
-                // Any non-tag character inside a marker makes that marker malformed.
-                payload.Append('\0');
+                if (inMarker) payload.Append('\0');
+                else textOffset++;
             }
         }
 
+        if (pendingTagHigh)
+        {
+            if (!inMarker) textOffset++;
+            else payload.Append('\0');
+        }
         if (inMarker) malformed++;
         return (markers, malformed);
     }
@@ -228,7 +246,7 @@ public static class ExternalEditMarkerCodec
     public static ExternalEditMarkerValidationResult Validate(
         Guid expectedSessionId,
         IEnumerable<ExternalEditMarker> expectedMarkers,
-        IReadOnlyList<ExternalEditMarker> observedMarkers,
+        IReadOnlyList<ExternalEditMarkerOccurrence> observedMarkers,
         int malformedMarkerCount = 0)
     {
         if (expectedSessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", nameof(expectedSessionId));
@@ -240,16 +258,16 @@ public static class ExternalEditMarkerCodec
             .GroupBy(marker => (marker.TargetId, marker.TargetKind))
             .ToDictionary(group => group.Key, group => group.ToArray());
         var observed = observedMarkers
-            .Where(marker => marker.SessionId == expectedSessionId)
-            .GroupBy(marker => (marker.TargetId, marker.TargetKind))
+            .Where(item => item.Marker.SessionId == expectedSessionId)
+            .GroupBy(item => (item.Marker.TargetId, item.Marker.TargetKind))
             .ToDictionary(group => group.Key, group => group.ToArray());
 
         var results = new List<ExternalEditMarkerTargetResult>();
         foreach (var pair in expected)
         {
             ExternalEditMarker[] found = observed.GetValueOrDefault(pair.Key) ?? Array.Empty<ExternalEditMarker>();
-            int starts = found.Count(marker => marker.Endpoint == ExternalEditMarkerEndpoint.Start);
-            int ends = found.Count(marker => marker.Endpoint == ExternalEditMarkerEndpoint.End);
+            int starts = found.Count(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.Start);
+            int ends = found.Count(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.End);
             ExternalEditMarkerTargetStatus status = (starts > 1, ends > 1, starts == 0, ends == 0) switch
             {
                 (true, true, _, _) => ExternalEditMarkerTargetStatus.DuplicateBoth,
@@ -260,15 +278,17 @@ public static class ExternalEditMarkerCodec
                 (_, _, false, true) => ExternalEditMarkerTargetStatus.MissingEnd,
                 _ => ExternalEditMarkerTargetStatus.Intact
             };
-            results.Add(new(pair.Key.TargetId, pair.Key.TargetKind, status,
-                found.FirstOrDefault(marker => marker.Endpoint == ExternalEditMarkerEndpoint.Start) is null ? null : null,
-                found.FirstOrDefault(marker => marker.Endpoint == ExternalEditMarkerEndpoint.End) is null ? null : null));
+            ExternalEditMarkerOccurrence? startMarker = found.FirstOrDefault(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.Start);
+            ExternalEditMarkerOccurrence? endMarker = found.FirstOrDefault(item => item.Marker.Endpoint == ExternalEditMarkerEndpoint.End);
+            if (status == ExternalEditMarkerTargetStatus.Intact && startMarker!.Offset > endMarker!.Offset)
+                status = ExternalEditMarkerTargetStatus.Reversed;
+            results.Add(new(pair.Key.TargetId, pair.Key.TargetKind, status, startMarker?.Offset, endMarker?.Offset));
         }
 
         var expectedKeys = expected.Keys.ToHashSet();
         var unexpected = observedMarkers
-            .Where(marker => marker.SessionId != expectedSessionId
-                || !expectedKeys.Contains((marker.TargetId, marker.TargetKind)))
+            .Where(item => item.Marker.SessionId != expectedSessionId
+                || !expectedKeys.Contains((item.Marker.TargetId, item.Marker.TargetKind)))
             .ToArray();
         return new ExternalEditMarkerValidationResult(results, unexpected, malformedMarkerCount);
     }
