@@ -94,7 +94,6 @@ namespace FujiyNotepad.WinUI.Controls
 
         private MenuFlyoutItem? createSmallAnnotationItem;
         private MenuFlyoutItem? addToSmallAnnotationItem;
-        private bool annotationCommandsEnabled;
 
         public TextCanvas()
         {
@@ -309,7 +308,6 @@ namespace FujiyNotepad.WinUI.Controls
         /// <summary>Shows or hides the novel-project annotation commands in the text context menu.</summary>
         public void SetAnnotationCommandsEnabled(bool enabled)
         {
-            annotationCommandsEnabled = enabled;
             if (createSmallAnnotationItem is not null)
                 createSmallAnnotationItem.Visibility = enabled
                     ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
