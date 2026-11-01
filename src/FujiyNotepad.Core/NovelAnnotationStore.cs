@@ -237,11 +237,11 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             LEFT JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
             WHERE ($category IS NULL OR n.CategoryId = $category)
               AND ($search IS NULL
-                   OR n.Title LIKE $search ESCAPE '\\'
-                   OR n.Content LIKE $search ESCAPE '\\'
+                   OR n.Title LIKE $search ESCAPE '\'
+                   OR n.Content LIKE $search ESCAPE '\'
                    OR EXISTS (
                        SELECT 1 FROM AnnotationAnchors q
-                       WHERE q.AnnotationId = n.Id AND q.Quote LIKE $search ESCAPE '\\'
+                       WHERE q.AnnotationId = n.Id AND q.Quote LIKE $search ESCAPE '\'
                    ))
             GROUP BY n.Id
             ORDER BY n.UpdatedAt DESC;
