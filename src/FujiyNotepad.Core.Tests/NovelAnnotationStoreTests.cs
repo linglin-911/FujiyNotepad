@@ -35,6 +35,60 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task Store_AllowsSameRangeForDifferentAnnotationsButRejectsDuplicateForSameAnnotation()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid first = await store.CreateAnnotationAsync("first");
+            Guid second = await store.CreateAnnotationAsync("second");
+            await store.AddAnchorAsync(first, 10, 20, "same");
+            await store.AddAnchorAsync(second, 10, 20, "same");
+
+            Assert.True(await store.HasAnchorAsync(first, 10, 20));
+            await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+                () => store.AddAnchorAsync(first, 10, 20, "duplicate"));
+        }
+        finally
+        {
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyDocumentEdit_UpdatesChapterRangesWithAnchorsAtomically()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid chapterId = Guid.NewGuid();
+            Guid annotationId = await store.CreateAnnotationAsync("note");
+            await store.UpsertChapterAsync(new NovelChapter(chapterId, "第一章", 100, 500, 1));
+            await store.AddAnchorAsync(annotationId, 150, 180, "quote", chapterId);
+
+            await store.ApplyDocumentEditAsync(new DocumentEdit(20, 5, 8), newDocumentRevision: 2);
+
+            NovelChapter chapter = Assert.Single(await store.GetChaptersAsync());
+            AnnotationAnchor anchor = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+            Assert.Equal((103L, 503L), (chapter.StartOffset, chapter.EndOffset));
+            Assert.Equal((153L, 183L), (anchor.StartOffset, anchor.EndOffset));
+            Assert.Equal(2, chapter.DocumentRevision);
+            Assert.Equal(2, anchor.DocumentRevision);
+            Assert.Equal(chapterId, anchor.ChapterId);
+        }
+        finally
+        {
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task ApplyDocumentEdit_UpdatesOnlyAnchorsAfterEditAndPreservesOverlaps()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
