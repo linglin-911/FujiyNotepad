@@ -59,14 +59,6 @@ namespace FujiyNotepad.WinUI
             UpdateSmallAnnotationActionButtons();
         }
 
-        // A single click on a note navigates to its first valid source occurrence. The full note and
-        // all occurrences remain available from the separate Details action.
-        private async void SmallAnnotationList_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            if (e.ClickedItem is ListViewItem { Tag: NovelAnnotationSummary summary })
-                await NavigateToFirstSmallAnnotationAnchorAsync(summary);
-        }
-
         private async void ShowSelectedSmallAnnotationDetails_Click(object sender, RoutedEventArgs e)
         {
             if (GetSelectedSmallAnnotationSummary() is { } summary)
@@ -273,6 +265,7 @@ namespace FujiyNotepad.WinUI
                             TextWrapping = TextWrapping.Wrap,
                         },
                     };
+                    quoteButton.Tapped += (_, args) => args.Handled = true;
                     quoteButton.Click += async (_, args) =>
                     {
                         args.Handled = true;
@@ -311,6 +304,15 @@ namespace FujiyNotepad.WinUI
                 Content = content,
                 Padding = new Thickness(8, 6, 8, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            };
+            item.Tapped += async (_, args) =>
+            {
+                if (args.Handled)
+                    return;
+
+                SmallAnnotationList.SelectedItem = item;
+                UpdateSmallAnnotationActionButtons();
+                await NavigateToFirstSmallAnnotationAnchorAsync(summary);
             };
             item.DoubleTapped += async (_, _) => await ShowSmallAnnotationDetailsAsync(summary);
             return item;
