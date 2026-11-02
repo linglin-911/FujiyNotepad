@@ -449,19 +449,101 @@ public sealed partial class MainWindow
             && ReferenceEquals(lines, provider);
     }
 
-    private async Task<NovelChapter?> GetCurrentOrSelectedChapterAsync()
+    private NovelChapter? GetDominantVisibleChapter()
     {
-        if (selectedChapterAnnotationChapterId is Guid chapterId)
-            return chapterAnnotationChapters.FirstOrDefault(chapter => chapter.Id == chapterId);
-
-        if (activeAnnotationStore is not { } store
-            || annotationOffsetMap is null
-            || filteredSource is not null)
+        LineProvider? lines = provider;
+        DocumentTextOffsetMap? map = annotationOffsetMap;
+        if (lines is null || map is null || filteredSource is not null
+            || lines.LineCount == 0 || chapterAnnotationChapters.Count == 0)
             return null;
 
-        TextPosition caret = View.CaretPosition;
-        long offset = annotationOffsetMap.GetOffset(caret.Line, caret.Column);
-        return await store.GetChapterAtOffsetAsync(offset);
+        int firstLine = Math.Clamp(View.FirstVisibleLine, 0, lines.LineCount - 1);
+        int visibleLineCount = Math.Max(1, View.FullyVisibleLineCount + 1);
+        int lastLine = Math.Min(lines.LineCount - 1, firstLine + visibleLineCount - 1);
+        long visibleStart = map.GetLineStartOffset(firstLine);
+        long visibleEnd = lastLine + 1 < lines.LineCount
+            ? map.GetLineStartOffset(lastLine + 1)
+            : map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
+        if (visibleEnd <= visibleStart)
+            visibleEnd = checked(visibleStart + 1);
+
+        long visibleCenter = visibleStart + (visibleEnd - visibleStart) / 2;
+        NovelChapter? best = null;
+        long bestOverlap = 0;
+        bool bestContainsCenter = false;
+
+        foreach (NovelChapter chapter in chapterAnnotationChapters)
+        {
+            long overlapStart = Math.Max(visibleStart, chapter.StartOffset);
+            long overlapEnd = Math.Min(visibleEnd, chapter.EndOffset);
+            long overlap = Math.Max(0, overlapEnd - overlapStart);
+            bool containsCenter = visibleCenter >= chapter.StartOffset && visibleCenter < chapter.EndOffset;
+            if (overlap > bestOverlap || (overlap == bestOverlap && overlap > 0
+                && containsCenter && !bestContainsCenter))
+            {
+                best = chapter;
+                bestOverlap = overlap;
+                bestContainsCenter = containsCenter;
+            }
+        }
+
+        return best;
+    }
+
+    private async void CreateChapterAnnotationFromPosition(TextPosition position)
+    {
+        if (activeAnnotationStore is null || annotationOffsetMap is null
+            || provider is null || filteredSource is not null)
+            return;
+
+        try
+        {
+            if (chapterAnnotationChapters.Count == 0)
+                await EnsureChapterIndexAsync();
+
+            long offset = annotationOffsetMap.GetOffset(position.Line, position.Column);
+            NovelChapter? chapter = chapterAnnotationChapters.FirstOrDefault(candidate =>
+                candidate.StartOffset <= offset && candidate.EndOffset > offset);
+            if (chapter is null)
+            {
+                await ShowNovelProjectMessageAsync(
+                    "当前位置不属于已识别章节",
+                    "请先重新识别章节，或将右键位置移动到某个已识别章节的正文范围内。");
+                return;
+            }
+
+            await CreateChapterAnnotationForChapterAsync(chapter);
+        }
+        catch (Exception ex)
+        {
+            await ShowNovelProjectMessageAsync("无法创建章节批注", ex.Message);
+        }
+    }
+
+    private async Task CreateChapterAnnotationForChapterAsync(NovelChapter initialChapter)
+    {
+        NovelAnnotationStore? store = activeAnnotationStore;
+        if (store is null)
+            return;
+
+        ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
+            "新建章节批注",
+            initialChapter.Id,
+            initialChapter,
+            null,
+            "",
+            selectedChapterAnnotationCategoryId);
+        if (values is null || !ReferenceEquals(store, activeAnnotationStore))
+            return;
+
+        await store.CreateChapterAnnotationAsync(
+            values.ChapterId, values.Content, values.CategoryId, values.Title);
+        selectedChapterAnnotationChapterId = values.ChapterId;
+        SmallAnnotationsItem.IsChecked = false;
+        SmallAnnotationPane.Visibility = Visibility.Collapsed;
+        ChapterAnnotationsItem.IsChecked = true;
+        ChapterAnnotationPane.Visibility = Visibility.Visible;
+        await LoadChapterAnnotationsAsync();
     }
 
     private async Task NavigateToChapterAsync(NovelChapter chapter)
@@ -543,30 +625,21 @@ public sealed partial class MainWindow
 
     private async void NewChapterAnnotation_Click(object sender, RoutedEventArgs e)
     {
-        NovelAnnotationStore? store = activeAnnotationStore;
-        if (store is null)
+        if (activeAnnotationStore is null)
             return;
 
         try
         {
-            NovelChapter? chapter = await GetCurrentOrSelectedChapterAsync();
+            NovelChapter? chapter = GetDominantVisibleChapter();
             if (chapter is null)
             {
                 await ShowNovelProjectMessageAsync(
-                    "尚未选择章节",
-                    "请先在章节下拉框中选择一个章节，或将阅读位置移动到某个章节后再新建章节批注。");
+                    "当前可见区域没有已识别章节",
+                    "请先完成章节识别，并将阅读位置移动到某个章节正文范围内。");
                 return;
             }
 
-            ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
-                "新建章节批注", null, "", selectedChapterAnnotationCategoryId);
-            if (values is null || !ReferenceEquals(store, activeAnnotationStore))
-                return;
-
-            await store.CreateChapterAnnotationAsync(
-                chapter.Id, values.Content, values.CategoryId, values.Title);
-            selectedChapterAnnotationChapterId = chapter.Id;
-            await LoadChapterAnnotationsAsync();
+            await CreateChapterAnnotationForChapterAsync(chapter);
         }
         catch (Exception ex)
         {
@@ -585,6 +658,8 @@ public sealed partial class MainWindow
         {
             ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
                 "编辑章节批注",
+                summary.Annotation.ChapterId,
+                summary.Chapter,
                 summary.Annotation.Title,
                 summary.Annotation.Content,
                 summary.Annotation.CategoryId);
@@ -593,7 +668,7 @@ public sealed partial class MainWindow
 
             await store.UpdateChapterAnnotationAsync(
                 summary.Annotation.Id,
-                summary.Annotation.ChapterId,
+                values.ChapterId,
                 values.Content,
                 values.CategoryId,
                 values.Title);
@@ -639,6 +714,8 @@ public sealed partial class MainWindow
 
     private async Task<ChapterAnnotationEditValues?> ShowChapterAnnotationEditorAsync(
         string dialogTitle,
+        Guid initialChapterId,
+        NovelChapter? initialChapter,
         string? initialTitle,
         string initialContent,
         Guid? initialCategoryId)
@@ -651,6 +728,27 @@ public sealed partial class MainWindow
             await store.GetChapterAnnotationCategoriesAsync();
         if (!ReferenceEquals(store, activeAnnotationStore))
             return null;
+
+        var availableChapters = chapterAnnotationChapters.ToList();
+        if (initialChapter is not null
+            && availableChapters.All(chapter => chapter.Id != initialChapter.Id))
+        {
+            availableChapters.Add(initialChapter);
+        }
+
+        List<ChapterAnnotationChapterOption> chapterOptions = availableChapters
+            .Select(chapter => new ChapterAnnotationChapterOption(
+                chapter,
+                chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}"))
+            .ToList();
+        var chapterBox = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            DisplayMemberPath = nameof(ChapterAnnotationChapterOption.DisplayTitle),
+            ItemsSource = chapterOptions,
+        };
+        chapterBox.SelectedItem = chapterOptions.FirstOrDefault(option =>
+            option.Chapter.Id == initialChapterId);
 
         var titleBox = new TextBox
         {
@@ -689,6 +787,8 @@ public sealed partial class MainWindow
             PlaceholderText = "记录本章剧情概括、人物变化、剧情点评或其他分析...",
         };
         var panel = new StackPanel { Spacing = 8, MinWidth = 440 };
+        panel.Children.Add(new TextBlock { Text = "章节" });
+        panel.Children.Add(chapterBox);
         panel.Children.Add(new TextBlock { Text = "标题" });
         panel.Children.Add(titleBox);
         panel.Children.Add(new TextBlock { Text = "分类" });
@@ -713,6 +813,11 @@ public sealed partial class MainWindow
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return null;
+        if (chapterBox.SelectedItem is not ChapterAnnotationChapterOption selectedChapter)
+        {
+            await ShowNovelProjectMessageAsync("尚未选择章节", "请选择这条章节批注所属的章节。");
+            return null;
+        }
         if (string.IsNullOrWhiteSpace(contentBox.Text))
         {
             await ShowNovelProjectMessageAsync("批注内容不能为空", "请输入章节批注内容后再保存。");
@@ -721,7 +826,8 @@ public sealed partial class MainWindow
 
         Guid? categoryId = categoryBox.SelectedItem is ComboBoxItem { Tag: Guid id } ? id : null;
         string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
-        return new ChapterAnnotationEditValues(title, contentBox.Text, categoryId);
+        return new ChapterAnnotationEditValues(
+            selectedChapter.Chapter.Id, title, contentBox.Text, categoryId);
     }
 
     private async void ManageChapterAnnotationCategories_Click(object sender, RoutedEventArgs e)
