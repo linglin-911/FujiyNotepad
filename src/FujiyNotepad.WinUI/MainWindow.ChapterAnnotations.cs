@@ -171,8 +171,8 @@ public sealed partial class MainWindow
                 }
                 ChapterAnnotationCategoryFilter.SelectedIndex = selectedCategoryIndex;
                 selectedChapterAnnotationCategoryId =
-                    ChapterAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid selectedId }
-                        ? selectedId
+                    ChapterAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid selectedCategoryId }
+                        ? selectedCategoryId
                         : null;
             }
             finally
@@ -652,7 +652,7 @@ public sealed partial class MainWindow
         {
             for (int index = 1; index < categoryBox.Items.Count; index++)
             {
-                if (categoryBox.Items[index] is ComboBoxItem { Tag: Guid id } && id == selectedCategory)
+                if (categoryBox.Items[index] is ComboBoxItem { Tag: Guid categoryGuid } && categoryGuid == selectedCategory)
                 {
                     categoryBox.SelectedIndex = index;
                     break;
