@@ -225,6 +225,7 @@ namespace FujiyNotepad.WinUI
                     : "未分类";
             int activeAnchors = Math.Max(0, summary.AnchorCount - summary.OrphanedAnchorCount);
 
+            ListViewItem? parentItem = null;
             var content = new StackPanel { Spacing = 4 };
             content.Children.Add(new TextBlock
             {
@@ -265,10 +266,23 @@ namespace FujiyNotepad.WinUI
                             TextWrapping = TextWrapping.Wrap,
                         },
                     };
-                    quoteButton.Tapped += (_, args) => args.Handled = true;
+                    quoteButton.Tapped += (_, args) =>
+                    {
+                        args.Handled = true;
+                        if (parentItem is not null)
+                        {
+                            SmallAnnotationList.SelectedItem = parentItem;
+                            UpdateSmallAnnotationActionButtons();
+                        }
+                    };
                     quoteButton.Click += async (_, args) =>
                     {
                         args.Handled = true;
+                        if (parentItem is not null)
+                        {
+                            SmallAnnotationList.SelectedItem = parentItem;
+                            UpdateSmallAnnotationActionButtons();
+                        }
                         await NavigateToSmallAnnotationAnchorAsync(anchor);
                     };
                     quoteButton.DoubleTapped += (_, args) => args.Handled = true;
@@ -305,6 +319,7 @@ namespace FujiyNotepad.WinUI
                 Padding = new Thickness(8, 6, 8, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
+            parentItem = item;
             item.Tapped += async (_, args) =>
             {
                 if (args.Handled)
