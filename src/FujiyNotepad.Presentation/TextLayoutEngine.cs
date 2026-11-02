@@ -69,6 +69,9 @@ namespace FujiyNotepad.Presentation
     /// </summary>
     public readonly record struct RuleHighlightRect(double X, double Width, uint Argb, int StartIndex = -1, int Length = 0);
 
+    /// <summary>A source-text range that should receive a clickable small-annotation underline.</summary>
+    public readonly record struct TextAnnotationMarker(int Line, int StartColumn, int EndColumn);
+
     /// <summary>
     /// Size of the current selection. <see cref="Lines"/> is 0 when nothing is selected, otherwise the number
     /// of lines it touches. <see cref="Characters"/> is the selected character count, or -1 when the selection
@@ -290,6 +293,15 @@ namespace FujiyNotepad.Presentation
         }
 
         public int TotalLines => totalLines;
+
+        /// <summary>Maps a source UTF-16 column to the tab-expanded display index used by the renderer.</summary>
+        public int GetDisplayIndexForColumn(int lineIndex, int sourceColumn)
+        {
+            if (provider is null || lineIndex < 0 || lineIndex >= totalLines)
+                throw new ArgumentOutOfRangeException(nameof(lineIndex));
+
+            return GetColumns(lineIndex).DisplayIndexOfCharIndex(sourceColumn);
+        }
         public int FullyVisibleLineCount => lineHeight > 0 ? Math.Max(1, (int)(ViewportHeight / lineHeight)) : 1;
         public int MaxFirstLine => wordWrap
             ? Math.Max(0, totalLines - 1)
