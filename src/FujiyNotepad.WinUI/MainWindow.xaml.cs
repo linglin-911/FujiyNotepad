@@ -1271,6 +1271,7 @@ namespace FujiyNotepad.WinUI
 
                 ApplyPendingGoTo();
                 ApplyPendingSession();
+                ApplyPendingChapterNavigation();
             }
 
             if (LineIndexer.IsCompleted)
