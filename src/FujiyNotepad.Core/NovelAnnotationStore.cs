@@ -625,6 +625,52 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    /// <summary>
+    /// Returns the anchors for a set of annotations in a small number of queries, so the annotation pane
+    /// can render every source occurrence without issuing one database round-trip per list item.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<AnnotationAnchor>>> GetAnchorsForAnnotationsAsync(
+        IEnumerable<Guid> annotationIds, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(annotationIds);
+
+        Guid[] ids = annotationIds.Distinct().ToArray();
+        var grouped = ids.ToDictionary(id => id, _ => new List<AnnotationAnchor>());
+        if (ids.Length == 0)
+            return grouped.ToDictionary(
+                pair => pair.Key, pair => (IReadOnlyList<AnnotationAnchor>)pair.Value);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        const int batchSize = 500;
+        for (int offset = 0; offset < ids.Length; offset += batchSize)
+        {
+            Guid[] batch = ids.Skip(offset).Take(batchSize).ToArray();
+            await using var command = connection.CreateCommand();
+            string[] parameterNames = batch.Select((_, index) => "$id" + index).ToArray();
+            command.CommandText = $"""
+                SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+                FROM AnnotationAnchors
+                WHERE AnnotationId IN ({string.Join(", ", parameterNames)})
+                ORDER BY AnnotationId, StartOffset, EndOffset;
+                """;
+
+            for (int index = 0; index < batch.Length; index++)
+                command.Parameters.AddWithValue(parameterNames[index], batch[index].ToString("D"));
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                AnnotationAnchor anchor = ReadAnchor(reader);
+                if (grouped.TryGetValue(anchor.AnnotationId, out List<AnnotationAnchor>? anchors))
+                    anchors.Add(anchor);
+            }
+        }
+
+        return grouped.ToDictionary(
+            pair => pair.Key, pair => (IReadOnlyList<AnnotationAnchor>)pair.Value);
+    }
+
     public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsAtOffsetAsync(long offset,
         CancellationToken cancellationToken = default)
     {
