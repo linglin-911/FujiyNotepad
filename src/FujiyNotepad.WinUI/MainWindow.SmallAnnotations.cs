@@ -3,12 +3,15 @@ using FujiyNotepad.Core;
 using FujiyNotepad.Presentation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Dispatching;
 
 namespace FujiyNotepad.WinUI
 {
     public sealed partial class MainWindow
     {
         private int smallAnnotationRefreshVersion;
+        private DispatcherQueueTimer? smallAnnotationCardTapTimer;
+        private NovelAnnotationSummary? pendingSmallAnnotationCardTap;
         private Dictionary<Guid, string> smallAnnotationCategoryNames = new();
         private Guid? selectedSmallAnnotationCategoryId;
 
@@ -59,18 +62,39 @@ namespace FujiyNotepad.WinUI
             UpdateSmallAnnotationActionButtons();
         }
 
-        private async void ShowSelectedSmallAnnotationDetails_Click(object sender, RoutedEventArgs e)
-        {
-            if (GetSelectedSmallAnnotationSummary() is { } summary)
-                await ShowSmallAnnotationDetailsAsync(summary);
-        }
-
         private void UpdateSmallAnnotationActionButtons()
         {
-            bool hasSelection = GetSelectedSmallAnnotationSummary() is not null;
-            ShowSmallAnnotationDetailsButton.IsEnabled = hasSelection;
-            EditSmallAnnotationButton.IsEnabled = hasSelection;
-            DeleteSmallAnnotationButton.IsEnabled = hasSelection;
+            DeleteSmallAnnotationButton.IsEnabled = GetSelectedSmallAnnotationSummary() is not null;
+        }
+
+        private void QueueSmallAnnotationCardSingleTap(NovelAnnotationSummary summary)
+        {
+            pendingSmallAnnotationCardTap = summary;
+            smallAnnotationCardTapTimer ??= CreateSmallAnnotationCardTapTimer();
+            smallAnnotationCardTapTimer.Stop();
+            smallAnnotationCardTapTimer.Start();
+        }
+
+        private DispatcherQueueTimer CreateSmallAnnotationCardTapTimer()
+        {
+            DispatcherQueueTimer timer = DispatcherQueue.CreateTimer();
+            timer.Interval = TimeSpan.FromMilliseconds(500);
+            timer.IsRepeating = false;
+            timer.Tick += async (sender, _) =>
+            {
+                sender.Stop();
+                NovelAnnotationSummary? summary = pendingSmallAnnotationCardTap;
+                pendingSmallAnnotationCardTap = null;
+                if (summary is not null)
+                    await NavigateToFirstSmallAnnotationAnchorAsync(summary);
+            };
+            return timer;
+        }
+
+        private void CancelSmallAnnotationCardSingleTap()
+        {
+            smallAnnotationCardTapTimer?.Stop();
+            pendingSmallAnnotationCardTap = null;
         }
 
         private NovelAnnotationSummary? GetSelectedSmallAnnotationSummary()
@@ -319,16 +343,23 @@ namespace FujiyNotepad.WinUI
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
             parentItem = item;
-            item.Tapped += async (_, args) =>
+            item.Tapped += (_, args) =>
             {
                 if (args.Handled)
                     return;
 
                 SmallAnnotationList.SelectedItem = item;
                 UpdateSmallAnnotationActionButtons();
-                await NavigateToFirstSmallAnnotationAnchorAsync(summary);
+                QueueSmallAnnotationCardSingleTap(summary);
             };
-            item.DoubleTapped += async (_, _) => await ShowSmallAnnotationDetailsAsync(summary);
+            item.DoubleTapped += async (_, args) =>
+            {
+                args.Handled = true;
+                CancelSmallAnnotationCardSingleTap();
+                SmallAnnotationList.SelectedItem = item;
+                UpdateSmallAnnotationActionButtons();
+                await ShowSmallAnnotationDetailsAsync(summary);
+            };
             return item;
         }
 
@@ -1239,12 +1270,6 @@ namespace FujiyNotepad.WinUI
             }
 
             return builder.ToString();
-        }
-
-        private async void EditSelectedSmallAnnotation_Click(object sender, RoutedEventArgs e)
-        {
-            if (GetSelectedSmallAnnotationSummary() is { } summary)
-                await ShowSmallAnnotationDetailsAsync(summary);
         }
 
         private async void DeleteSelectedSmallAnnotation_Click(object sender, RoutedEventArgs e)
