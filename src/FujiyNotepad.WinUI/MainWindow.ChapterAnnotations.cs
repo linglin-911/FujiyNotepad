@@ -68,7 +68,19 @@ public sealed partial class MainWindow
 
         selectedChapterAnnotationChapterId =
             (ChapterAnnotationChapterFilter.SelectedItem as ChapterAnnotationChapterOption)?.Chapter.Id;
-        ScheduleChapterAnnotationRefresh();
+
+        // While the chapter dropdown is open, wheel-scrolling through a large novel should only
+        // move the highlighted item. Do not issue a database query for every intermediate selection;
+        // refresh once the user closes the dropdown.
+        if (!ChapterAnnotationChapterFilter.IsDropDownOpen)
+            ScheduleChapterAnnotationRefresh();
+    }
+
+    private void ChapterAnnotationChapterFilter_DropDownClosed(
+        object sender, object e)
+    {
+        if (!refreshingChapterAnnotationUi)
+            ScheduleChapterAnnotationRefresh();
     }
 
     private void ChapterAnnotationCategoryFilter_SelectionChanged(
