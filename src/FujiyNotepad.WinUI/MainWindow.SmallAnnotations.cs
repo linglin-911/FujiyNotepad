@@ -67,13 +67,6 @@ namespace FujiyNotepad.WinUI
                 await NavigateToFirstSmallAnnotationAnchorAsync(summary);
         }
 
-        private async void SmallAnnotationList_DoubleTapped(
-            object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
-        {
-            if (GetSelectedSmallAnnotationSummary() is { } summary)
-                await ShowSmallAnnotationDetailsAsync(summary);
-        }
-
         private async void ShowSelectedSmallAnnotationDetails_Click(object sender, RoutedEventArgs e)
         {
             if (GetSelectedSmallAnnotationSummary() is { } summary)
@@ -285,6 +278,7 @@ namespace FujiyNotepad.WinUI
                         args.Handled = true;
                         await NavigateToSmallAnnotationAnchorAsync(anchor);
                     };
+                    quoteButton.DoubleTapped += (_, args) => args.Handled = true;
                     content.Children.Add(quoteButton);
                 }
             }
@@ -311,13 +305,15 @@ namespace FujiyNotepad.WinUI
                 TextWrapping = TextWrapping.Wrap,
             });
 
-            return new ListViewItem
+            var item = new ListViewItem
             {
                 Tag = summary,
                 Content = content,
                 Padding = new Thickness(8, 6, 8, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
+            item.DoubleTapped += async (_, _) => await ShowSmallAnnotationDetailsAsync(summary);
+            return item;
         }
 
         private static string CreateSmallAnnotationExcerpt(string text, int maxLength)
