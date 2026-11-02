@@ -2042,6 +2042,8 @@ namespace FujiyNotepad.WinUI
         {
             ExitFilterToFullView();
             View.FocusCanvas();
+            if (activeNovelProject is not null && LineIndexer.IsCompleted)
+                _ = EnsureChapterIndexAsync();
         }
 
         // Builds the per-line predicate from the filter box + options, or null when blank or invalid.
