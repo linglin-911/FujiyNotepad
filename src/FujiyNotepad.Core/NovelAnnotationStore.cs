@@ -233,6 +233,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                    COUNT(a.Id),
                    COALESCE(SUM(CASE WHEN a.IsOrphaned = 1 THEN 1 ELSE 0 END), 0),
                    MIN(CASE WHEN a.IsOrphaned = 0 THEN a.StartOffset END)
+                   (SELECT q.Quote FROM AnnotationAnchors q
+                    WHERE q.AnnotationId = n.Id AND q.IsOrphaned = 0
+                    ORDER BY q.StartOffset, q.EndOffset LIMIT 1)
             FROM Annotations n
             LEFT JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
             WHERE ($category IS NULL OR n.CategoryId = $category)
@@ -265,7 +268,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 annotation,
                 reader.GetInt32(6),
                 reader.GetInt32(7),
-                reader.IsDBNull(8) ? null : reader.GetInt64(8)));
+                reader.IsDBNull(8) ? null : reader.GetInt64(8),;
+                reader.IsDBNull(9) ? null : reader.GetString(9)));
         }
         return result;
     }
