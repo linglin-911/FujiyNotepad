@@ -139,6 +139,7 @@ namespace FujiyNotepad.WinUI
             View.FontChanged += OnFontChanged;
             View.CreateSmallAnnotationRequested += CreateSmallAnnotationFromSelection;
             View.AddSelectionToSmallAnnotationRequested += AddSelectionToExistingSmallAnnotation;
+            View.CreateChapterAnnotationRequested += CreateChapterAnnotationFromPosition;
             View.AnnotationMarkerClicked += OnAnnotationMarkerClicked;
 
             annotationMarkerRefreshTimer = DispatcherQueue.CreateTimer();
