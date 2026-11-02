@@ -251,8 +251,6 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             ORDER BY UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
-        command.Parameters.AddWithValue("$chapterActive",
-            (object?)(chapterIsActive is null ? null : chapterIsActive.Value ? 1 : 0) ?? DBNull.Value);
         string? pattern = string.IsNullOrWhiteSpace(searchText) ? null : "%" + EscapeLike(searchText.Trim()) + "%";
         command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
 
