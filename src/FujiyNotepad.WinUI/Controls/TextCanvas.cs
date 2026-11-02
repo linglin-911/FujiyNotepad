@@ -463,6 +463,13 @@ namespace FujiyNotepad.WinUI.Controls
             engine.GoToLineColumn(lineIndex, column);
         }
 
+        /// <summary>Centers the current caret position vertically in the reader viewport.</summary>
+        public void CenterCaretVertically()
+        {
+            Ready();
+            engine.CenterCaretVertically();
+        }
+
         public void SelectMatch(int lineIndex, int startColumn, int length)
         {
             Ready();
