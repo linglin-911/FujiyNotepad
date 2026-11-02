@@ -573,6 +573,23 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             }
         }
 
+        await using (var assignAnchorChapters = connection.CreateCommand())
+        {
+            assignAnchorChapters.Transaction = (SqliteTransaction)transaction;
+            assignAnchorChapters.CommandText = """
+                UPDATE AnnotationAnchors
+                SET ChapterId = (
+                    SELECT c.Id FROM Chapters c
+                    WHERE c.StartOffset <= AnnotationAnchors.StartOffset
+                      AND c.EndOffset > AnnotationAnchors.StartOffset
+                    ORDER BY c.StartOffset DESC
+                    LIMIT 1
+                )
+                WHERE ChapterId IS NULL AND IsOrphaned = 0;
+                """;
+            await assignAnchorChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await using (var state = connection.CreateCommand())
         {
             state.Transaction = (SqliteTransaction)transaction;
