@@ -10,6 +10,7 @@ public sealed partial class MainWindow
 {
     private int chapterIndexBuildVersion;
     private int chapterIndexBuildRunningVersion = -1;
+    private CancellationTokenSource? chapterIndexBuildCancellation;
     private int chapterAnnotationRefreshVersion;
     private bool refreshingChapterAnnotationUi;
     private Guid? selectedChapterAnnotationChapterId;
@@ -343,8 +344,13 @@ public sealed partial class MainWindow
             }
 
             long revision = project.Metadata.DocumentRevision;
+            var cancellation = new CancellationTokenSource();
+            chapterIndexBuildCancellation?.Cancel();
+            chapterIndexBuildCancellation?.Dispose();
+            chapterIndexBuildCancellation = cancellation;
             IReadOnlyList<NovelChapter> chapters = await Task.Run(
-                () => NovelChapterIndexBuilder.Build(lines, revision));
+                () => NovelChapterIndexBuilder.Build(lines, revision, cancellation.Token),
+                cancellation.Token);
             if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
                 return;
 
@@ -374,6 +380,12 @@ public sealed partial class MainWindow
         {
             if (chapterIndexBuildRunningVersion == generation)
                 chapterIndexBuildRunningVersion = -1;
+            if (chapterIndexBuildCancellation is { } cancellation
+                && cancellation.Token == cancellation.Token)
+            {
+                cancellation.Dispose();
+                chapterIndexBuildCancellation = null;
+            }
         }
     }
 
