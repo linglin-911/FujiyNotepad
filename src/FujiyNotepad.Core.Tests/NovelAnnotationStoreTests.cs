@@ -188,7 +188,6 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
-    [Fact]
     public async Task GetAnnotationSummariesAsync_WhenCategoryHasNoAnnotations_ReturnsEmpty()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
@@ -211,6 +210,7 @@ public sealed class NovelAnnotationStoreTests
         }
     }
 
+    [Fact]
     public async Task CategoryCrudAndMerge_PreserveNotesAndUpdateTheirCategory()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
