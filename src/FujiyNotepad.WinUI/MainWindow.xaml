@@ -375,12 +375,24 @@
                         <Button Grid.Column="1" Content="分类管理..." Click="ManageSmallAnnotationCategories_Click"
                                 Padding="8,4" />
                     </Grid>
-                    <ListView x:Name="SmallAnnotationList" Grid.Row="3"
-                              SelectionChanged="SmallAnnotationList_SelectionChanged"
-                              IsItemClickEnabled="True"
-                              ItemClick="SmallAnnotationList_ItemClick"
-                              SelectionMode="Single" />
+                    <Grid Grid.Row="3">
+                        <ListView x:Name="SmallAnnotationList"
+                                  SelectionChanged="SmallAnnotationList_SelectionChanged"
+                                  IsItemClickEnabled="True"
+                                  ItemClick="SmallAnnotationList_ItemClick"
+                                  SelectionMode="Single" />
+                        <TextBlock x:Name="SmallAnnotationEmptyState"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Opacity="0.65"
+                                   IsHitTestVisible="False"
+                                   Visibility="Collapsed" />
+                    </Grid>
                     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+                        <Button Content="详情" Click="ShowSelectedSmallAnnotationDetails_Click"
+                                x:Name="ShowSmallAnnotationDetailsButton" IsEnabled="False" />
                         <Button Content="编辑" Click="EditSelectedSmallAnnotation_Click"
                                 x:Name="EditSmallAnnotationButton" IsEnabled="False" />
                         <Button Content="删除" Click="DeleteSelectedSmallAnnotation_Click"
