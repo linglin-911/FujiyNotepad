@@ -36,7 +36,10 @@ public sealed partial class MainWindow
         bool show = ChapterAnnotationsItem.IsChecked;
         ChapterAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show)
+        {
+            chapterAnnotationFilterDebounce?.Cancel();
             return;
+        }
 
         SmallAnnotationsItem.IsChecked = false;
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
@@ -47,6 +50,7 @@ public sealed partial class MainWindow
 
     private void CloseChapterAnnotations_Click(object sender, RoutedEventArgs e)
     {
+        chapterAnnotationFilterDebounce?.Cancel();
         ChapterAnnotationsItem.IsChecked = false;
         ChapterAnnotationPane.Visibility = Visibility.Collapsed;
     }
