@@ -389,10 +389,6 @@
                                    Visibility="Collapsed" />
                     </Grid>
                     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
-                        <Button Content="详情" Click="ShowSelectedSmallAnnotationDetails_Click"
-                                x:Name="ShowSmallAnnotationDetailsButton" IsEnabled="False" />
-                        <Button Content="编辑" Click="EditSelectedSmallAnnotation_Click"
-                                x:Name="EditSmallAnnotationButton" IsEnabled="False" />
                         <Button Content="删除" Click="DeleteSelectedSmallAnnotation_Click"
                                 x:Name="DeleteSmallAnnotationButton" IsEnabled="False" />
                     </StackPanel>
