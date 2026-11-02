@@ -98,7 +98,7 @@ public sealed class ChapterAnnotationStoreTests
         {
             await using var store = new NovelAnnotationStore(path);
             await store.InitializeAsync();
-            Assert.True(await store.SaveChapterIndexIfEmptyAsync(Array.Empty<NovelChapter>(), 1, parserVersion: 1));
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(Array.Empty<NovelChapter>(), 1, parserVersion: 99));
 
             var chapter = new NovelChapter(Guid.NewGuid(), "第1章", 0, 100, 1, 1);
             Assert.True(await store.SaveChapterIndexIfEmptyAsync(
