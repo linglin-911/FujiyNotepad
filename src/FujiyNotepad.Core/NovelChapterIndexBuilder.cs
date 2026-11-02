@@ -11,15 +11,15 @@ public static class NovelChapterIndexBuilder
     public const int CurrentParserVersion = 1;
 
     private static readonly Regex ChineseNumberedHeading = new(
-        @"^第\\s*[0-9０-９〇零一二三四五六七八九十百千万两兩壹贰貳叁參肆伍陆陸柒捌玖拾佰仟]+\\s*(?:章|回|节|節|集|篇)(?=$|[\\s:：、.．\\-—_【\\[（(]).*$",
+        @"^第\s*[0-9０-９〇零一二三四五六七八九十百千万两兩壹贰貳叁參肆伍陆陸柒捌玖拾佰仟]+\s*(?:章|回|节|節|集|篇)(?=$|[\s:：、.．\-—_【\[（(]).*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex EnglishNumberedHeading = new(
-        @"^(?:chapter|ch\\.?)\\s*#?\\s*\\d+(?:\\s*[:：、.．\\-—_]\\s*.*|\\s+.*|\\s*)$",
+        @"^(?:chapter|ch\.?)\s*#?\s*\d+(?:\s*[:：、.．\-—_]\s*.*|\s+.*|\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex SpecialHeading = new(
-        @"^(?:序章|楔子|引子|序幕|终章|尾声|后记|番外(?:\\s*\\d+)?|prologue|epilogue)(?:\\s+.*|\\s*[:：、.．\\-—_].*)?$",
+        @"^(?:序章|楔子|引子|序幕|终章|尾声|后记|番外(?:\s*\d+)?|prologue|epilogue)(?:\s+.*|\s*[:：、.．\-—_].*)?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     /// <summary>
@@ -48,7 +48,7 @@ public static class NovelChapterIndexBuilder
             cancellationToken.ThrowIfCancellationRequested();
 
             string line = lines.GetLineUncached(lineIndex);
-            string candidate = line.Trim().TrimStart('\\uFEFF');
+            string candidate = line.Trim().TrimStart('\uFEFF');
             if (TryParseHeading(candidate, out string title))
                 headings.Add((documentEnd, title));
 
@@ -93,7 +93,7 @@ public static class NovelChapterIndexBuilder
     public static bool TryParseHeading(string line, out string title)
     {
         ArgumentNullException.ThrowIfNull(line);
-        string candidate = line.Trim().TrimStart('\\uFEFF');
+        string candidate = line.Trim().TrimStart('\uFEFF');
         if (candidate.Length == 0)
         {
             title = "";
