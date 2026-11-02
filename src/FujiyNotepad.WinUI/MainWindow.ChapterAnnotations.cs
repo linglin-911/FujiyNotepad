@@ -338,6 +338,13 @@ public sealed partial class MainWindow
             if (existing.Count > 0)
             {
                 // Never replace chapter IDs automatically: chapter annotations depend on them.
+                // If this is a legacy index without state metadata, record it only when every row
+                // already belongs to the current document revision.
+                if (state is null
+                    && existing.All(chapter => chapter.DocumentRevision == project.Metadata.DocumentRevision))
+                {
+                    await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
+                }
                 chapterAnnotationChapters = existing;
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
