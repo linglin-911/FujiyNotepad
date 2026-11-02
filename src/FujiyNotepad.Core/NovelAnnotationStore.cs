@@ -544,16 +544,20 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
         }
 
+        bool hasIndexState;
         await using (var stateExists = connection.CreateCommand())
         {
             stateExists.Transaction = (SqliteTransaction)transaction;
             stateExists.CommandText = "SELECT EXISTS(SELECT 1 FROM ChapterIndexState WHERE Id = 1);";
-            if (Convert.ToInt64(await stateExists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
-                return false;
+            hasIndexState = Convert.ToInt64(
+                await stateExists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0;
         }
 
         if (existingChapterCount > 0)
         {
+            if (hasIndexState)
+                return false;
+
             await using var revisionCheck = connection.CreateCommand();
             revisionCheck.Transaction = (SqliteTransaction)transaction;
             revisionCheck.CommandText = "SELECT COUNT(*) FROM Chapters WHERE DocumentRevision <> $revision;";
