@@ -25,7 +25,8 @@ public sealed record NovelAnnotationSummary(
     NovelAnnotation Annotation,
     int AnchorCount,
     int OrphanedAnchorCount,
-    long? FirstActiveAnchorOffset);
+    long? FirstActiveAnchorOffset,
+    string? FirstActiveAnchorQuote = null);
 
 /// <summary>
 /// One source-text occurrence associated with an annotation. Ranges are UTF-16 offsets in the
