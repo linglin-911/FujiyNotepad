@@ -524,6 +524,10 @@ namespace FujiyNotepad.WinUI
             activeNovelProject = null;
             annotationOffsetMap = null;
             CancelChapterIndexBuild();
+            chapterAnnotationRefreshVersion++;
+            chapterAnnotationChapters = Array.Empty<NovelChapter>();
+            selectedChapterAnnotationChapterId = null;
+            selectedChapterAnnotationCategoryId = null;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
             ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
