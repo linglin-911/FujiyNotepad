@@ -538,7 +538,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using (var count = connection.CreateCommand())
         {
             count.Transaction = (SqliteTransaction)transaction;
-            count.CommandText = "SELECT COUNT(*) FROM Chapters;";
+            count.CommandText = """
+                SELECT EXISTS(SELECT 1 FROM Chapters)
+                    OR EXISTS(SELECT 1 FROM ChapterIndexState WHERE Id = 1);
+                """;
             if (Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
                 return false;
         }
