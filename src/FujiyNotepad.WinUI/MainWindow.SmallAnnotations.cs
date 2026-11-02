@@ -67,6 +67,13 @@ namespace FujiyNotepad.WinUI
                 await NavigateToFirstSmallAnnotationAnchorAsync(summary);
         }
 
+        private async void SmallAnnotationList_DoubleTapped(
+            object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+        {
+            if (GetSelectedSmallAnnotationSummary() is { } summary)
+                await ShowSmallAnnotationDetailsAsync(summary);
+        }
+
         private async void ShowSelectedSmallAnnotationDetails_Click(object sender, RoutedEventArgs e)
         {
             if (GetSelectedSmallAnnotationSummary() is { } summary)
@@ -181,7 +188,10 @@ namespace FujiyNotepad.WinUI
                     ListViewItem? itemToSelect = null;
                     foreach (NovelAnnotationSummary summary in summaries)
                     {
-                        ListViewItem item = BuildSmallAnnotationListItem(\n                            summary, smallAnnotationCategoryNames,\n                            anchorsByAnnotation.TryGetValue(summary.Annotation.Id, out IReadOnlyList<AnnotationAnchor>? anchors)\n                                ? anchors : Array.Empty<AnnotationAnchor>());
+                        ListViewItem item = BuildSmallAnnotationListItem(
+                            summary, smallAnnotationCategoryNames,
+                            anchorsByAnnotation.TryGetValue(summary.Annotation.Id, out IReadOnlyList<AnnotationAnchor>? anchors)
+                                ? anchors : Array.Empty<AnnotationAnchor>());
                         SmallAnnotationList.Items.Add(item);
                         if (summary.Annotation.Id == selectedAnnotationId)
                             itemToSelect = item;
@@ -749,45 +759,98 @@ namespace FujiyNotepad.WinUI
             string? initialTitle,
             string initialContent,
             Guid? initialCategoryId,
-            string? quotePreview)
+            string? quotePreview,
+            IReadOnlyList<AnnotationAnchor>? anchors = null,
+            bool readOnlyInitially = false)
         {
             if (activeAnnotationStore is not { } store)
                 return null;
 
             IReadOnlyList<AnnotationCategory> categories = await store.GetCategoriesAsync();
             var panel = new StackPanel { Spacing = 8, MinWidth = 420 };
+            ContentDialog? dialog = null;
 
-            panel.Children.Add(new TextBlock { Text = "标题（可选）" });
+            void AddFieldHeader(string label, Button? penButton)
+            {
+                var header = new Grid();
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                header.Children.Add(new TextBlock
+                {
+                    Text = label,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                if (penButton is not null)
+                {
+                    Grid.SetColumn(penButton, 1);
+                    header.Children.Add(penButton);
+                }
+                panel.Children.Add(header);
+            }
+
+            Button CreatePenButton(Action enableField)
+            {
+                var button = new Button
+                {
+                    Content = new SymbolIcon(Symbol.Edit),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    MinWidth = 32,
+                    MinHeight = 28,
+                };
+                button.Click += (_, _) =>
+                {
+                    enableField();
+                    button.Visibility = Visibility.Collapsed;
+                    if (dialog is not null)
+                        dialog.IsPrimaryButtonEnabled = true;
+                };
+                return button;
+            }
+
             var titleBox = new TextBox
             {
                 PlaceholderText = "为这条批注起一个简短标题",
                 Text = initialTitle ?? "",
+                IsReadOnly = readOnlyInitially,
             };
+            AddFieldHeader("标题（可选）",
+                readOnlyInitially ? CreatePenButton(() =>
+                {
+                    titleBox.IsReadOnly = false;
+                    titleBox.Focus(FocusState.Programmatic);
+                }) : null);
             panel.Children.Add(titleBox);
 
-            panel.Children.Add(new TextBlock { Text = "分类" });
-            var categoryBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+            var categoryBox = new ComboBox
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                IsEnabled = !readOnlyInitially,
+            };
             categoryBox.Items.Add(new ComboBoxItem { Content = "未分类" });
             foreach (AnnotationCategory category in categories)
-            {
                 categoryBox.Items.Add(new ComboBoxItem { Content = category.Name, Tag = category.Id });
-            }
 
             categoryBox.SelectedIndex = 0;
             if (initialCategoryId is Guid selectedCategoryId)
             {
                 for (int i = 0; i < categoryBox.Items.Count; i++)
                 {
-                    if (categoryBox.Items[i] is ComboBoxItem { Tag: Guid matchedCategoryId } && matchedCategoryId == selectedCategoryId)
+                    if (categoryBox.Items[i] is ComboBoxItem { Tag: Guid matchedCategoryId }
+                        && matchedCategoryId == selectedCategoryId)
                     {
                         categoryBox.SelectedIndex = i;
                         break;
                     }
                 }
             }
+            AddFieldHeader("分类",
+                readOnlyInitially ? CreatePenButton(() =>
+                {
+                    categoryBox.IsEnabled = true;
+                    categoryBox.Focus(FocusState.Programmatic);
+                }) : null);
             panel.Children.Add(categoryBox);
 
-            panel.Children.Add(new TextBlock { Text = "批注内容" });
             var contentBox = new TextBox
             {
                 Text = initialContent,
@@ -795,52 +858,86 @@ namespace FujiyNotepad.WinUI
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
                 MinHeight = 150,
-                MaxHeight = 300,
+                Height = 190,
+                MaxHeight = 260,
+                IsReadOnly = readOnlyInitially,
             };
+            ScrollViewer.SetVerticalScrollBarVisibility(contentBox, ScrollBarVisibility.Auto);
+            AddFieldHeader("批注内容",
+                readOnlyInitially ? CreatePenButton(() =>
+                {
+                    contentBox.IsReadOnly = false;
+                    contentBox.Focus(FocusState.Programmatic);
+                }) : null);
             panel.Children.Add(contentBox);
 
             if (quotePreview is not null)
             {
                 panel.Children.Add(new TextBlock { Text = "关联原文（只读）" });
-                var quoteText = new TextBlock
+                panel.Children.Add(new ScrollViewer
                 {
-                    Text = quotePreview,
-                    TextWrapping = TextWrapping.Wrap,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxLines = 3,
-                    IsTextSelectionEnabled = true,
-                };
-                var quoteViewer = new ScrollViewer
-                {
-                    Content = quoteText,
-                    MaxHeight = 100,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = new TextBlock
+                    {
+                        Text = quotePreview,
+                        TextWrapping = TextWrapping.Wrap,
+                        IsTextSelectionEnabled = true,
+                    },
+                    Height = 180,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                };
-                panel.Children.Add(quoteViewer);
+                });
+            }
 
-                if (quotePreview.Length > 60)
+            if (anchors is not null)
+            {
+                panel.Children.Add(new TextBlock { Text = $"关联原文（{anchors.Count} 处）" });
+                var anchorPanel = new StackPanel { Spacing = 4 };
+                NovelProject? project = activeNovelProject;
+                int occurrence = 0;
+                foreach (AnnotationAnchor anchor in anchors)
                 {
-                    bool expanded = false;
-                    var expandQuoteButton = new Button
+                    occurrence++;
+                    bool eligible = !anchor.IsOrphaned
+                        && project is not null
+                        && anchor.DocumentRevision == project.Metadata.DocumentRevision;
+                    var anchorButton = new Button
                     {
-                        Content = "展开全部原文",
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Padding = new Thickness(8, 3, 8, 3),
+                        IsEnabled = eligible,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Padding = new Thickness(6, 4, 6, 4),
+                        Content = new TextBlock
+                        {
+                            Text = $"原文 {occurrence}：{CreateSmallAnnotationExcerpt(anchor.Quote, 220)}"
+                                + (eligible ? "" : "（已失效或版本不匹配）"),
+                            TextWrapping = TextWrapping.Wrap,
+                            FontSize = 12,
+                        },
                     };
-                    expandQuoteButton.Click += (_, _) =>
+                    anchorButton.Click += async (_, args) =>
                     {
-                        expanded = !expanded;
-                        quoteText.MaxLines = expanded ? 0 : 3;
-                        quoteText.TextTrimming = expanded ? TextTrimming.None : TextTrimming.CharacterEllipsis;
-                        quoteViewer.MaxHeight = expanded ? 240 : 100;
-                        quoteViewer.VerticalScrollBarVisibility = expanded
-                            ? ScrollBarVisibility.Auto
-                            : ScrollBarVisibility.Disabled;
-                        expandQuoteButton.Content = expanded ? "收起原文" : "展开全部原文";
+                        args.Handled = true;
+                        await NavigateToSmallAnnotationAnchorAsync(anchor);
                     };
-                    panel.Children.Add(expandQuoteButton);
+                    anchorPanel.Children.Add(anchorButton);
                 }
+
+                if (anchors.Count == 0)
+                {
+                    anchorPanel.Children.Add(new TextBlock
+                    {
+                        Text = "这条批注目前没有关联原文位置。",
+                        Opacity = 0.7,
+                    });
+                }
+
+                panel.Children.Add(new ScrollViewer
+                {
+                    Content = anchorPanel,
+                    Height = 180,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                });
             }
 
             var validationText = new TextBlock
@@ -852,13 +949,20 @@ namespace FujiyNotepad.WinUI
             };
             panel.Children.Add(validationText);
 
-            var dialog = new ContentDialog
+            dialog = new ContentDialog
             {
                 Title = dialogTitle,
-                Content = panel,
+                Content = new ScrollViewer
+                {
+                    Content = panel,
+                    MaxHeight = 620,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                },
                 PrimaryButtonText = "保存",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Primary,
+                CloseButtonText = readOnlyInitially ? "关闭" : "取消",
+                DefaultButton = readOnlyInitially ? ContentDialogButton.Close : ContentDialogButton.Primary,
+                IsPrimaryButtonEnabled = !readOnlyInitially,
                 XamlRoot = Content.XamlRoot,
             };
             dialog.PrimaryButtonClick += (_, args) =>
@@ -958,124 +1062,37 @@ namespace FujiyNotepad.WinUI
             {
                 IReadOnlyList<AnnotationAnchor> anchors =
                     await store.GetAnchorsForAnnotationAsync(summary.Annotation.Id);
-                IReadOnlyList<AnnotationCategory> categories = await store.GetCategoriesAsync();
                 if (!ReferenceEquals(store, activeAnnotationStore)
                     || !ReferenceEquals(project, activeNovelProject))
                 {
                     return;
                 }
 
-                string categoryName = summary.Annotation.CategoryId is Guid categoryId
-                    ? categories.FirstOrDefault(category => category.Id == categoryId)?.Name ?? "未分类"
-                    : "未分类";
+                SmallAnnotationEditValues? values = await ShowSmallAnnotationEditorAsync(
+                    "小批注",
+                    summary.Annotation.Title,
+                    summary.Annotation.Content,
+                    summary.Annotation.CategoryId,
+                    quotePreview: null,
+                    anchors: anchors,
+                    readOnlyInitially: true);
 
-                var panel = new StackPanel { Spacing = 8, MinWidth = 420 };
-                panel.Children.Add(new TextBlock
+                if (values is null
+                    || !ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
                 {
-                    Text = string.IsNullOrWhiteSpace(summary.Annotation.Title)
-                        ? "（未命名批注）"
-                        : summary.Annotation.Title,
-                    FontSize = 17,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                panel.Children.Add(new TextBlock
-                {
-                    Text = $"{categoryName}  ·  创建于 {summary.Annotation.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm}"
-                        + $"  ·  更新于 {summary.Annotation.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}",
-                    FontSize = 11,
-                    Opacity = 0.7,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                panel.Children.Add(new TextBlock
-                {
-                    Text = summary.Annotation.Content,
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true,
-                });
-                panel.Children.Add(new TextBlock
-                {
-                    Text = $"关联原文（{anchors.Count} 处）",
-                    FontSize = 14,
-                });
-
-                var anchorList = new ListView
-                {
-                    Height = 250,
-                    SelectionMode = ListViewSelectionMode.Single,
-                };
-                int navigableCount = 0;
-                foreach (AnnotationAnchor anchor in anchors)
-                {
-                    bool eligible = !anchor.IsOrphaned
-                        && anchor.DocumentRevision == project.Metadata.DocumentRevision;
-                    if (eligible)
-                        navigableCount++;
-
-                    string status = anchor.IsOrphaned
-                        ? " · 已失效"
-                        : anchor.DocumentRevision != project.Metadata.DocumentRevision
-                            ? " · 文档版本不一致"
-                            : " · 可定位";
-                    var anchorContent = new StackPanel { Spacing = 2 };
-                    anchorContent.Children.Add(new TextBlock
-                    {
-                        Text = $"偏移 {anchor.StartOffset:N0}{status}",
-                        FontSize = 12,
-                        Opacity = 0.75,
-                    });
-                    anchorContent.Children.Add(new TextBlock
-                    {
-                        Text = CreateSmallAnnotationExcerpt(anchor.Quote, 180),
-                        TextWrapping = TextWrapping.Wrap,
-                    });
-                    anchorList.Items.Add(new ListViewItem
-                    {
-                        Tag = anchor,
-                        Content = anchorContent,
-                        IsEnabled = eligible,
-                        Padding = new Thickness(6, 4, 6, 4),
-                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                    });
+                    return;
                 }
 
-                if (anchors.Count == 0)
-                {
-                    panel.Children.Add(new TextBlock
-                    {
-                        Text = "这条批注目前没有关联原文位置。",
-                        Opacity = 0.7,
-                    });
-                }
-                else
-                {
-                    panel.Children.Add(anchorList);
-                }
-
-                var dialog = new ContentDialog
-                {
-                    Title = "小批注详情",
-                    Content = panel,
-                    PrimaryButtonText = navigableCount > 0 ? "定位到选中原文" : null,
-                    CloseButtonText = "关闭",
-                    DefaultButton = navigableCount > 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
-                    IsPrimaryButtonEnabled = false,
-                    XamlRoot = Content.XamlRoot,
-                };
-                anchorList.SelectionChanged += (_, _) =>
-                {
-                    dialog.IsPrimaryButtonEnabled =
-                        anchorList.SelectedItem is ListViewItem { IsEnabled: true, Tag: AnnotationAnchor };
-                };
-
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary
-                    && anchorList.SelectedItem is ListViewItem { Tag: AnnotationAnchor selectedAnchor })
-                {
-                    await NavigateToSmallAnnotationAnchorAsync(selectedAnchor);
-                }
+                await store.UpdateAnnotationAsync(
+                    summary.Annotation.Id, values.Content, values.CategoryId, values.Title);
+                selectedSmallAnnotationCategoryId = values.CategoryId;
+                await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
+                await RefreshSmallAnnotationsAsync(summary.Annotation.Id);
             }
             catch (Exception ex)
             {
-                await ShowMessageAsync("无法打开批注详情", ex.Message);
+                await ShowMessageAsync("无法打开或保存小批注", ex.Message);
             }
         }
 
@@ -1218,34 +1235,8 @@ namespace FujiyNotepad.WinUI
 
         private async void EditSelectedSmallAnnotation_Click(object sender, RoutedEventArgs e)
         {
-            NovelAnnotationSummary? summary = GetSelectedSmallAnnotationSummary();
-            if (summary is null || activeAnnotationStore is not { } store)
-                return;
-
-            try
-            {
-                SmallAnnotationEditValues? values = await ShowSmallAnnotationEditorAsync(
-                    "编辑小批注",
-                    summary.Annotation.Title,
-                    summary.Annotation.Content,
-                    summary.Annotation.CategoryId,
-                    quotePreview: null);
-                if (values is null || !ReferenceEquals(store, activeAnnotationStore))
-                    return;
-
-                await store.UpdateAnnotationAsync(
-                    summary.Annotation.Id,
-                    values.Content,
-                    values.CategoryId,
-                    values.Title);
-                selectedSmallAnnotationCategoryId = values.CategoryId;
-                await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
-                await RefreshSmallAnnotationsAsync(summary.Annotation.Id);
-            }
-            catch (Exception ex)
-            {
-                await ShowMessageAsync("编辑小批注失败", ex.Message);
-            }
+            if (GetSelectedSmallAnnotationSummary() is { } summary)
+                await ShowSmallAnnotationDetailsAsync(summary);
         }
 
         private async void DeleteSelectedSmallAnnotation_Click(object sender, RoutedEventArgs e)
