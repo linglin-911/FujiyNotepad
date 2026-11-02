@@ -421,6 +421,9 @@ public sealed class ChapterAnnotationStoreTests
             Assert.Equal(noteId, preserved.Annotation.Id);
             Assert.False(preserved.Chapter.IsActive);
             Assert.Equal("第七章", preserved.Chapter.Title);
+            Assert.Contains(
+                await store.GetChapterAnnotationSummariesAsync(),
+                summary => summary.Annotation.Id == noteId && !summary.Chapter.IsActive);
 
             AnnotationAnchor reassigned = Assert.Single(await store.GetAnchorsForAnnotationAsync(smallNoteId));
             Assert.Equal(first.Id, reassigned.ChapterId);
