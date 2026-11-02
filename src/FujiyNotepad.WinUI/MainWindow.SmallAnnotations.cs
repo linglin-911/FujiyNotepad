@@ -424,6 +424,8 @@ namespace FujiyNotepad.WinUI
             if (store is null || project is null || map is null || lines is null
                 || filteredSource is not null || lines.LineCount == 0)
             {
+                annotationMarkerRefreshCancellation?.Cancel();
+                annotationMarkerRefreshCancellation = null;
                 annotationMarkerRefreshVersion++;
                 lastAnnotationMarkerStartLine = -1;
                 lastAnnotationMarkerEndLine = -1;
@@ -444,15 +446,20 @@ namespace FujiyNotepad.WinUI
 
             lastAnnotationMarkerStartLine = firstLine;
             lastAnnotationMarkerEndLine = lastLine;
+            annotationMarkerRefreshCancellation?.Cancel();
+            var cancellation = new CancellationTokenSource();
+            annotationMarkerRefreshCancellation = cancellation;
+            CancellationToken cancellationToken = cancellation.Token;
             int requestVersion = ++annotationMarkerRefreshVersion;
 
             try
             {
                 // Offset-map lookups may have to decode lines from the nearest sparse checkpoint. Keep
-                // that work and the visible-anchor query off the UI thread so a jump deep into a large
-                // novel cannot freeze the reader.
+                // that work and the visible-anchor query off the UI thread. A newer viewport cancels
+                // the old query so rapid scrolling cannot accumulate obsolete database work.
                 List<TextAnnotationMarker> markers = await Task.Run(async () =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     long startOffset = map.GetLineStartOffset(firstLine);
                     long endOffset = lastLine + 1 < lines.LineCount
                         ? map.GetLineStartOffset(lastLine + 1)
@@ -461,11 +468,12 @@ namespace FujiyNotepad.WinUI
                         endOffset = checked(startOffset + 1);
 
                     IReadOnlyList<AnnotationAnchor> anchors =
-                        await store.GetAnchorsIntersectingRangeAsync(startOffset, endOffset);
+                        await store.GetAnchorsIntersectingRangeAsync(startOffset, endOffset, cancellationToken);
                     var result = new List<TextAnnotationMarker>();
 
                     foreach (AnnotationAnchor anchor in anchors)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         if (anchor.IsOrphaned
                             || anchor.DocumentRevision != project.Metadata.DocumentRevision)
                         {
@@ -514,9 +522,10 @@ namespace FujiyNotepad.WinUI
                     }
 
                     return result;
-                });
+                }, cancellationToken);
 
-                if (requestVersion != annotationMarkerRefreshVersion
+                if (cancellationToken.IsCancellationRequested
+                    || requestVersion != annotationMarkerRefreshVersion
                     || !ReferenceEquals(store, activeAnnotationStore)
                     || !ReferenceEquals(project, activeNovelProject)
                     || !ReferenceEquals(lines, provider)
@@ -527,10 +536,20 @@ namespace FujiyNotepad.WinUI
 
                 View.SetAnnotationMarkers(markers);
             }
+            catch (OperationCanceledException)
+            {
+                // A newer viewport or project change made this marker request obsolete.
+            }
             catch (Exception)
             {
                 // A transient index/database read failure must not interrupt reading or clear the last
                 // successfully-rendered marker set. A later viewport change retries the query.
+            }
+            finally
+            {
+                if (ReferenceEquals(annotationMarkerRefreshCancellation, cancellation))
+                    annotationMarkerRefreshCancellation = null;
+                cancellation.Dispose();
             }
         }
 
