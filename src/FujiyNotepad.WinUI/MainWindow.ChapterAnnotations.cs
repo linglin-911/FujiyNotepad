@@ -462,7 +462,7 @@ public sealed partial class MainWindow
             }
 
             ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
-                "新建章节批注", null, "", null);
+                "新建章节批注", null, "", selectedChapterAnnotationCategoryId);
             if (values is null || !ReferenceEquals(store, activeAnnotationStore))
                 return;
 
