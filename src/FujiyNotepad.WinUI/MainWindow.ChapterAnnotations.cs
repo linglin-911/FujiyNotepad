@@ -273,7 +273,9 @@ public sealed partial class MainWindow
                 if (chapterAnnotationChapters.Count == 0)
                 {
                     NovelChapterIndexState? state = await store.GetChapterIndexStateAsync();
-                    ChapterAnnotationEmptyState.Text = state is null && !LineIndexer.IsCompleted
+                    bool indexRunning = chapterIndexBuildRunningVersion == chapterIndexBuildVersion;
+                    ChapterAnnotationEmptyState.Text = state is null
+                        && (!LineIndexer.IsCompleted || indexRunning)
                         ? "正在识别章节，请稍候..."
                         : "没有识别到章节标题，或当前筛选条件下没有批注。";
                 }
@@ -352,6 +354,13 @@ public sealed partial class MainWindow
             }
 
             long revision = project.Metadata.DocumentRevision;
+            LblStatus.Text = "正在识别章节标题...";
+            if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+            {
+                ChapterAnnotationEmptyState.Text = "正在识别章节，请稍候...";
+                ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
+            }
+
             buildCancellation = new CancellationTokenSource();
             chapterIndexBuildCancellation?.Cancel();
             chapterIndexBuildCancellation = buildCancellation;
