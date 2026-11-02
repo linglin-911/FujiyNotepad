@@ -535,15 +535,47 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+        long existingChapterCount;
         await using (var count = connection.CreateCommand())
         {
             count.Transaction = (SqliteTransaction)transaction;
-            count.CommandText = """
-                SELECT EXISTS(SELECT 1 FROM Chapters)
-                    OR EXISTS(SELECT 1 FROM ChapterIndexState WHERE Id = 1);
-                """;
-            if (Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
+            count.CommandText = "SELECT COUNT(*) FROM Chapters;";
+            existingChapterCount = Convert.ToInt64(
+                await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+        }
+
+        await using (var stateExists = connection.CreateCommand())
+        {
+            stateExists.Transaction = (SqliteTransaction)transaction;
+            stateExists.CommandText = "SELECT EXISTS(SELECT 1 FROM ChapterIndexState WHERE Id = 1);";
+            if (Convert.ToInt64(await stateExists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
                 return false;
+        }
+
+        if (existingChapterCount > 0)
+        {
+            await using var revisionCheck = connection.CreateCommand();
+            revisionCheck.Transaction = (SqliteTransaction)transaction;
+            revisionCheck.CommandText = "SELECT COUNT(*) FROM Chapters WHERE DocumentRevision <> $revision;";
+            revisionCheck.Parameters.AddWithValue("$revision", documentRevision);
+            long staleCount = Convert.ToInt64(
+                await revisionCheck.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+            if (staleCount == 0)
+            {
+                await using var recordExisting = connection.CreateCommand();
+                recordExisting.Transaction = (SqliteTransaction)transaction;
+                recordExisting.CommandText = """
+                    INSERT INTO ChapterIndexState (Id, DocumentRevision, ParserVersion, ChapterCount, IndexedAt)
+                    VALUES (1, $revision, $parser, $count, $indexed);
+                    """;
+                recordExisting.Parameters.AddWithValue("$revision", documentRevision);
+                recordExisting.Parameters.AddWithValue("$parser", parserVersion);
+                recordExisting.Parameters.AddWithValue("$count", existingChapterCount);
+                recordExisting.Parameters.AddWithValue("$indexed", DateTimeOffset.UtcNow.ToString("O"));
+                await recordExisting.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return false;
         }
 
         await using (var insert = connection.CreateCommand())
