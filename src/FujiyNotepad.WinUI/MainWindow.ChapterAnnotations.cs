@@ -390,6 +390,14 @@ public sealed partial class MainWindow
         }
     }
 
+    private void CancelChapterIndexBuild()
+    {
+        chapterIndexBuildVersion++;
+        chapterIndexBuildCancellation?.Cancel();
+        chapterIndexBuildCancellation = null;
+        chapterIndexBuildRunningVersion = -1;
+    }
+
     private bool IsCurrentChapterIndexRequest(
         int generation,
         NovelAnnotationStore store,
