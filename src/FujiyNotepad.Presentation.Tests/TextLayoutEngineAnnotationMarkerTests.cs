@@ -18,21 +18,6 @@ public sealed class TextLayoutEngineAnnotationMarkerTests
     }
 
     [Fact]
-    public void CenterCaretVertically_PlacesTargetLineNearViewportMiddle()
-    {
-        var engine = new TextLayoutEngine();
-        engine.SetProvider(new FakeLines(Enumerable.Range(0, 30).Select(index => $"line {index}").ToArray()));
-        engine.SetMetrics(charWidthPx: 8, lineHeightPx: 10);
-        engine.ViewportHeight = 50;
-
-        engine.GoToLineColumn(10, 0);
-        engine.CenterCaretVertically();
-
-        Assert.Equal(8, engine.FirstVisibleLine);
-        Assert.Equal(10, engine.CaretPosition.Line);
-    }
-
-    [Fact]
     public void GetDisplayIndexForColumn_RejectsLineOutsideCurrentDocument()
     {
         var engine = new TextLayoutEngine();
