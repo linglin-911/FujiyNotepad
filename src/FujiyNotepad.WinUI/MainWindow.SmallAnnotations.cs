@@ -380,7 +380,7 @@ namespace FujiyNotepad.WinUI
             {
                 for (int i = 0; i < categoryBox.Items.Count; i++)
                 {
-                    if (categoryBox.Items[i] is ComboBoxItem { Tag: Guid id } && id == selectedCategoryId)
+                    if (categoryBox.Items[i] is ComboBoxItem { Tag: Guid matchedCategoryId } && matchedCategoryId == selectedCategoryId)
                     {
                         categoryBox.SelectedIndex = i;
                         break;
