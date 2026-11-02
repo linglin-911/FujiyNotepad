@@ -479,6 +479,379 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    public async Task<NovelChapterIndexState?> GetChapterIndexStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT DocumentRevision, ParserVersion, ChapterCount, IndexedAt
+            FROM ChapterIndexState WHERE Id = 1;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            return null;
+
+        return new NovelChapterIndexState(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2),
+            DateTimeOffset.Parse(reader.GetString(3)));
+    }
+
+    /// <summary>
+    /// Saves the first chapter index for a project. Existing chapter rows are never replaced implicitly,
+    /// because chapter annotations refer to their IDs and must not be detached by an automatic rescan.
+    /// An empty result is recorded too, so projects without recognizable headings are not rescanned on
+    /// every launch.
+    /// </summary>
+    public async Task<bool> SaveChapterIndexIfEmptyAsync(
+        IReadOnlyList<NovelChapter> chapters,
+        long documentRevision,
+        int parserVersion = NovelChapterIndexBuilder.CurrentParserVersion,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(chapters);
+        if (documentRevision < 1)
+            throw new ArgumentOutOfRangeException(nameof(documentRevision));
+        if (parserVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(parserVersion));
+
+        long previousEnd = -1;
+        for (int index = 0; index < chapters.Count; index++)
+        {
+            NovelChapter chapter = chapters[index] ?? throw new ArgumentException("Chapter entries cannot be null.", nameof(chapters));
+            if (chapter.StartOffset < 0 || chapter.EndOffset <= chapter.StartOffset
+                || chapter.StartOffset < previousEnd
+                || chapter.DocumentRevision != documentRevision)
+            {
+                throw new ArgumentException("Chapter ranges must be ordered, non-overlapping, non-empty, and use the current document revision.", nameof(chapters));
+            }
+            previousEnd = chapter.EndOffset;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (var count = connection.CreateCommand())
+        {
+            count.Transaction = (SqliteTransaction)transaction;
+            count.CommandText = "SELECT COUNT(*) FROM Chapters;";
+            if (Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
+                return false;
+        }
+
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = (SqliteTransaction)transaction;
+            insert.CommandText = """
+                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
+                VALUES ($id, $title, $start, $end, $number, $revision);
+                """;
+            var id = insert.Parameters.Add("$id", SqliteType.Text);
+            var title = insert.Parameters.Add("$title", SqliteType.Text);
+            var start = insert.Parameters.Add("$start", SqliteType.Integer);
+            var end = insert.Parameters.Add("$end", SqliteType.Integer);
+            var number = insert.Parameters.Add("$number", SqliteType.Integer);
+            var revision = insert.Parameters.Add("$revision", SqliteType.Integer);
+
+            foreach (NovelChapter chapter in chapters)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                id.Value = chapter.Id.ToString("D");
+                title.Value = chapter.Title;
+                start.Value = chapter.StartOffset;
+                end.Value = chapter.EndOffset;
+                number.Value = chapter.ChapterNumber;
+                revision.Value = chapter.DocumentRevision;
+                await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        await using (var state = connection.CreateCommand())
+        {
+            state.Transaction = (SqliteTransaction)transaction;
+            state.CommandText = """
+                INSERT INTO ChapterIndexState (Id, DocumentRevision, ParserVersion, ChapterCount, IndexedAt)
+                VALUES (1, $revision, $parser, $count, $indexed)
+                ON CONFLICT(Id) DO UPDATE SET
+                    DocumentRevision = excluded.DocumentRevision,
+                    ParserVersion = excluded.ParserVersion,
+                    ChapterCount = excluded.ChapterCount,
+                    IndexedAt = excluded.IndexedAt;
+                """;
+            state.Parameters.AddWithValue("$revision", documentRevision);
+            state.Parameters.AddWithValue("$parser", parserVersion);
+            state.Parameters.AddWithValue("$count", chapters.Count);
+            state.Parameters.AddWithValue("$indexed", DateTimeOffset.UtcNow.ToString("O"));
+            await state.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<NovelChapter?> GetChapterAtOffsetAsync(long offset,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        if (offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
+            FROM Chapters
+            WHERE StartOffset <= $offset AND EndOffset > $offset
+            ORDER BY StartOffset DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$offset", offset);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            return null;
+
+        return new NovelChapter(
+            Guid.Parse(reader.GetString(0)),
+            reader.GetString(1),
+            reader.GetInt64(2),
+            reader.GetInt64(3),
+            reader.GetInt32(4),
+            reader.GetInt64(5));
+    }
+
+    public async Task<Guid> CreateChapterAnnotationCategoryAsync(string name, string? color = null,
+        int sortOrder = 0, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Guid id = Guid.NewGuid();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ChapterAnnotationCategories (Id, Name, Color, SortOrder, CreatedAt)
+            VALUES ($id, $name, $color, $sort, $created);
+            """;
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$name", name.Trim());
+        command.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
+        command.Parameters.AddWithValue("$sort", sortOrder);
+        command.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return id;
+    }
+
+    public async Task UpdateChapterAnnotationCategoryAsync(Guid categoryId, string name, string? color = null,
+        int sortOrder = 0, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE ChapterAnnotationCategories
+            SET Name = $name, Color = $color, SortOrder = $sort
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", categoryId.ToString("D"));
+        command.Parameters.AddWithValue("$name", name.Trim());
+        command.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
+        command.Parameters.AddWithValue("$sort", sortOrder);
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            throw new KeyNotFoundException($"Chapter annotation category {categoryId} was not found.");
+    }
+
+    /// <summary>Deletes only the category; its chapter annotations become uncategorized.</summary>
+    public async Task DeleteChapterAnnotationCategoryAsync(Guid categoryId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM ChapterAnnotationCategories WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", categoryId.ToString("D"));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task MergeChapterAnnotationCategoriesAsync(Guid sourceCategoryId, Guid targetCategoryId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        if (sourceCategoryId == targetCategoryId)
+            return;
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var move = connection.CreateCommand())
+        {
+            move.Transaction = (SqliteTransaction)transaction;
+            move.CommandText = """
+                UPDATE ChapterAnnotations
+                SET CategoryId = $target, UpdatedAt = $updated
+                WHERE CategoryId = $source;
+                """;
+            move.Parameters.AddWithValue("$target", targetCategoryId.ToString("D"));
+            move.Parameters.AddWithValue("$source", sourceCategoryId.ToString("D"));
+            move.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+            await move.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = (SqliteTransaction)transaction;
+            delete.CommandText = "DELETE FROM ChapterAnnotationCategories WHERE Id = $source;";
+            delete.Parameters.AddWithValue("$source", sourceCategoryId.ToString("D"));
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ChapterAnnotationCategory>> GetChapterAnnotationCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Name, Color, SortOrder, CreatedAt
+            FROM ChapterAnnotationCategories
+            ORDER BY SortOrder, Name;
+            """;
+        var result = new List<ChapterAnnotationCategory>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            result.Add(new ChapterAnnotationCategory(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetInt32(3),
+                DateTimeOffset.Parse(reader.GetString(4))));
+        }
+        return result;
+    }
+
+    public async Task<Guid> CreateChapterAnnotationAsync(Guid chapterId, string content,
+        Guid? categoryId = null, string? title = null, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(content);
+        Guid id = Guid.NewGuid();
+        string now = DateTimeOffset.UtcNow.ToString("O");
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ChapterAnnotations (Id, ChapterId, CategoryId, Title, Content, CreatedAt, UpdatedAt)
+            VALUES ($id, $chapter, $category, $title, $content, $created, $updated);
+            """;
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$chapter", chapterId.ToString("D"));
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+        command.Parameters.AddWithValue("$content", content);
+        command.Parameters.AddWithValue("$created", now);
+        command.Parameters.AddWithValue("$updated", now);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return id;
+    }
+
+    public async Task<bool> UpdateChapterAnnotationAsync(Guid annotationId, Guid chapterId, string content,
+        Guid? categoryId = null, string? title = null, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(content);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE ChapterAnnotations
+            SET ChapterId = $chapter, CategoryId = $category, Title = $title,
+                Content = $content, UpdatedAt = $updated
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+        command.Parameters.AddWithValue("$chapter", chapterId.ToString("D"));
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+        command.Parameters.AddWithValue("$content", content);
+        command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
+    public async Task DeleteChapterAnnotationAsync(Guid annotationId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM ChapterAnnotations WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", annotationId.ToString("D"));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ChapterAnnotationSummary>> GetChapterAnnotationSummariesAsync(
+        Guid? chapterId = null, Guid? categoryId = null, string? searchText = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT a.Id, a.ChapterId, a.CategoryId, a.Title, a.Content, a.CreatedAt, a.UpdatedAt,
+                   c.Id, c.Title, c.StartOffset, c.EndOffset, c.ChapterNumber, c.DocumentRevision,
+                   cat.Id, cat.Name, cat.Color, cat.SortOrder, cat.CreatedAt
+            FROM ChapterAnnotations a
+            INNER JOIN Chapters c ON c.Id = a.ChapterId
+            LEFT JOIN ChapterAnnotationCategories cat ON cat.Id = a.CategoryId
+            WHERE ($chapter IS NULL OR a.ChapterId = $chapter)
+              AND ($category IS NULL OR a.CategoryId = $category)
+              AND ($search IS NULL
+                   OR a.Title LIKE $search ESCAPE '\\'
+                   OR a.Content LIKE $search ESCAPE '\\')
+            ORDER BY c.ChapterNumber, c.StartOffset, a.UpdatedAt DESC;
+            """;
+        command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        string? pattern = string.IsNullOrWhiteSpace(searchText)
+            ? null
+            : "%" + EscapeLike(searchText.Trim()) + "%";
+        command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
+
+        var result = new List<ChapterAnnotationSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var annotation = new ChapterAnnotation(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                reader.IsDBNull(2) ? null : Guid.Parse(reader.GetString(2)),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetString(4),
+                DateTimeOffset.Parse(reader.GetString(5)),
+                DateTimeOffset.Parse(reader.GetString(6)));
+            var chapter = new NovelChapter(
+                Guid.Parse(reader.GetString(7)),
+                reader.GetString(8),
+                reader.GetInt64(9),
+                reader.GetInt64(10),
+                reader.GetInt32(11),
+                reader.GetInt64(12));
+            ChapterAnnotationCategory? category = reader.IsDBNull(13)
+                ? null
+                : new ChapterAnnotationCategory(
+                    Guid.Parse(reader.GetString(13)),
+                    reader.GetString(14),
+                    reader.IsDBNull(15) ? null : reader.GetString(15),
+                    reader.GetInt32(16),
+                    DateTimeOffset.Parse(reader.GetString(17)));
+            result.Add(new ChapterAnnotationSummary(annotation, chapter, category));
+        }
+        return result;
+    }
+
     public async Task<Guid> AddAnchorAsync(Guid annotationId, long startOffset, long endOffset, string quote,
         Guid? chapterId = null, long documentRevision = 1, CancellationToken cancellationToken = default)
     {
