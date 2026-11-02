@@ -525,6 +525,8 @@ namespace FujiyNotepad.WinUI
             activeNovelProject = null;
             annotationOffsetMap = null;
             CancelChapterIndexBuild();
+            chapterAnnotationFilterDebounce?.Cancel();
+            chapterAnnotationFilterDebounce = null;
             chapterAnnotationRefreshVersion++;
             chapterAnnotationChapters = Array.Empty<NovelChapter>();
             selectedChapterAnnotationChapterId = null;
