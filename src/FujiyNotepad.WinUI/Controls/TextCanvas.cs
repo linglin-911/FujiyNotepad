@@ -87,6 +87,8 @@ namespace FujiyNotepad.WinUI.Controls
         private bool isSelecting;
         private Point lastPointer;
         private Point pointerDownPosition;
+        private TextPosition contextMenuPosition;
+        private bool hasPointerContextMenuPosition;
         private readonly Dictionary<int, List<TextAnnotationMarker>> annotationMarkersByLine = new();
         private readonly Color annotationMarkerColor = Color.FromArgb(255, 0xC5, 0x7A, 0x20);
 
@@ -94,10 +96,12 @@ namespace FujiyNotepad.WinUI.Controls
         public event Action<TextPosition>? CaretChanged;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
+        public event Action<TextPosition>? CreateChapterAnnotationRequested;
         public event Action<TextPosition>? AnnotationMarkerClicked;
 
         private MenuFlyoutItem? createSmallAnnotationItem;
         private MenuFlyoutItem? addToSmallAnnotationItem;
+        private MenuFlyoutItem? createChapterAnnotationItem;
 
         public TextCanvas()
         {
@@ -212,21 +216,41 @@ namespace FujiyNotepad.WinUI.Controls
             };
             addToSmallAnnotationItem.Click += (_, _) => AddSelectionToSmallAnnotationRequested?.Invoke();
 
+            createChapterAnnotationItem = new MenuFlyoutItem
+            {
+                Text = "新建章节批注...",
+                Visibility = Microsoft.UI.Xaml.Visibility.Collapsed,
+            };
+            createChapterAnnotationItem.Click += (_, _) =>
+            {
+                TextPosition position = hasPointerContextMenuPosition
+                    ? contextMenuPosition
+                    : engine.CaretPosition;
+                hasPointerContextMenuPosition = false;
+                CreateChapterAnnotationRequested?.Invoke(position);
+            };
+
             var flyout = new MenuFlyout();
             flyout.Items.Add(copyItem);
             flyout.Items.Add(selectAllItem);
             flyout.Items.Add(new MenuFlyoutSeparator());
+            flyout.Items.Add(createChapterAnnotationItem);
+            flyout.Items.Add(new MenuFlyoutSeparator());
             flyout.Items.Add(createSmallAnnotationItem);
             flyout.Items.Add(addToSmallAnnotationItem);
-            // Copy and annotation commands are only meaningful when something is selected.
+            // Copy and small-annotation commands are only meaningful when text is selected.
+            // Chapter annotations are tied to the clicked chapter, so they do not require a selection.
             flyout.Opening += (_, _) =>
             {
+                if (!hasPointerContextMenuPosition)
+                    contextMenuPosition = engine.CaretPosition;
                 copyItem.IsEnabled = engine.HasSelection;
                 if (createSmallAnnotationItem is not null)
                     createSmallAnnotationItem.IsEnabled = engine.HasSelection;
                 if (addToSmallAnnotationItem is not null)
                     addToSmallAnnotationItem.IsEnabled = engine.HasSelection;
             };
+            flyout.Closed += (_, _) => hasPointerContextMenuPosition = false;
 
             ContextFlyout = flyout;
         }
@@ -317,6 +341,9 @@ namespace FujiyNotepad.WinUI.Controls
                     ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
             if (addToSmallAnnotationItem is not null)
                 addToSmallAnnotationItem.Visibility = enabled
+                    ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+            if (createChapterAnnotationItem is not null)
+                createChapterAnnotationItem.Visibility = enabled
                     ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
         }
 
@@ -569,9 +596,16 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            // Let non-left buttons through (e.g. right-click, which raises the context menu).
-            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            PointerPoint pointer = e.GetCurrentPoint(this);
+            // Keep the text position under a right-click for the chapter-annotation context command.
+            if (!pointer.Properties.IsLeftButtonPressed)
             {
+                if (pointer.Properties.IsRightButtonPressed)
+                {
+                    Ready();
+                    contextMenuPosition = HitTestTextCharacter(pointer.Position.X, pointer.Position.Y);
+                    hasPointerContextMenuPosition = true;
+                }
                 return;
             }
 
