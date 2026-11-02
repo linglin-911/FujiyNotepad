@@ -432,7 +432,7 @@ public sealed partial class MainWindow
 
         try
         {
-            (int line, _) = annotationOffsetMap.GetPosition(chapter.StartOffset);
+            var (line, _) = annotationOffsetMap.GetPosition(chapter.StartOffset);
             View.GoToLineColumn(line, 0);
             View.CenterCaretVertically();
             View.FocusCanvas();
