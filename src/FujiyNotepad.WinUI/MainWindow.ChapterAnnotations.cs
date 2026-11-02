@@ -13,6 +13,8 @@ public sealed partial class MainWindow
     private CancellationTokenSource? chapterIndexBuildCancellation;
     private int chapterAnnotationRefreshVersion;
     private bool refreshingChapterAnnotationUi;
+    private long pendingChapterNavigationOffset = -1;
+    private string? pendingChapterNavigationTitle;
     private Guid? selectedChapterAnnotationChapterId;
     private Guid? selectedChapterAnnotationCategoryId;
     private IReadOnlyList<NovelChapter> chapterAnnotationChapters = Array.Empty<NovelChapter>();
@@ -408,6 +410,8 @@ public sealed partial class MainWindow
 
     private void CancelChapterIndexBuild()
     {
+        pendingChapterNavigationOffset = -1;
+        pendingChapterNavigationTitle = null;
         chapterIndexBuildVersion++;
         chapterIndexBuildCancellation?.Cancel();
         chapterIndexBuildCancellation = null;
@@ -446,17 +450,75 @@ public sealed partial class MainWindow
         if (annotationOffsetMap is null || provider is null || filteredSource is not null)
             return;
 
+        pendingChapterNavigationOffset = chapter.StartOffset;
+        pendingChapterNavigationTitle = chapter.Title;
+        if (!LineIndexer.IsCompleted && !LineIndexer.CanResolveOffset(chapter.StartOffset))
+        {
+            LblStatus.Text = $"正在定位章节：{chapter.Title}";
+            if (indexingTask.IsCompleted || cancelIndexing?.IsCancellationRequested == true)
+                _ = ResumeIndexingForChapterNavigationAsync();
+            return;
+        }
+
         try
         {
-            var (line, _) = annotationOffsetMap.GetPosition(chapter.StartOffset);
-            View.GoToLineColumn(line, 0);
-            View.CenterCaretVertically();
-            View.FocusCanvas();
+            ApplyPendingChapterNavigation();
         }
         catch (Exception ex)
         {
+            pendingChapterNavigationOffset = -1;
+            pendingChapterNavigationTitle = null;
             diagnostics.LogSwallowed("Navigate to chapter", ex);
             await ShowNovelProjectMessageAsync("无法跳转章节", ex.Message);
+        }
+    }
+
+    private void ApplyPendingChapterNavigation()
+    {
+        long offset = pendingChapterNavigationOffset;
+        if (offset < 0 || annotationOffsetMap is null || provider is null || filteredSource is not null)
+            return;
+
+        if (!LineIndexer.CanResolveOffset(offset))
+        {
+            if (!LineIndexer.IsCompleted)
+                return;
+
+            pendingChapterNavigationOffset = -1;
+            pendingChapterNavigationTitle = null;
+            LblStatus.Text = "章节位置超出当前原文范围，无法跳转。";
+            return;
+        }
+
+        string? title = pendingChapterNavigationTitle;
+        pendingChapterNavigationOffset = -1;
+        pendingChapterNavigationTitle = null;
+        var (line, _) = annotationOffsetMap.GetPosition(offset);
+        View.GoToLineColumn(line, 0);
+        View.CenterCaretVertically();
+        View.FocusCanvas();
+        if (!string.IsNullOrWhiteSpace(title))
+            LblStatus.Text = $"已定位：{title}";
+    }
+
+    private async Task ResumeIndexingForChapterNavigationAsync()
+    {
+        if (provider is null || LineIndexer.IsCompleted || pendingChapterNavigationOffset < 0)
+            return;
+
+        try
+        {
+            await StopIndexingAsync();
+            if (provider is null || LineIndexer.IsCompleted || pendingChapterNavigationOffset < 0)
+                return;
+
+            indexRefreshTimer.Start();
+            StartIndexing();
+        }
+        catch (Exception ex)
+        {
+            diagnostics.LogSwallowed("Resume indexing for chapter navigation", ex);
+            LblStatus.Text = $"无法继续索引以定位章节：{ex.Message}";
         }
     }
 
