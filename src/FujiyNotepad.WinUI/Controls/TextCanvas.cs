@@ -607,7 +607,7 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (isClick)
             {
-                TextPosition position = HitTestText(released.X, released.Y);
+                TextPosition position = HitTestTextCharacter(released.X, released.Y);
                 if (HasAnnotationMarkerAt(position))
                     AnnotationMarkerClicked?.Invoke(position);
             }
@@ -620,12 +620,8 @@ namespace FujiyNotepad.WinUI.Controls
 
             foreach (TextAnnotationMarker marker in markers)
             {
-                if ((position.Column >= marker.StartColumn && position.Column < marker.EndColumn)
-                    || (position.Column > 0 && position.Column - 1 >= marker.StartColumn
-                        && position.Column - 1 < marker.EndColumn))
-                {
+                if (position.Column >= marker.StartColumn && position.Column < marker.EndColumn)
                     return true;
-                }
             }
 
             return false;
@@ -1083,6 +1079,58 @@ namespace FujiyNotepad.WinUI.Controls
             }
 
             // Clicks before or after the painted text still place the caret at the nearest line boundary.
+            int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
+                ? 0
+                : hitLine.Display.Length;
+            return engine.PositionFromDisplayIndex(
+                hitLine.LineIndex, hitLine.DisplayStartIndex + boundary, trailing: false);
+        }
+
+        // Returns the source column of the glyph under the pointer, not the nearest caret boundary.
+        // Annotation anchors are half-open ranges, so this avoids treating the character immediately after
+        // an anchor as part of it when DirectWrite reports a trailing caret position.
+        private TextPosition HitTestTextCharacter(double x, double y)
+        {
+            IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            if (lines.Count == 0)
+                return engine.HitTest(x, y);
+
+            VisibleLine hitLine = lines[0];
+            foreach (VisibleLine candidate in lines)
+            {
+                if (y >= candidate.Y && y < candidate.Y + lineHeight)
+                {
+                    hitLine = candidate;
+                    break;
+                }
+
+                if (y >= candidate.Y)
+                    hitLine = candidate;
+            }
+
+            if (hitLine.Display.Length == 0)
+            {
+                return engine.PositionFromDisplayIndex(
+                    hitLine.LineIndex, hitLine.DisplayStartIndex, trailing: false);
+            }
+
+            CanvasTextLayout? layout = GetTextLayout(hitLine);
+            if (layout is null)
+                return HitTestText(x, y);
+
+            float localX = (float)(x - hitLine.TextX);
+            float localY = (float)Math.Max(0, lineHeight / 2.0);
+            if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out _))
+            {
+                int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
+                int characterCount = Math.Max(1, region.CharacterCount);
+                return engine.PositionFromDisplayIndex(
+                    hitLine.LineIndex,
+                    hitLine.DisplayStartIndex + localIndex,
+                    trailing: false,
+                    characterCount);
+            }
+
             int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
                 ? 0
                 : hitLine.Display.Length;
