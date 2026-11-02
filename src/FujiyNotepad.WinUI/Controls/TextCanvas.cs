@@ -596,7 +596,7 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            PointerPoint pointer = e.GetCurrentPoint(this);
+            var pointer = e.GetCurrentPoint(this);
             // Keep the text position under a right-click for the chapter-annotation context command.
             if (!pointer.Properties.IsLeftButtonPressed)
             {
