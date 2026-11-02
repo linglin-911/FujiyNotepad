@@ -10,6 +10,7 @@ namespace FujiyNotepad.WinUI
     {
         private int smallAnnotationRefreshVersion;
         private Dictionary<Guid, string> smallAnnotationCategoryNames = new();
+        private Guid? selectedSmallAnnotationCategoryId;
 
         private sealed record SmallAnnotationEditValues(string? Title, string Content, Guid? CategoryId);
 
@@ -25,7 +26,10 @@ namespace FujiyNotepad.WinUI
             bool show = SmallAnnotationsItem.IsChecked;
             SmallAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             if (show)
+            {
+                await ReloadSmallAnnotationCategoriesAsync();
                 await RefreshSmallAnnotationsAsync();
+            }
         }
 
         private void CloseSmallAnnotations_Click(object sender, RoutedEventArgs e)
@@ -42,24 +46,37 @@ namespace FujiyNotepad.WinUI
         private async void SmallAnnotationCategoryFilter_SelectionChanged(
             object sender, SelectionChangedEventArgs e)
         {
-            if (!refreshingSmallAnnotationUi)
-                await RefreshSmallAnnotationsAsync();
+            if (refreshingSmallAnnotationUi)
+                return;
+
+            selectedSmallAnnotationCategoryId =
+                SmallAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid id } ? id : null;
+            await RefreshSmallAnnotationsAsync();
         }
 
-        private async void SmallAnnotationList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void SmallAnnotationList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateSmallAnnotationActionButtons();
         }
 
+        // A single click on a note navigates to its first valid source occurrence. The full note and
+        // all occurrences remain available from the separate Details action.
         private async void SmallAnnotationList_ItemClick(object sender, ItemClickEventArgs e)
         {
             if (e.ClickedItem is ListViewItem { Tag: NovelAnnotationSummary summary })
+                await NavigateToFirstSmallAnnotationAnchorAsync(summary);
+        }
+
+        private async void ShowSelectedSmallAnnotationDetails_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetSelectedSmallAnnotationSummary() is { } summary)
                 await ShowSmallAnnotationDetailsAsync(summary);
         }
 
         private void UpdateSmallAnnotationActionButtons()
         {
             bool hasSelection = GetSelectedSmallAnnotationSummary() is not null;
+            ShowSmallAnnotationDetailsButton.IsEnabled = hasSelection;
             EditSmallAnnotationButton.IsEnabled = hasSelection;
             DeleteSmallAnnotationButton.IsEnabled = hasSelection;
         }
@@ -71,41 +88,25 @@ namespace FujiyNotepad.WinUI
                 : null;
         }
 
-        private Guid? GetSelectedSmallAnnotationCategoryId()
-        {
-            return SmallAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid id }
-                ? id
-                : null;
-        }
+        private Guid? GetSelectedSmallAnnotationCategoryId() => selectedSmallAnnotationCategoryId;
 
-        private async Task RefreshSmallAnnotationsAsync(Guid? preferredAnnotationId = null)
+        private async Task ReloadSmallAnnotationCategoriesAsync(Guid? preferredCategoryId = null)
         {
             NovelAnnotationStore? store = activeAnnotationStore;
             if (store is null)
                 return;
 
-            int requestVersion = ++smallAnnotationRefreshVersion;
-            Guid? selectedAnnotationId = preferredAnnotationId
-                ?? GetSelectedSmallAnnotationSummary()?.Annotation.Id;
-            Guid? categoryId = GetSelectedSmallAnnotationCategoryId();
-            string searchText = SmallAnnotationSearchBox.Text;
-
             try
             {
                 IReadOnlyList<AnnotationCategory> categories = await store.GetCategoriesAsync();
-                if (categoryId is Guid requestedCategory
-                    && !categories.Any(category => category.Id == requestedCategory))
+                if (!ReferenceEquals(store, activeAnnotationStore))
+                    return;
+
+                Guid? categoryId = preferredCategoryId ?? selectedSmallAnnotationCategoryId;
+                if (categoryId is Guid requested
+                    && !categories.Any(category => category.Id == requested))
                 {
                     categoryId = null;
-                }
-
-                IReadOnlyList<NovelAnnotationSummary> summaries =
-                    await store.GetAnnotationSummariesAsync(categoryId, searchText);
-
-                if (requestVersion != smallAnnotationRefreshVersion
-                    || !ReferenceEquals(store, activeAnnotationStore))
-                {
-                    return;
                 }
 
                 refreshingSmallAnnotationUi = true;
@@ -125,10 +126,49 @@ namespace FujiyNotepad.WinUI
                         });
                     }
 
-                    SmallAnnotationCategoryFilter.SelectedIndex = categoryId is Guid selectedCategory
-                        ? categories.ToList().FindIndex(category => category.Id == selectedCategory) + 1
+                    SmallAnnotationCategoryFilter.SelectedIndex = categoryId is Guid selected
+                        ? categories.ToList().FindIndex(category => category.Id == selected) + 1
                         : 0;
+                    selectedSmallAnnotationCategoryId = categoryId;
+                }
+                finally
+                {
+                    refreshingSmallAnnotationUi = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ReferenceEquals(store, activeAnnotationStore))
+                    await ShowMessageAsync("无法加载小批注分类", ex.Message);
+            }
+        }
 
+        private async Task RefreshSmallAnnotationsAsync(Guid? preferredAnnotationId = null)
+        {
+            NovelAnnotationStore? store = activeAnnotationStore;
+            if (store is null)
+                return;
+
+            int requestVersion = ++smallAnnotationRefreshVersion;
+            Guid? selectedAnnotationId = preferredAnnotationId
+                ?? GetSelectedSmallAnnotationSummary()?.Annotation.Id;
+            Guid? categoryId = selectedSmallAnnotationCategoryId;
+            string searchText = SmallAnnotationSearchBox.Text;
+
+            try
+            {
+                IReadOnlyList<NovelAnnotationSummary> summaries =
+                    await store.GetAnnotationSummariesAsync(categoryId, searchText);
+
+                if (requestVersion != smallAnnotationRefreshVersion
+                    || !ReferenceEquals(store, activeAnnotationStore))
+                {
+                    return;
+                }
+
+                refreshingSmallAnnotationUi = true;
+                try
+                {
                     SmallAnnotationList.Items.Clear();
                     ListViewItem? itemToSelect = null;
                     foreach (NovelAnnotationSummary summary in summaries)
@@ -140,6 +180,16 @@ namespace FujiyNotepad.WinUI
                     }
 
                     SmallAnnotationCount.Text = $"{summaries.Count} 条批注";
+                    SmallAnnotationEmptyState.Text = summaries.Count > 0
+                        ? ""
+                        : !string.IsNullOrWhiteSpace(searchText)
+                            ? "没有找到匹配的小批注。"
+                            : categoryId is not null
+                                ? "该分类下暂无小批注。"
+                                : "暂无小批注。";
+                    SmallAnnotationEmptyState.Visibility = summaries.Count == 0
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
                     SmallAnnotationList.SelectedItem = itemToSelect;
                 }
                 finally
@@ -186,6 +236,15 @@ namespace FujiyNotepad.WinUI
             });
             content.Children.Add(new TextBlock
             {
+                Text = string.IsNullOrWhiteSpace(summary.FirstActiveAnchorQuote)
+                    ? "原文：暂无有效关联"
+                    : $"原文：{CreateSmallAnnotationExcerpt(summary.FirstActiveAnchorQuote, 72)}",
+                FontSize = 11,
+                Opacity = 0.82,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            content.Children.Add(new TextBlock
+            {
                 Text = $"{category}  ·  有效位置 {activeAnchors}/{summary.AnchorCount}"
                     + (summary.OrphanedAnchorCount > 0 ? $"  ·  失效 {summary.OrphanedAnchorCount}" : "")
                     + $"  ·  {annotation.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}",
@@ -210,6 +269,42 @@ namespace FujiyNotepad.WinUI
 
             return text[..maxLength] + "…";
         }
+
+        private async Task NavigateToFirstSmallAnnotationAnchorAsync(NovelAnnotationSummary summary)
+        {
+            NovelAnnotationStore? store = activeAnnotationStore;
+            NovelProject? project = activeNovelProject;
+            if (store is null || project is null)
+                return;
+
+            try
+            {
+                IReadOnlyList<AnnotationAnchor> anchors =
+                    await store.GetAnchorsForAnnotationAsync(summary.Annotation.Id);
+                if (!ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
+                {
+                    return;
+                }
+
+                AnnotationAnchor? first = anchors.FirstOrDefault(anchor =>
+                    !anchor.IsOrphaned
+                    && anchor.DocumentRevision == project.Metadata.DocumentRevision);
+
+                if (first is null)
+                {
+                    await ShowMessageAsync("无法定位原文", "这条小批注目前没有可用的原文关联位置。");
+                    return;
+                }
+
+                await NavigateToSmallAnnotationAnchorAsync(first);
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync("无法定位原文", ex.Message);
+            }
+        }
+
 
         private async Task<(long StartOffset, long EndOffset, string Quote)?> GetCurrentSelectionAnchorAsync()
         {
