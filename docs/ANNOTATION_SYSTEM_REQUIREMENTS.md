@@ -139,7 +139,7 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 | ST-009 | 原文修改后失效保护和错误定位拦截 | [部分完成] |
 | ST-010 | 长篇小说滚动、搜索、标记渲染和数据库查询性能 | [未完成] |
 | ST-011 | Release x64 构建 | [已完成]；用户已用显式 x64 平台参数成功编译 |
-| ST-012 | 自动化测试全量通过 | [未完成]；新增回归测试尚未在用户 Windows x64 环境执行 |
+| ST-012 | 自动化测试全量通过 | [已完成]；用户 Windows x64 Release 构建成功，Core.Tests 与 Presentation.Tests 共 865 项测试全部通过，失败 0、跳过 0 |
 | ST-013 | 多位置列表逐处显示和点击跳转、列表双击统一弹窗 | [未完成]；等待用户 Windows x64 实测 |
 | ST-014 | 详情弹窗字段默认只读，逐字段点击笔图标编辑并保存 | [未完成]；等待用户 Windows x64 实测 |
 | ST-015 | 创建弹窗原文区域在小窗口和长摘录下可滚动查看全文 | [未完成]；等待用户 Windows x64 实测 |
@@ -322,7 +322,9 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 用户已实际验证
 
-- 在本轮改动之前，用户曾确认 Release x64 显式参数构建成功；本轮新提交首次构建出现 BUILD-002，修复后等待重新验证。
+- 用户已确认最新提交的 Windows x64 Release 构建成功（WinUI 目标为 `win-x64`）。
+- 用户已确认自动化测试通过：865 项成功，0 失败，0 跳过；覆盖 Core.Tests 与 Presentation.Tests。
+- 尚待用户在软件界面回归：列表逐处原文跳转/居中、双击统一弹窗、字段笔形编辑、长原文滚动、父子批注联动，以及空分类和正文标记。
 - 可以创建小批注，并在右侧列表看到批注。
 - 可以创建自定义分类。
 - 本轮新增代码尚未由用户重新构建和回归；待验证：列表逐处原文跳转/居中、双击统一弹窗、字段笔形编辑、长原文滚动、父子批注联动，以及空分类和正文标记回归。
@@ -330,7 +332,6 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 ### 尚未完成/未收到验证结果
 
 - BUG-001 至 BUG-010 的本轮用户验收。
-- 自动化测试全量通过的结果。
 - 小批注完整回归测试和长篇小说性能验收。
 - 章节索引与章节批注。
 - 大批注与多章节辅助写作工作区。
@@ -338,7 +339,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新已知提交
 
-`69da35f064a39b4148c05e2b8596c3fde721a70c`（修复小批注按钮 Click 事件参数错误，并清理 xUnit 单元素集合断言警告后的最新代码提交）
+`69da35f064a39b4148c05e2b8596c3fde721a70c`（本轮代码提交；随后通过用户 Windows x64 Release 构建及 865 项自动化测试）
 
 > 注意：每次提交后更新此处的提交 SHA，并补充版本记录。
 
@@ -356,3 +357,4 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 | 2026-11-02 | 阅读器引擎新增居中定位方法：非自动换行按源行居中，自动换行按实际显示行居中；批注跳转统一调用该方法，并新增居中定位单元测试。最新代码提交 `da43e352d736f906d00b9a0cf0df32009732864c`。 |
 | 2026-11-02 | 调整批注列表点击事件：卡片空白区域跳转首个有效原文；每处原文按钮单独跳转并阻止事件冒泡；点击原文位置同步选中所属批注，避免编辑/删除操作作用于旧选中项；双击卡片打开统一弹窗。最新代码提交 `b588362d81dd8cb3dbc84677f3b991351d0f99ee`。 |
 | 2026-11-02 | 修复用户反馈的 Release x64 编译错误：小批注两个 Button.Click 处理器不再访问不存在的 RoutedEventArgs.Handled；将单元素集合数量断言改为 Assert.Single，清理 xUnit2013 警告。WMC1509/WMC0001 待重新构建确认是否随 C# 错误修复而消失。最新提交 `69da35f064a39b4148c05e2b8596c3fde721a70c`。 |
+| 2026-11-02 | 用户确认修复后 Windows x64 Release 构建成功；自动化测试 865 项全部通过（Core.Tests、Presentation.Tests，失败 0、跳过 0）。标记 ST-012 自动化测试验收完成；WinUI 交互功能仍待用户界面回归。 |
