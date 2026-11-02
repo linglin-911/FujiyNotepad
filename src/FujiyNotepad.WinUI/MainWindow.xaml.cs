@@ -1348,6 +1348,8 @@ namespace FujiyNotepad.WinUI
             if (activeAnnotationStore is null || activeNovelProject is null || filteredSource is not null)
             {
                 annotationMarkerRefreshTimer.Stop();
+                annotationMarkerRefreshCancellation?.Cancel();
+                annotationMarkerRefreshCancellation = null;
                 if (activeAnnotationStore is null || filteredSource is not null)
                     View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
                 return;
