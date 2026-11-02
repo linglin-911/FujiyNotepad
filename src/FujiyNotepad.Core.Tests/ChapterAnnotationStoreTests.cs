@@ -229,6 +229,44 @@ public sealed class ChapterAnnotationStoreTests
     }
 
     [Fact]
+    public async Task ChapterAnnotations_PersistAfterReopeningTheProjectDatabase()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            Guid chapterId = Guid.NewGuid();
+            Guid categoryId;
+            Guid annotationId;
+            var chapter = new NovelChapter(chapterId, "第9章 旧日", 0, 900, 9, 1);
+
+            await using (var firstStore = new NovelAnnotationStore(path))
+            {
+                await firstStore.InitializeAsync();
+                Assert.True(await firstStore.SaveChapterIndexIfEmptyAsync(new[] { chapter }, 1));
+                categoryId = await firstStore.CreateChapterAnnotationCategoryAsync("伏笔");
+                annotationId = await firstStore.CreateChapterAnnotationAsync(
+                    chapterId, "这一章埋下了关键伏笔。", categoryId, "伏笔记录");
+            }
+
+            await using (var reopenedStore = new NovelAnnotationStore(path))
+            {
+                await reopenedStore.InitializeAsync();
+                ChapterAnnotationSummary summary = Assert.Single(
+                    await reopenedStore.GetChapterAnnotationSummariesAsync(chapterId: chapterId));
+
+                Assert.Equal(annotationId, summary.Annotation.Id);
+                Assert.Equal(categoryId, summary.Annotation.CategoryId);
+                Assert.Equal("第9章 旧日", summary.Chapter.Title);
+                Assert.Equal("伏笔", summary.Category?.Name);
+            }
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task DeletingChapter_CascadesItsChapterAnnotations()
     {
         string path = CreateDatabasePath();
