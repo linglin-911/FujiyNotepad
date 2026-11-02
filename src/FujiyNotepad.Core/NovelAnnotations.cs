@@ -54,10 +54,37 @@ public sealed record NovelChapter(
     int ChapterNumber,
     long DocumentRevision = 1);
 
-/// <summary>
-/// A replacement in the document's UTF-16 coordinate space. The removed range is
-/// [StartOffset, StartOffset + DeletedLength), and InsertedLength is the replacement's UTF-16 length.
-/// </summary>
+/// <summary>A category used only by chapter annotations; stored separately from small-annotation categories.</summary>
+public sealed record ChapterAnnotationCategory(
+    Guid Id,
+    string Name,
+    string? Color = null,
+    int SortOrder = 0,
+    DateTimeOffset? CreatedAt = null);
+
+/// <summary>A note bound to one chapter, without a source-text range.</summary>
+public sealed record ChapterAnnotation(
+    Guid Id,
+    Guid ChapterId,
+    Guid? CategoryId,
+    string? Title,
+    string Content,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>A list projection that includes the chapter and optional category for one chapter note.</summary>
+public sealed record ChapterAnnotationSummary(
+    ChapterAnnotation Annotation,
+    NovelChapter Chapter,
+    ChapterAnnotationCategory? Category);
+
+/// <summary>Records which parser revision indexed a project's chapter headings.</summary>
+public sealed record NovelChapterIndexState(
+    long DocumentRevision,
+    int ParserVersion,
+    int ChapterCount,
+    DateTimeOffset IndexedAt);
+
 public readonly record struct DocumentEdit(
     long StartOffset,
     long DeletedLength,
