@@ -377,6 +377,8 @@
                     </Grid>
                     <ListView x:Name="SmallAnnotationList" Grid.Row="3"
                               SelectionChanged="SmallAnnotationList_SelectionChanged"
+                              IsItemClickEnabled="True"
+                              ItemClick="SmallAnnotationList_ItemClick"
                               SelectionMode="Single" />
                     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
                         <Button Content="编辑" Click="EditSelectedSmallAnnotation_Click"
