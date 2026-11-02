@@ -19,22 +19,22 @@ public sealed record NovelChapterIndexReconciliation(
 }
 
 /// <summary>
-/// Matches old and newly detected chapter headings by their stable heading identity, not by raw
-/// offsets. This allows body edits and heading-title edits to preserve chapter IDs, while a deleted
-/// heading is correctly reported as removed instead of being matched to the expanded previous range.
+/// Matches old and newly detected chapter headings by stable heading identity, not raw offsets.
+/// This lets body edits and title edits preserve chapter IDs, while deleted headings remain removed
+/// instead of being matched to a previous chapter whose range expanded.
 /// </summary>
 public static class NovelChapterIndexReconciler
 {
     private static readonly Regex ChineseNumberedHeading = new(
-        @"^第\\s*(?<number>[0-9０-９〇零一二三四五六七八九十百千万两兩壹贰貳叁參肆伍陆陸柒捌玖拾佰仟]+)\\s*(?<unit>章|回|节|節|集|篇)",
+        @"^第\s*(?<number>[0-9０-９〇零一二三四五六七八九十百千万两兩壹贰貳叁參肆伍陆陸柒捌玖拾佰仟]+)\s*(?<unit>章|回|节|節|集|篇)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex EnglishNumberedHeading = new(
-        @"^(?:chapter|ch\\.?)\\s*#?\\s*(?<number>\\d+)",
+        @"^(?:chapter|ch\.?)\s*#?\s*(?<number>\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex SpecialHeading = new(
-        @"^(?<name>序章|楔子|引子|序幕|终章|尾声|后记|番外(?:\\s*\\d+)?|prologue|epilogue)",
+        @"^(?<name>序章|楔子|引子|序幕|终章|尾声|后记|番外(?:\s*\d+)?|prologue|epilogue)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     public static NovelChapterIndexReconciliation Reconcile(
@@ -48,8 +48,8 @@ public static class NovelChapterIndexReconciler
             .OrderBy(chapter => chapter.StartOffset).ToArray();
         NovelChapter[] newChapters = detected.OrderBy(chapter => chapter.StartOffset).ToArray();
 
-        var oldGroups = GroupByIdentity(oldChapters);
-        var newGroups = GroupByIdentity(newChapters);
+        Dictionary<string, List<NovelChapter>> oldGroups = GroupByIdentity(oldChapters);
+        Dictionary<string, List<NovelChapter>> newGroups = GroupByIdentity(newChapters);
         var matchedOld = new HashSet<Guid>();
         var matchedNew = new Dictionary<Guid, NovelChapter>();
         var renamed = new List<NovelChapterTitleChange>();
@@ -63,13 +63,15 @@ public static class NovelChapterIndexReconciler
             for (int index = 0; index < count; index++)
             {
                 NovelChapter previous = oldGroup[index];
-                NovelChapter current = newGroup[index] with
+                NovelChapter detectedChapter = newGroup[index];
+                NovelChapter current = detectedChapter with
                 {
                     Id = previous.Id,
                     IsActive = true,
                 };
+
                 matchedOld.Add(previous.Id);
-                matchedNew[current.Id] = current;
+                matchedNew[detectedChapter.Id] = current;
                 if (!string.Equals(previous.Title, current.Title, StringComparison.Ordinal))
                     renamed.Add(new NovelChapterTitleChange(previous, current));
             }
@@ -79,38 +81,21 @@ public static class NovelChapterIndexReconciler
         var added = new List<NovelChapter>();
         foreach (NovelChapter chapter in newChapters)
         {
-            NovelChapter? match = matchedNew.Values.FirstOrDefault(item =>
-                item.StartOffset == chapter.StartOffset
-                && item.DocumentRevision == chapter.DocumentRevision
-                && string.Equals(GetIdentity(chapter), GetIdentity(item), StringComparison.Ordinal));
-            if (match is not null)
+            if (matchedNew.TryGetValue(chapter.Id, out NovelChapter? matched))
             {
-                result.Add(match);
-                continue;
+                result.Add(matched);
             }
-
-            // The matched object may have moved since its prior offset. Resolve by the new chapter's
-            // identity and occurrence order rather than requiring equal offsets.
-            string identity = GetIdentity(chapter);
-            List<NovelChapter>? group = newGroups.GetValueOrDefault(identity);
-            int occurrence = group?.IndexOf(chapter) ?? -1;
-            if (occurrence >= 0 && occurrence < (oldGroups.GetValueOrDefault(identity)?.Count ?? 0))
+            else
             {
-                NovelChapter old = oldGroups[identity][occurrence];
-                if (matchedOld.Contains(old.Id) && matchedNew.TryGetValue(old.Id, out NovelChapter? matched))
-                {
-                    result.Add(matched);
-                    continue;
-                }
+                NovelChapter newChapter = chapter with { IsActive = true };
+                result.Add(newChapter);
+                added.Add(newChapter);
             }
-
-            result.Add(chapter with { IsActive = true });
-            added.Add(chapter with { IsActive = true });
         }
 
         NovelChapter[] removed = oldChapters.Where(chapter => !matchedOld.Contains(chapter.Id)).ToArray();
         return new NovelChapterIndexReconciliation(
-            result.OrderBy(chapter => chapter.StartOffset).ToArray(),
+            result,
             added,
             removed,
             renamed);
