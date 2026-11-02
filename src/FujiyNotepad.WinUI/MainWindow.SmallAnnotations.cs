@@ -390,7 +390,10 @@ namespace FujiyNotepad.WinUI
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
+                selectedSmallAnnotationCategoryId = values.CategoryId;
+                await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
                 await RefreshSmallAnnotationsAsync(annotationId);
+                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
             }
             catch (Exception ex)
             {
@@ -433,7 +436,10 @@ namespace FujiyNotepad.WinUI
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
+                selectedSmallAnnotationCategoryId = target.Annotation.CategoryId;
+                await ReloadSmallAnnotationCategoriesAsync(target.Annotation.CategoryId);
                 await RefreshSmallAnnotationsAsync(target.Annotation.Id);
+                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
             }
             catch (Exception ex)
             {
@@ -499,15 +505,45 @@ namespace FujiyNotepad.WinUI
             if (quotePreview is not null)
             {
                 panel.Children.Add(new TextBlock { Text = "关联原文（只读）" });
-                panel.Children.Add(new TextBox
+                var quoteText = new TextBlock
                 {
                     Text = quotePreview,
-                    IsReadOnly = true,
-                    AcceptsReturn = true,
                     TextWrapping = TextWrapping.Wrap,
-                    MinHeight = 60,
-                    MaxHeight = 120,
-                });
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxLines = 3,
+                    IsTextSelectionEnabled = true,
+                };
+                var quoteViewer = new ScrollViewer
+                {
+                    Content = quoteText,
+                    MaxHeight = 100,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                };
+                panel.Children.Add(quoteViewer);
+
+                if (quotePreview.Length > 60)
+                {
+                    bool expanded = false;
+                    var expandQuoteButton = new Button
+                    {
+                        Content = "展开全部原文",
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Padding = new Thickness(8, 3, 8, 3),
+                    };
+                    expandQuoteButton.Click += (_, _) =>
+                    {
+                        expanded = !expanded;
+                        quoteText.MaxLines = expanded ? 0 : 3;
+                        quoteText.TextTrimming = expanded ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+                        quoteViewer.MaxHeight = expanded ? 240 : 100;
+                        quoteViewer.VerticalScrollBarVisibility = expanded
+                            ? ScrollBarVisibility.Auto
+                            : ScrollBarVisibility.Disabled;
+                        expandQuoteButton.Content = expanded ? "收起原文" : "展开全部原文";
+                    };
+                    panel.Children.Add(expandQuoteButton);
+                }
             }
 
             var validationText = new TextBlock
@@ -900,6 +936,8 @@ namespace FujiyNotepad.WinUI
                     values.Content,
                     values.CategoryId,
                     values.Title);
+                selectedSmallAnnotationCategoryId = values.CategoryId;
+                await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
                 await RefreshSmallAnnotationsAsync(summary.Annotation.Id);
             }
             catch (Exception ex)
@@ -935,6 +973,7 @@ namespace FujiyNotepad.WinUI
             {
                 await store.DeleteAnnotationAsync(summary.Annotation.Id);
                 await RefreshSmallAnnotationsAsync();
+                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
             }
             catch (Exception ex)
             {
@@ -1119,7 +1158,6 @@ namespace FujiyNotepad.WinUI
                     errorText.Text = "";
                     nameBox.Text = "";
                     await ReloadCategoriesAsync(id);
-                    await RefreshSmallAnnotationsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -1139,7 +1177,6 @@ namespace FujiyNotepad.WinUI
                     await store.UpdateCategoryAsync(selected.Id, name, selected.Color, selected.SortOrder);
                     errorText.Text = "";
                     await ReloadCategoriesAsync(selected.Id);
-                    await RefreshSmallAnnotationsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -1158,7 +1195,6 @@ namespace FujiyNotepad.WinUI
                     await store.DeleteCategoryAsync(selected.Id);
                     errorText.Text = "";
                     await ReloadCategoriesAsync();
-                    await RefreshSmallAnnotationsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -1178,7 +1214,6 @@ namespace FujiyNotepad.WinUI
                     await store.MergeCategoriesAsync(selected.Id, targetId.Value);
                     errorText.Text = "";
                     await ReloadCategoriesAsync(targetId.Value);
-                    await RefreshSmallAnnotationsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -1189,7 +1224,10 @@ namespace FujiyNotepad.WinUI
             await ReloadCategoriesAsync();
             await dialog.ShowAsync();
             if (ReferenceEquals(store, activeAnnotationStore))
+            {
+                await ReloadSmallAnnotationCategoriesAsync(selectedSmallAnnotationCategoryId);
                 await RefreshSmallAnnotationsAsync();
+            }
         }
     }
 }
