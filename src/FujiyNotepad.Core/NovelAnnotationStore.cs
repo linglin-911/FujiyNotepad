@@ -1015,7 +1015,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
     public async Task<IReadOnlyList<ChapterAnnotationSummary>> GetChapterAnnotationSummariesAsync(
         Guid? chapterId = null, Guid? categoryId = null, string? searchText = null,
-        CancellationToken cancellationToken = default, bool? chapterIsActive = null)
+        CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -1028,7 +1028,6 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             INNER JOIN Chapters c ON c.Id = a.ChapterId
             LEFT JOIN ChapterAnnotationCategories cat ON cat.Id = a.CategoryId
             WHERE ($chapter IS NULL OR a.ChapterId = $chapter)
-              AND ($chapterActive IS NULL OR c.IsActive = $chapterActive)
               AND ($category IS NULL OR a.CategoryId = $category)
               AND ($search IS NULL
                    OR a.Title LIKE $search ESCAPE '\'
@@ -1037,8 +1036,6 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             ORDER BY c.ChapterNumber, c.StartOffset, a.UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
-        command.Parameters.AddWithValue("$chapterActive",
-            (object?)(chapterIsActive is null ? null : chapterIsActive.Value ? 1 : 0) ?? DBNull.Value);
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
         string? pattern = string.IsNullOrWhiteSpace(searchText)
             ? null
