@@ -749,6 +749,27 @@ namespace FujiyNotepad.Presentation
             RaiseRedraw();
         }
 
+        /// <summary>Centers the current caret position vertically in the viewport.</summary>
+        public void CenterCaretVertically()
+        {
+            if (provider is null || totalLines == 0)
+                return;
+
+            if (wordWrap)
+            {
+                int wrapCols = WrapColumns;
+                IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(GetColumns(caret.Line), wrapCols);
+                int caretRow = LineWrapper.RowOfCharIndex(rows, caret.Column);
+                (int topLine, int topRow) = AdvanceDisplayRows(
+                    caret.Line, caretRow, -(VisibleRowCount / 2));
+                SetTopPosition(topLine, topRow);
+            }
+            else
+            {
+                SetFirstVisibleLine(caret.Line - (FullyVisibleLineCount / 2));
+            }
+        }
+
         public void SelectMatch(int lineIndex, int startColumn, int length)
         {
             if (provider == null || totalLines == 0)
