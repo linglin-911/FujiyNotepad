@@ -48,7 +48,7 @@ public static class NovelChapterIndexBuilder
             cancellationToken.ThrowIfCancellationRequested();
 
             string line = lines.GetLineUncached(lineIndex);
-            string candidate = line.Trim().TrimStart('\uFEFF');
+            string candidate = line.Trim().TrimStart('\uFEFF').Trim();
             if (TryParseHeading(candidate, out string title))
                 headings.Add((documentEnd, title));
 
@@ -93,7 +93,7 @@ public static class NovelChapterIndexBuilder
     public static bool TryParseHeading(string line, out string title)
     {
         ArgumentNullException.ThrowIfNull(line);
-        string candidate = line.Trim().TrimStart('\uFEFF');
+        string candidate = line.Trim().TrimStart('\uFEFF').Trim();
         if (candidate.Length == 0)
         {
             title = "";
