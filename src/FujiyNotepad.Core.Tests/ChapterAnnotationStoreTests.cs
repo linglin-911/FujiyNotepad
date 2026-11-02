@@ -30,7 +30,7 @@ public sealed class ChapterAnnotationStoreTests
 
             NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
                 await store.GetChapterIndexStateAsync());
-            Assert.Equal(3, state.DocumentRevision);
+            Assert.Equal(3L, state.DocumentRevision);
             Assert.Equal(NovelChapterIndexBuilder.CurrentParserVersion, state.ParserVersion);
             Assert.Equal(2, state.ChapterCount);
         }
@@ -268,11 +268,11 @@ public sealed class ChapterAnnotationStoreTests
             await store.ApplyDocumentEditAsync(new DocumentEdit(25, 0, 5), newDocumentRevision: 2);
 
             NovelChapter updated = Assert.Single(await store.GetChaptersAsync());
-            Assert.Equal(105, updated.EndOffset);
-            Assert.Equal(2, updated.DocumentRevision);
+            Assert.Equal(105L, updated.EndOffset);
+            Assert.Equal(2L, updated.DocumentRevision);
             NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
                 await store.GetChapterIndexStateAsync());
-            Assert.Equal(2, state.DocumentRevision);
+            Assert.Equal(2L, state.DocumentRevision);
             Assert.Single(await store.GetChapterAnnotationSummariesAsync(chapterId: chapter.Id));
         }
         finally
