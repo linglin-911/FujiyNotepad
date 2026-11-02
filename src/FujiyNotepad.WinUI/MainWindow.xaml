@@ -433,7 +433,8 @@
                     <ComboBox x:Name="ChapterAnnotationChapterFilter" Grid.Row="2"
                               HorizontalAlignment="Stretch"
                               PlaceholderText="全部章节"
-                              SelectionChanged="ChapterAnnotationChapterFilter_SelectionChanged" />
+                              SelectionChanged="ChapterAnnotationChapterFilter_SelectionChanged"
+                              DropDownClosed="ChapterAnnotationChapterFilter_DropDownClosed" />
                     <Grid Grid.Row="3" ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
