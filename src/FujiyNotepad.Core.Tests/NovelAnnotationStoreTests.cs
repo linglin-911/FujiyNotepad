@@ -103,6 +103,37 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task ParentRangeQuery_FindsNestedAnchorWhenClickedOffsetIsOutsideChild()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid parentNote = await store.CreateAnnotationAsync("parent");
+            Guid childNote = await store.CreateAnnotationAsync("child");
+            await store.AddAnchorAsync(parentNote, 100, 300, "parent quote");
+            await store.AddAnchorAsync(childNote, 150, 180, "child quote");
+
+            IReadOnlyList<AnnotationAnchor> direct = await store.GetAnchorsAtOffsetAsync(250);
+            AnnotationAnchor parent = Assert.Single(direct);
+            Assert.Equal(parentNote, parent.AnnotationId);
+
+            IReadOnlyList<AnnotationAnchor> contained =
+                await store.GetAnchorsIntersectingRangeAsync(parent.StartOffset, parent.EndOffset);
+
+            Assert.Contains(contained, anchor => anchor.AnnotationId == parentNote);
+            Assert.Contains(contained, anchor => anchor.AnnotationId == childNote);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task Store_AllowsSameRangeForDifferentAnnotationsButRejectsDuplicateForSameAnnotation()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
