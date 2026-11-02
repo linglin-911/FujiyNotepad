@@ -614,9 +614,9 @@ public sealed partial class MainWindow
             || lines.LineCount == 0 || chapterAnnotationChapters.Count == 0)
             return null;
 
-        int firstLine = Math.Clamp(View.FirstVisibleLine, 0, lines.LineCount - 1);
-        int visibleLineCount = Math.Max(1, View.FullyVisibleLineCount + 1);
-        int lastLine = Math.Min(lines.LineCount - 1, firstLine + visibleLineCount - 1);
+        (int visibleFirstLine, int visibleLastLine) = View.GetVisibleSourceLineRange();
+        int firstLine = Math.Clamp(visibleFirstLine, 0, lines.LineCount - 1);
+        int lastLine = Math.Clamp(visibleLastLine, firstLine, lines.LineCount - 1);
         long visibleStart = map.GetLineStartOffset(firstLine);
         long visibleEnd = lastLine + 1 < lines.LineCount
             ? map.GetLineStartOffset(lastLine + 1)
