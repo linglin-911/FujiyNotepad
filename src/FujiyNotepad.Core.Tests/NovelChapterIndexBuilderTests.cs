@@ -58,8 +58,8 @@ public sealed class NovelChapterIndexBuilderTests
         Assert.All(chapters, chapter => Assert.Equal(7, chapter.DocumentRevision));
 
         long secondHeading = text[0].Length + 2 + text[1].Length + 1 + text[2].Length + 2;
-        long thirdHeading = secondHeading + text[3].Length + 1 + text[4].Length + 2;
-        long finalHeading = thirdHeading + text[5].Length + 0;
+        long thirdHeading = secondHeading + text[3].Length + 1;
+        long finalHeading = thirdHeading + text[4].Length + 2;
 
         Assert.Equal(text[0].Length + 2, chapters[0].StartOffset);
         Assert.Equal(secondHeading, chapters[1].StartOffset);
