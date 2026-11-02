@@ -458,7 +458,6 @@ namespace FujiyNotepad.WinUI
                 {
                     Text = string.IsNullOrWhiteSpace(note.Title) ? "（未命名批注）" : note.Title,
                     FontSize = 16,
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap,
                 });
                 content.Children.Add(new TextBlock
@@ -480,7 +479,12 @@ namespace FujiyNotepad.WinUI
                     });
                 }
 
-                content.Children.Add(new Divider());
+                content.Children.Add(new Border
+                {
+                    Height = 1,
+                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        Windows.UI.Color.FromArgb(80, 128, 128, 128)),
+                });
             }
 
             var dialog = new ContentDialog
