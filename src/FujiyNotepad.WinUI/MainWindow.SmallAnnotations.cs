@@ -306,6 +306,198 @@ namespace FujiyNotepad.WinUI
         }
 
 
+        private async Task RefreshVisibleSmallAnnotationMarkersAsync(bool force = false)
+        {
+            NovelAnnotationStore? store = activeAnnotationStore;
+            NovelProject? project = activeNovelProject;
+            DocumentTextOffsetMap? map = annotationOffsetMap;
+            LineProvider? lines = provider;
+
+            if (store is null || project is null || map is null || lines is null
+                || filteredSource is not null || lines.LineCount == 0)
+            {
+                annotationMarkerRefreshVersion++;
+                lastAnnotationMarkerStartLine = -1;
+                lastAnnotationMarkerEndLine = -1;
+                View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
+                return;
+            }
+
+            int firstLine = Math.Clamp(View.FirstVisibleLine, 0, lines.LineCount - 1);
+            int lastLine = Math.Min(
+                lines.LineCount - 1,
+                firstLine + Math.Max(1, View.FullyVisibleLineCount) + 2);
+
+            if (!force && firstLine == lastAnnotationMarkerStartLine
+                && lastLine == lastAnnotationMarkerEndLine)
+            {
+                return;
+            }
+
+            lastAnnotationMarkerStartLine = firstLine;
+            lastAnnotationMarkerEndLine = lastLine;
+            int requestVersion = ++annotationMarkerRefreshVersion;
+
+            try
+            {
+                long startOffset = map.GetLineStartOffset(firstLine);
+                long endOffset = lastLine + 1 < lines.LineCount
+                    ? map.GetLineStartOffset(lastLine + 1)
+                    : map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
+                if (endOffset <= startOffset)
+                    endOffset = checked(startOffset + 1);
+
+                IReadOnlyList<AnnotationAnchor> anchors =
+                    await store.GetAnchorsIntersectingRangeAsync(startOffset, endOffset);
+
+                if (requestVersion != annotationMarkerRefreshVersion
+                    || !ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject)
+                    || !ReferenceEquals(lines, provider)
+                    || filteredSource is not null)
+                {
+                    return;
+                }
+
+                var markers = new List<TextAnnotationMarker>();
+                foreach (AnnotationAnchor anchor in anchors)
+                {
+                    if (anchor.IsOrphaned
+                        || anchor.DocumentRevision != project.Metadata.DocumentRevision)
+                    {
+                        continue;
+                    }
+
+                    (int Line, int Column) start = map.GetPosition(anchor.StartOffset);
+                    (int Line, int Column) end = map.GetPosition(anchor.EndOffset);
+                    int rangeStartLine = Math.Max(firstLine, start.Line);
+                    int rangeEndLine = Math.Min(lastLine, end.Line);
+
+                    for (int lineIndex = rangeStartLine; lineIndex <= rangeEndLine; lineIndex++)
+                    {
+                        int lineLength = lines.GetLineUncached(lineIndex).Length;
+                        int startColumn = lineIndex == start.Line ? start.Column : 0;
+                        int endColumn = lineIndex == end.Line ? end.Column : lineLength;
+                        startColumn = Math.Clamp(startColumn, 0, lineLength);
+                        endColumn = Math.Clamp(endColumn, 0, lineLength);
+
+                        if (endColumn > startColumn)
+                            markers.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
+                    }
+                }
+
+                View.SetAnnotationMarkers(markers);
+            }
+            catch (Exception)
+            {
+                // A transient index/database read failure must not interrupt reading or clear the last
+                // successfully-rendered marker set. A later viewport change retries the query.
+            }
+        }
+
+        private async void OnAnnotationMarkerClicked(TextPosition position)
+        {
+            NovelAnnotationStore? store = activeAnnotationStore;
+            NovelProject? project = activeNovelProject;
+            DocumentTextOffsetMap? map = annotationOffsetMap;
+            if (store is null || project is null || map is null || filteredSource is not null)
+                return;
+
+            try
+            {
+                long offset = map.GetOffset(position.Line, position.Column);
+                IReadOnlyList<AnnotationAnchor> anchors = await store.GetAnchorsAtOffsetAsync(offset);
+                if (anchors.Count == 0 && position.Column > 0)
+                {
+                    offset = map.GetOffset(position.Line, position.Column - 1);
+                    anchors = await store.GetAnchorsAtOffsetAsync(offset);
+                }
+
+                anchors = anchors.Where(anchor =>
+                    !anchor.IsOrphaned
+                    && anchor.DocumentRevision == project.Metadata.DocumentRevision).ToList();
+                if (anchors.Count == 0
+                    || !ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
+                {
+                    return;
+                }
+
+                HashSet<Guid> annotationIds = anchors.Select(anchor => anchor.AnnotationId).ToHashSet();
+                IReadOnlyList<NovelAnnotation> notes =
+                    await store.GetAnnotationsIntersectingRangeAsync(offset, checked(offset + 1));
+                notes = notes.Where(note => annotationIds.Contains(note.Id)).ToList();
+                if (notes.Count > 0
+                    && ReferenceEquals(store, activeAnnotationStore)
+                    && ReferenceEquals(project, activeNovelProject))
+                {
+                    await ShowSmallAnnotationMatchesAtPositionAsync(notes, anchors);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync("无法读取原文批注", ex.Message);
+            }
+        }
+
+        private async Task ShowSmallAnnotationMatchesAtPositionAsync(
+            IReadOnlyList<NovelAnnotation> notes,
+            IReadOnlyList<AnnotationAnchor> anchors)
+        {
+            var content = new StackPanel { Spacing = 12, MinWidth = 420 };
+            content.Children.Add(new TextBlock
+            {
+                Text = $"此处原文关联了 {notes.Count} 条小批注",
+                FontSize = 12,
+                Opacity = 0.72,
+            });
+
+            foreach (NovelAnnotation note in notes)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(note.Title) ? "（未命名批注）" : note.Title,
+                    FontSize = 16,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+                content.Children.Add(new TextBlock
+                {
+                    Text = note.Content,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                });
+
+                foreach (AnnotationAnchor anchor in anchors.Where(anchor => anchor.AnnotationId == note.Id))
+                {
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = $"关联原文：{CreateSmallAnnotationExcerpt(anchor.Quote, 240)}",
+                        FontSize = 12,
+                        Opacity = 0.78,
+                        TextWrapping = TextWrapping.Wrap,
+                        IsTextSelectionEnabled = true,
+                    });
+                }
+
+                content.Children.Add(new Divider());
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = "原文小批注",
+                Content = new ScrollViewer
+                {
+                    Content = content,
+                    MaxHeight = 460,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                },
+                CloseButtonText = "关闭",
+                XamlRoot = Content.XamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+
         private async Task<(long StartOffset, long EndOffset, string Quote)?> GetCurrentSelectionAnchorAsync()
         {
             if (activeNovelProject is null || activeAnnotationStore is null
