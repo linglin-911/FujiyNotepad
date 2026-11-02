@@ -444,17 +444,6 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
-                if (anchors.Count == 0 && position.Column > 0)
-                {
-                    offset = map.GetOffset(position.Line, position.Column - 1);
-                    anchors = await store.GetAnchorsAtOffsetAsync(offset);
-                    if (!ReferenceEquals(store, activeAnnotationStore)
-                        || !ReferenceEquals(project, activeNovelProject))
-                    {
-                        return;
-                    }
-                }
-
                 anchors = anchors.Where(anchor =>
                     !anchor.IsOrphaned
                     && anchor.DocumentRevision == project.Metadata.DocumentRevision
