@@ -57,7 +57,7 @@ public sealed class NovelAnnotationStoreTests
 
             Assert.Equal(2, result.Count);
             Assert.Equal(2, result[first].Count);
-            Assert.Equal(1, result[second].Count);
+            Assert.Single(result[second]);
             Assert.All(result[first], anchor => Assert.Equal(first, anchor.AnnotationId));
             Assert.DoesNotContain(ignored, result.Keys);
             Assert.Empty(await store.GetAnchorsForAnnotationsAsync(Array.Empty<Guid>()));
