@@ -119,7 +119,7 @@ public sealed partial class MainWindow
                 {
                     ChapterAnnotationChapterFilter.Items.Add(new ComboBoxItem
                     {
-                        Content = $"{chapter.ChapterNumber}. {chapter.Title}",
+                        Content = chapter.Title,
                         Tag = chapter.Id,
                     });
                 }
@@ -226,7 +226,7 @@ public sealed partial class MainWindow
                 });
                 content.Children.Add(new TextBlock
                 {
-                    Text = $"{summary.Chapter.ChapterNumber}. {summary.Chapter.Title}",
+                    Text = summary.Chapter.Title,
                     FontSize = 11,
                     Opacity = 0.72,
                     TextWrapping = TextWrapping.Wrap,
