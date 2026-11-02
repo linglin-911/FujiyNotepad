@@ -34,6 +34,7 @@ namespace FujiyNotepad.WinUI
         private DocumentTextOffsetMap? annotationOffsetMap;
         private bool refreshingSmallAnnotationUi;
         private int annotationMarkerRefreshVersion;
+        private CancellationTokenSource? annotationMarkerRefreshCancellation;
         private int lastAnnotationMarkerStartLine = -1;
         private int lastAnnotationMarkerEndLine = -1;
         private TextEncoding currentEncoding = TextEncoding.Utf8;
@@ -534,6 +535,8 @@ namespace FujiyNotepad.WinUI
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
             ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
+            annotationMarkerRefreshCancellation?.Cancel();
+            annotationMarkerRefreshCancellation = null;
             annotationMarkerRefreshVersion++;
             lastAnnotationMarkerStartLine = -1;
             lastAnnotationMarkerEndLine = -1;
