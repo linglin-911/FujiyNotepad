@@ -55,7 +55,7 @@ public sealed class NovelChapterIndexBuilderTests
         Assert.Equal(new[] { "第1章 开始", "第一章：第二卷的第一章", "第二章 继续", "尾声" },
             chapters.Select(chapter => chapter.Title));
         Assert.Equal(new[] { 1, 2, 3, 4 }, chapters.Select(chapter => chapter.ChapterNumber));
-        Assert.All(chapters, chapter => Assert.Equal(7, chapter.DocumentRevision));
+        Assert.All(chapters, chapter => Assert.Equal(7L, chapter.DocumentRevision));
 
         long secondHeading = text[0].Length + 2 + text[1].Length + 1 + text[2].Length + 2;
         long thirdHeading = secondHeading + text[3].Length + 1;
