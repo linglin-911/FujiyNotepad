@@ -41,6 +41,33 @@ public sealed class ChapterAnnotationStoreTests
     }
 
     [Fact]
+    public async Task SaveChapterIndexIfEmptyAsync_RecordsStateForLegacyRowsWithoutReplacingChapterIds()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            var existing = new NovelChapter(Guid.NewGuid(), "第1章 原章节", 0, 100, 1, 1);
+            await store.UpsertChapterAsync(existing);
+            var proposedReplacement = new NovelChapter(Guid.NewGuid(), "第1章 新标题", 0, 100, 1, 1);
+
+            Assert.False(await store.SaveChapterIndexIfEmptyAsync(new[] { proposedReplacement }, 1));
+
+            NovelChapter stored = Assert.Single(await store.GetChaptersAsync());
+            Assert.Equal(existing.Id, stored.Id);
+            Assert.Equal("第1章 原章节", stored.Title);
+            NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
+                await store.GetChapterIndexStateAsync());
+            Assert.Equal(1, state.ChapterCount);
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task SaveChapterIndexIfEmptyAsync_RecordsAnEmptyResultToAvoidRepeatedScans()
     {
         string path = CreateDatabasePath();
