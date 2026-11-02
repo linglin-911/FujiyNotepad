@@ -60,6 +60,32 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 CHECK (StartOffset >= 0 AND EndOffset >= StartOffset)
             );
             CREATE INDEX IF NOT EXISTS IX_Chapters_StartOffset ON Chapters(StartOffset);
+            CREATE TABLE IF NOT EXISTS ChapterIndexState (
+                Id INTEGER PRIMARY KEY CHECK (Id = 1),
+                DocumentRevision INTEGER NOT NULL,
+                ParserVersion INTEGER NOT NULL,
+                ChapterCount INTEGER NOT NULL,
+                IndexedAt TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ChapterAnnotationCategories (
+                Id TEXT PRIMARY KEY NOT NULL,
+                Name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                Color TEXT NULL,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                CreatedAt TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ChapterAnnotations (
+                Id TEXT PRIMARY KEY NOT NULL,
+                ChapterId TEXT NOT NULL REFERENCES Chapters(Id) ON DELETE CASCADE,
+                CategoryId TEXT NULL REFERENCES ChapterAnnotationCategories(Id) ON DELETE SET NULL,
+                Title TEXT NULL,
+                Content TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS IX_ChapterAnnotations_ChapterId ON ChapterAnnotations(ChapterId);
+            CREATE INDEX IF NOT EXISTS IX_ChapterAnnotations_CategoryId ON ChapterAnnotations(CategoryId);
+            CREATE INDEX IF NOT EXISTS IX_ChapterAnnotations_UpdatedAt ON ChapterAnnotations(UpdatedAt);
             CREATE TABLE IF NOT EXISTS AnnotationAnchors (
                 Id TEXT PRIMARY KEY NOT NULL,
                 AnnotationId TEXT NOT NULL REFERENCES Annotations(Id) ON DELETE CASCADE,
