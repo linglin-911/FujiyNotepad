@@ -585,8 +585,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                     ORDER BY c.StartOffset DESC
                     LIMIT 1
                 )
-                WHERE ChapterId IS NULL AND IsOrphaned = 0;
+                WHERE ChapterId IS NULL AND IsOrphaned = 0
+                  AND DocumentRevision = $revision;
                 """;
+            assignAnchorChapters.Parameters.AddWithValue("$revision", documentRevision);
             await assignAnchorChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
