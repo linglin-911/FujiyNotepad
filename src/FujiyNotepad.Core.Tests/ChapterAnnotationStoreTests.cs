@@ -348,7 +348,7 @@ public sealed class ChapterAnnotationStoreTests
     }
 
     [Fact]
-    public async Task ApplyingDocumentEdit_UpdatesChapterRangesAndIndexRevision()
+    public async Task ApplyingDocumentEdit_UpdatesRangesAndMarksChapterIndexStale()
     {
         string path = CreateDatabasePath();
         try
@@ -429,6 +429,45 @@ public sealed class ChapterAnnotationStoreTests
                 await store.GetChapterIndexStateAsync());
             Assert.Equal(2L, state.DocumentRevision);
             Assert.Equal(2, state.ChapterCount);
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_MigratesExistingChapterTableWithActiveFlag()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using (var connection = new SqliteConnection(
+                new SqliteConnectionStringBuilder { DataSource = path, ForeignKeys = true }.ToString()))
+            {
+                await connection.OpenAsync();
+                await using var create = connection.CreateCommand();
+                create.CommandText = """
+                    CREATE TABLE Chapters (
+                        Id TEXT PRIMARY KEY NOT NULL,
+                        Title TEXT NOT NULL,
+                        StartOffset INTEGER NOT NULL,
+                        EndOffset INTEGER NOT NULL,
+                        ChapterNumber INTEGER NOT NULL,
+                        DocumentRevision INTEGER NOT NULL DEFAULT 1
+                    );
+                    INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
+                    VALUES ('11111111-1111-1111-1111-111111111111', '第1章 旧项目', 0, 100, 1, 1);
+                    """;
+                await create.ExecuteNonQueryAsync();
+            }
+
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            NovelChapter chapter = Assert.Single(await store.GetChaptersAsync());
+            Assert.Equal("第1章 旧项目", chapter.Title);
+            Assert.True(chapter.IsActive);
         }
         finally
         {
