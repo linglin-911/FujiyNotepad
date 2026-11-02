@@ -808,6 +808,9 @@ namespace FujiyNotepad.WinUI
             LineIndexer = new LineIndexer(searcher, currentEncoding);
             provider = new LineProvider(source, LineIndexer, currentEncoding);
             CancelChapterIndexBuild();
+            annotationMarkerRefreshCancellation?.Cancel();
+            annotationMarkerRefreshCancellation = null;
+            annotationMarkerRefreshVersion++;
             annotationOffsetMap = activeNovelProject is null ? null : new DocumentTextOffsetMap(provider);
             ResetFindAndCountState();
             ResetFilter();
