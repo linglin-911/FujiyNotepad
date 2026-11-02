@@ -394,7 +394,7 @@ namespace FujiyNotepad.WinUI
                                     result.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
                             }
                         }
-                        catch (ArgumentOutOfRangeException)
+                        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
                         {
                             // The saved anchor is outside the currently indexed text; never draw a
                             // marker at an unverified location.
@@ -434,22 +434,29 @@ namespace FujiyNotepad.WinUI
             {
                 long offset = map.GetOffset(position.Line, position.Column);
                 IReadOnlyList<AnnotationAnchor> anchors = await store.GetAnchorsAtOffsetAsync(offset);
+                if (!ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
+                {
+                    return;
+                }
+
                 if (anchors.Count == 0 && position.Column > 0)
                 {
                     offset = map.GetOffset(position.Line, position.Column - 1);
                     anchors = await store.GetAnchorsAtOffsetAsync(offset);
+                    if (!ReferenceEquals(store, activeAnnotationStore)
+                        || !ReferenceEquals(project, activeNovelProject))
+                    {
+                        return;
+                    }
                 }
 
                 anchors = anchors.Where(anchor =>
                     !anchor.IsOrphaned
                     && anchor.DocumentRevision == project.Metadata.DocumentRevision
                     && TryResolveSmallAnnotationAnchor(anchor, out _)).ToList();
-                if (anchors.Count == 0
-                    || !ReferenceEquals(store, activeAnnotationStore)
-                    || !ReferenceEquals(project, activeNovelProject))
-                {
+                if (anchors.Count == 0)
                     return;
-                }
 
                 HashSet<Guid> annotationIds = anchors.Select(anchor => anchor.AnnotationId).ToHashSet();
                 IReadOnlyList<NovelAnnotation> notes =
