@@ -275,9 +275,8 @@ namespace FujiyNotepad.WinUI
                             UpdateSmallAnnotationActionButtons();
                         }
                     };
-                    quoteButton.Click += async (_, args) =>
+                    quoteButton.Click += async (_, _) =>
                     {
-                        args.Handled = true;
                         if (parentItem is not null)
                         {
                             SmallAnnotationList.SelectedItem = parentItem;
@@ -927,9 +926,8 @@ namespace FujiyNotepad.WinUI
                             FontSize = 12,
                         },
                     };
-                    anchorButton.Click += async (_, args) =>
+                    anchorButton.Click += async (_, _) =>
                     {
-                        args.Handled = true;
                         await NavigateToSmallAnnotationAnchorAsync(anchor);
                     };
                     anchorPanel.Children.Add(anchorButton);
