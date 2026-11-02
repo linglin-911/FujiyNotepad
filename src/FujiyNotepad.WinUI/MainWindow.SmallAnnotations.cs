@@ -364,21 +364,40 @@ namespace FujiyNotepad.WinUI
                             continue;
                         }
 
-                        (int Line, int Column) start = map.GetPosition(anchor.StartOffset);
-                        (int Line, int Column) end = map.GetPosition(anchor.EndOffset);
-                        int rangeStartLine = Math.Max(firstLine, start.Line);
-                        int rangeEndLine = Math.Min(lastLine, end.Line);
-
-                        for (int lineIndex = rangeStartLine; lineIndex <= rangeEndLine; lineIndex++)
+                        try
                         {
-                            int lineLength = lines.GetLineUncached(lineIndex).Length;
-                            int startColumn = lineIndex == start.Line ? start.Column : 0;
-                            int endColumn = lineIndex == end.Line ? end.Column : lineLength;
-                            startColumn = Math.Clamp(startColumn, 0, lineLength);
-                            endColumn = Math.Clamp(endColumn, 0, lineLength);
+                            (int Line, int Column) start = map.GetPosition(anchor.StartOffset);
+                            (int Line, int Column) end = map.GetPosition(anchor.EndOffset);
+                            if (start.Line < 0 || end.Line < start.Line
+                                || end.Line >= lines.LineCount)
+                            {
+                                continue;
+                            }
 
-                            if (endColumn > startColumn)
-                                result.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
+                            string currentQuote = ExtractSmallAnnotationRange(
+                                lines, new TextPosition(start.Line, start.Column),
+                                new TextPosition(end.Line, end.Column));
+                            if (!string.Equals(currentQuote, anchor.Quote, StringComparison.Ordinal))
+                                continue;
+
+                            int rangeStartLine = Math.Max(firstLine, start.Line);
+                            int rangeEndLine = Math.Min(lastLine, end.Line);
+                            for (int lineIndex = rangeStartLine; lineIndex <= rangeEndLine; lineIndex++)
+                            {
+                                int lineLength = lines.GetLineUncached(lineIndex).Length;
+                                int startColumn = lineIndex == start.Line ? start.Column : 0;
+                                int endColumn = lineIndex == end.Line ? end.Column : lineLength;
+                                startColumn = Math.Clamp(startColumn, 0, lineLength);
+                                endColumn = Math.Clamp(endColumn, 0, lineLength);
+
+                                if (endColumn > startColumn)
+                                    result.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
+                            }
+                        }
+                        catch (ArgumentOutOfRangeException)
+                        {
+                            // The saved anchor is outside the currently indexed text; never draw a
+                            // marker at an unverified location.
                         }
                     }
 
@@ -423,7 +442,8 @@ namespace FujiyNotepad.WinUI
 
                 anchors = anchors.Where(anchor =>
                     !anchor.IsOrphaned
-                    && anchor.DocumentRevision == project.Metadata.DocumentRevision).ToList();
+                    && anchor.DocumentRevision == project.Metadata.DocumentRevision
+                    && TryResolveSmallAnnotationAnchor(anchor, out _)).ToList();
                 if (anchors.Count == 0
                     || !ReferenceEquals(store, activeAnnotationStore)
                     || !ReferenceEquals(project, activeNovelProject))
