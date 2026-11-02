@@ -394,10 +394,14 @@ namespace FujiyNotepad.WinUI
                                     result.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
                             }
                         }
-                        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
+                        catch (ArgumentOutOfRangeException)
                         {
                             // The saved anchor is outside the currently indexed text; never draw a
                             // marker at an unverified location.
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // The offset map is not ready for this anchor yet.
                         }
                     }
 
