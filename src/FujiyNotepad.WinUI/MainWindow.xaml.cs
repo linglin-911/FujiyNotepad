@@ -523,7 +523,7 @@ namespace FujiyNotepad.WinUI
             activeAnnotationStore = null;
             activeNovelProject = null;
             annotationOffsetMap = null;
-            chapterIndexBuildVersion++;
+            CancelChapterIndexBuild();
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
             ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
@@ -797,7 +797,7 @@ namespace FujiyNotepad.WinUI
             searcher = new TextSearcher(source);
             LineIndexer = new LineIndexer(searcher, currentEncoding);
             provider = new LineProvider(source, LineIndexer, currentEncoding);
-            chapterIndexBuildVersion++;
+            CancelChapterIndexBuild();
             annotationOffsetMap = activeNovelProject is null ? null : new DocumentTextOffsetMap(provider);
             ResetFindAndCountState();
             ResetFilter();
