@@ -286,6 +286,24 @@ namespace FujiyNotepad.WinUI.Controls
         public int TotalLines => engine.TotalLines;
         public int FullyVisibleLineCount { get { Ready(); return engine.FullyVisibleLineCount; } }
         public int MaxFirstLine { get { Ready(); return engine.MaxFirstLine; } }
+
+        /// <summary>
+        /// Returns the first and last source lines represented in the viewport. Unlike adding the
+        /// visible row count to FirstVisibleLine, this remains accurate when word-wrap displays
+        /// multiple visual rows from one very long source line.
+        /// </summary>
+        public (int FirstLine, int LastLine) GetVisibleSourceLineRange()
+        {
+            Ready();
+            IReadOnlyList<VisibleLine> visible = engine.GetVisibleLines(hasFocusInternal, caretBlinkOn);
+            if (visible.Count == 0)
+            {
+                int line = Math.Clamp(engine.FirstVisibleLine, 0, Math.Max(0, engine.TotalLines - 1));
+                return (line, line);
+            }
+
+            return (visible.Min(line => line.LineIndex), visible.Max(line => line.LineIndex));
+        }
         public double CharWidthPx { get { EnsureMetrics(); return engine.CharWidthPx; } }
         public double ViewportWidthPx => ActualWidth;
         public double HorizontalExtentPx { get { Ready(); return engine.HorizontalExtentPx; } }
