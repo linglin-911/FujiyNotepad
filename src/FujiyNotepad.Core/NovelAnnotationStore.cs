@@ -864,8 +864,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
               AND ($category IS NULL OR a.CategoryId = $category)
               AND ($search IS NULL
                    OR a.Title LIKE $search ESCAPE '\'
-                   OR a.Content LIKE $search ESCAPE '\')
-                   OR c.Title LIKE $search ESCAPE '\'
+                   OR a.Content LIKE $search ESCAPE '\'
+                   OR c.Title LIKE $search ESCAPE '\')
             ORDER BY c.ChapterNumber, c.StartOffset, a.UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
