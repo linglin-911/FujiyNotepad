@@ -366,8 +366,69 @@ public sealed class ChapterAnnotationStoreTests
             Assert.Equal(2L, updated.DocumentRevision);
             NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
                 await store.GetChapterIndexStateAsync());
-            Assert.Equal(2L, state.DocumentRevision);
+            // Text edits transform stored ranges but do not prove that chapter headings still exist.
+            // Keep the previous index revision so the user can explicitly re-identify chapters.
+            Assert.Equal(1L, state.DocumentRevision);
             Assert.Single(await store.GetChapterAnnotationSummariesAsync(chapterId: chapter.Id));
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReplaceChapterIndex_ArchivesRemovedChapterAndPreservesItsAnnotation()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            var first = new NovelChapter(Guid.NewGuid(), "第六章 旧标题", 0, 100, 1, 1);
+            var removed = new NovelChapter(Guid.NewGuid(), "第七章", 100, 200, 2, 1);
+            var third = new NovelChapter(Guid.NewGuid(), "第八章 后续", 200, 300, 3, 1);
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(new[] { first, removed, third }, 1));
+            Guid noteId = await store.CreateChapterAnnotationAsync(removed.Id, "第七章的重要剧情记录", title: "保留这条批注");
+
+            Guid smallNoteId = await store.CreateAnnotationAsync("小批注锚点");
+            await store.AddAnchorAsync(smallNoteId, 150, 160, "十个字符", removed.Id, documentRevision: 2);
+
+            var detected = new[]
+            {
+                new NovelChapter(first.Id, "第六章 旧标题", 0, 200, 1, 2),
+                new NovelChapter(third.Id, "第八章 后续", 200, 300, 2, 2),
+            };
+            NovelChapterIndexReconciliation reconciliation =
+                NovelChapterIndexReconciler.Reconcile(new[] { first, removed, third }, detected);
+
+            Assert.Equal(new[] { first.Id, third.Id }, reconciliation.Chapters.Select(chapter => chapter.Id));
+            Assert.Single(reconciliation.Removed);
+            Assert.Equal(removed.Id, reconciliation.Removed[0].Id);
+            Assert.Empty(reconciliation.Added);
+
+            await store.ReplaceChapterIndexAsync(reconciliation.Chapters, 2);
+
+            IReadOnlyList<NovelChapter> active = await store.GetChaptersAsync();
+            Assert.Equal(new[] { first.Id, third.Id }, active.Select(chapter => chapter.Id));
+            IReadOnlyList<NovelChapter> all = await store.GetChaptersAsync(includeInactive: true);
+            Assert.Equal(3, all.Count);
+            Assert.False(all.Single(chapter => chapter.Id == removed.Id).IsActive);
+
+            ChapterAnnotationSummary preserved = Assert.Single(
+                await store.GetChapterAnnotationSummariesAsync(chapterId: removed.Id));
+            Assert.Equal(noteId, preserved.Annotation.Id);
+            Assert.False(preserved.Chapter.IsActive);
+            Assert.Equal("第七章", preserved.Chapter.Title);
+
+            AnnotationAnchor reassigned = Assert.Single(await store.GetAnchorsForAnnotationAsync(smallNoteId));
+            Assert.Equal(first.Id, reassigned.ChapterId);
+
+            NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
+                await store.GetChapterIndexStateAsync());
+            Assert.Equal(2L, state.DocumentRevision);
+            Assert.Equal(2, state.ChapterCount);
         }
         finally
         {
