@@ -523,6 +523,9 @@ namespace FujiyNotepad.WinUI
             activeAnnotationStore = null;
             activeNovelProject = null;
             annotationOffsetMap = null;
+            chapterIndexBuildVersion++;
+            ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshVersion++;
             lastAnnotationMarkerStartLine = -1;
@@ -566,11 +569,14 @@ namespace FujiyNotepad.WinUI
             ValidateEditedCopyItem.IsEnabled = hasProject;
             CloseProjectItem.IsEnabled = hasProject;
             SmallAnnotationsItem.IsEnabled = hasProject;
+            ChapterAnnotationsItem.IsEnabled = hasProject;
             View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
             if (!hasProject)
             {
                 SmallAnnotationPane.Visibility = Visibility.Collapsed;
                 SmallAnnotationsItem.IsChecked = false;
+                ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+                ChapterAnnotationsItem.IsChecked = false;
             }
         }
 
@@ -791,6 +797,7 @@ namespace FujiyNotepad.WinUI
             searcher = new TextSearcher(source);
             LineIndexer = new LineIndexer(searcher, currentEncoding);
             provider = new LineProvider(source, LineIndexer, currentEncoding);
+            chapterIndexBuildVersion++;
             annotationOffsetMap = activeNovelProject is null ? null : new DocumentTextOffsetMap(provider);
             ResetFindAndCountState();
             ResetFilter();
@@ -1275,6 +1282,7 @@ namespace FujiyNotepad.WinUI
                 {
                     SetLineCountStatus();
                 }
+                _ = EnsureChapterIndexAsync();
             }
         }
 
