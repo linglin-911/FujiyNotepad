@@ -308,7 +308,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 已有实现（代码层面）
 
-- 小批注列表卡片：单击跳转采用 500ms 单次 DispatcherQueueTimer 延迟；DoubleTapped 取消待执行的单击跳转并打开统一详情弹窗；面板底部只保留删除操作。
+- 小批注列表卡片：单击跳转采用 500ms 单次 DispatcherQueueTimer 延迟；DoubleTapped 取消待执行的单击跳转并打开统一详情弹窗；关闭面板或刷新列表时取消待执行跳转；面板底部只保留删除操作。
 
 - `DocumentTextOffsetMap`：行列与全文 UTF-16 偏移转换，支持 LF/CRLF 和稀疏检查点。
 - 小批注、分类、原文锚点的 SQLite 表和基础 CRUD。
@@ -360,4 +360,5 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 | 2026-11-02 | 阅读器引擎新增居中定位方法：非自动换行按源行居中，自动换行按实际显示行居中；批注跳转统一调用该方法，并新增居中定位单元测试。最新代码提交 `da43e352d736f906d00b9a0cf0df32009732864c`。 |
 | 2026-11-02 | 调整批注列表点击事件：卡片空白区域跳转首个有效原文；每处原文按钮单独跳转并阻止事件冒泡；点击原文位置同步选中所属批注，避免编辑/删除操作作用于旧选中项；双击卡片打开统一弹窗。最新代码提交 `b588362d81dd8cb3dbc84677f3b991351d0f99ee`。 |
 | 2026-11-02 | 修复用户反馈的 Release x64 编译错误：小批注两个 Button.Click 处理器不再访问不存在的 RoutedEventArgs.Handled；将单元素集合数量断言改为 Assert.Single，清理 xUnit2013 警告。WMC1509/WMC0001 待重新构建确认是否随 C# 错误修复而消失。最新提交 `69da35f064a39b4148c05e2b8596c3fde721a70c`。 |
-| 2026-11-02 | 用户确认 Windows x64 Release 构建成功；自动化测试 865 项全部通过（Core.Tests、Presentation.Tests，失败 0、跳过 0）。用户随后实测小批注其他功能通过，仅双击弹窗未触发；本轮将单击跳转延迟 500ms，并在双击时取消待执行跳转；底部移除详情/编辑按钮，仅保留删除。最新代码提交 `a3bbf2d28a7d7d977b3d58b04e1fd456a67068f3`，待重新构建及双击回归。 |
+| 2026-11-02 | 用户确认 Windows x64 Release 构建成功；自动化测试 865 项全部通过（Core.Tests、Presentation.Tests，失败 0、跳过 0）。用户随后实测小批注其他功能通过，仅双击弹窗未触发；本轮将单击跳转延迟 500ms，并在双击时取消待执行跳转；底部移除详情/编辑按钮，仅保留删除。最新代码提交 `8f00fef31915a566c27d535809a1a4b9602bd275`，待重新构建及双击回归。 |
+| 2026-11-02 | 用户实测小批注其他功能通过，仅双击卡片未打开统一弹窗；本轮将卡片单击跳转延迟 500ms，双击取消待执行跳转并打开统一弹窗，关闭面板/刷新列表时清理待执行跳转；移除底部详情和编辑按钮，仅保留删除。最新代码提交 `8f00fef31915a566c27d535809a1a4b9602bd275`，待 Windows x64 重建和双击回归。 |
