@@ -91,6 +91,32 @@ public sealed class ChapterAnnotationStoreTests
     }
 
     [Fact]
+    public async Task SaveChapterIndexIfEmptyAsync_RebuildsAnEmptyIndexWhenParserVersionChanges()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(Array.Empty<NovelChapter>(), 1, parserVersion: 1));
+
+            var chapter = new NovelChapter(Guid.NewGuid(), "第1章", 0, 100, 1, 1);
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(
+                new[] { chapter }, 1, parserVersion: NovelChapterIndexBuilder.CurrentParserVersion));
+
+            Assert.Equal(chapter.Id, Assert.Single(await store.GetChaptersAsync()).Id);
+            NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
+                await store.GetChapterIndexStateAsync());
+            Assert.Equal(NovelChapterIndexBuilder.CurrentParserVersion, state.ParserVersion);
+            Assert.Equal(1, state.ChapterCount);
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task ChapterAnnotations_AreIndependentFromSmallAnnotationCategoriesAndAllowMultipleNotesPerChapter()
     {
         string path = CreateDatabasePath();
