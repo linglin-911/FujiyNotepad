@@ -340,15 +340,50 @@ namespace FujiyNotepad.WinUI
 
             try
             {
-                long startOffset = map.GetLineStartOffset(firstLine);
-                long endOffset = lastLine + 1 < lines.LineCount
-                    ? map.GetLineStartOffset(lastLine + 1)
-                    : map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
-                if (endOffset <= startOffset)
-                    endOffset = checked(startOffset + 1);
+                // Offset-map lookups may have to decode lines from the nearest sparse checkpoint. Keep
+                // that work and the visible-anchor query off the UI thread so a jump deep into a large
+                // novel cannot freeze the reader.
+                List<TextAnnotationMarker> markers = await Task.Run(async () =>
+                {
+                    long startOffset = map.GetLineStartOffset(firstLine);
+                    long endOffset = lastLine + 1 < lines.LineCount
+                        ? map.GetLineStartOffset(lastLine + 1)
+                        : map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
+                    if (endOffset <= startOffset)
+                        endOffset = checked(startOffset + 1);
 
-                IReadOnlyList<AnnotationAnchor> anchors =
-                    await store.GetAnchorsIntersectingRangeAsync(startOffset, endOffset);
+                    IReadOnlyList<AnnotationAnchor> anchors =
+                        await store.GetAnchorsIntersectingRangeAsync(startOffset, endOffset);
+                    var result = new List<TextAnnotationMarker>();
+
+                    foreach (AnnotationAnchor anchor in anchors)
+                    {
+                        if (anchor.IsOrphaned
+                            || anchor.DocumentRevision != project.Metadata.DocumentRevision)
+                        {
+                            continue;
+                        }
+
+                        (int Line, int Column) start = map.GetPosition(anchor.StartOffset);
+                        (int Line, int Column) end = map.GetPosition(anchor.EndOffset);
+                        int rangeStartLine = Math.Max(firstLine, start.Line);
+                        int rangeEndLine = Math.Min(lastLine, end.Line);
+
+                        for (int lineIndex = rangeStartLine; lineIndex <= rangeEndLine; lineIndex++)
+                        {
+                            int lineLength = lines.GetLineUncached(lineIndex).Length;
+                            int startColumn = lineIndex == start.Line ? start.Column : 0;
+                            int endColumn = lineIndex == end.Line ? end.Column : lineLength;
+                            startColumn = Math.Clamp(startColumn, 0, lineLength);
+                            endColumn = Math.Clamp(endColumn, 0, lineLength);
+
+                            if (endColumn > startColumn)
+                                result.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
+                        }
+                    }
+
+                    return result;
+                });
 
                 if (requestVersion != annotationMarkerRefreshVersion
                     || !ReferenceEquals(store, activeAnnotationStore)
@@ -357,33 +392,6 @@ namespace FujiyNotepad.WinUI
                     || filteredSource is not null)
                 {
                     return;
-                }
-
-                var markers = new List<TextAnnotationMarker>();
-                foreach (AnnotationAnchor anchor in anchors)
-                {
-                    if (anchor.IsOrphaned
-                        || anchor.DocumentRevision != project.Metadata.DocumentRevision)
-                    {
-                        continue;
-                    }
-
-                    (int Line, int Column) start = map.GetPosition(anchor.StartOffset);
-                    (int Line, int Column) end = map.GetPosition(anchor.EndOffset);
-                    int rangeStartLine = Math.Max(firstLine, start.Line);
-                    int rangeEndLine = Math.Min(lastLine, end.Line);
-
-                    for (int lineIndex = rangeStartLine; lineIndex <= rangeEndLine; lineIndex++)
-                    {
-                        int lineLength = lines.GetLineUncached(lineIndex).Length;
-                        int startColumn = lineIndex == start.Line ? start.Column : 0;
-                        int endColumn = lineIndex == end.Line ? end.Column : lineLength;
-                        startColumn = Math.Clamp(startColumn, 0, lineLength);
-                        endColumn = Math.Clamp(endColumn, 0, lineLength);
-
-                        if (endColumn > startColumn)
-                            markers.Add(new TextAnnotationMarker(lineIndex, startColumn, endColumn));
-                    }
                 }
 
                 View.SetAnnotationMarkers(markers);
