@@ -1196,6 +1196,19 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             }
         }
 
+        await using (var updateIndexState = connection.CreateCommand())
+        {
+            updateIndexState.Transaction = (SqliteTransaction)transaction;
+            updateIndexState.CommandText = """
+                UPDATE ChapterIndexState
+                SET DocumentRevision = $revision,
+                    ChapterCount = (SELECT COUNT(*) FROM Chapters)
+                WHERE Id = 1;
+                """;
+            updateIndexState.Parameters.AddWithValue("$revision", newDocumentRevision);
+            await updateIndexState.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
