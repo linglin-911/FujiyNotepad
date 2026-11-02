@@ -793,7 +793,8 @@ public sealed partial class MainWindow
                 .OfType<ListViewItem>()
                 .FirstOrDefault(item => item.Tag is ChapterAnnotationCategory category
                     && category.Id == preferredId);
-            categoryList.SelectedItem = preferred ?? categoryList.Items.FirstOrDefault();
+            categoryList.SelectedItem = preferred
+                ?? (categoryList.Items.Count > 0 ? categoryList.Items[0] : null);
             targetBox.SelectedIndex = targetBox.Items.Count > 0 ? 0 : -1;
             nameBox.Text = GetSelectedCategory()?.Name ?? "";
             confirmDelete.IsChecked = false;
