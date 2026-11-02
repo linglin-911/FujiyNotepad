@@ -229,6 +229,58 @@ public sealed class ChapterAnnotationStoreTests
         }
     }
 
+    [Fact]
+    public async Task SavingChapterIndex_BackfillsExistingSmallAnnotationAnchorChapterIds()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid note = await store.CreateAnnotationAsync("已有小批注");
+            await store.AddAnchorAsync(note, 25, 40, "原文摘录");
+
+            var first = new NovelChapter(Guid.NewGuid(), "第1章", 0, 100, 1);
+            var second = new NovelChapter(Guid.NewGuid(), "第2章", 100, 200, 2);
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(new[] { first, second }, 1));
+
+            AnnotationAnchor anchor = Assert.Single(await store.GetAnchorsForAnnotationAsync(note));
+            Assert.Equal(first.Id, anchor.ChapterId);
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyingDocumentEdit_UpdatesChapterRangesAndIndexRevision()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            var chapter = new NovelChapter(Guid.NewGuid(), "第1章", 0, 100, 1, 1);
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(new[] { chapter }, 1));
+            await store.CreateChapterAnnotationAsync(chapter.Id, "本章批注");
+
+            await store.ApplyDocumentEditAsync(new DocumentEdit(25, 0, 5), newDocumentRevision: 2);
+
+            NovelChapter updated = Assert.Single(await store.GetChaptersAsync());
+            Assert.Equal(105, updated.EndOffset);
+            Assert.Equal(2, updated.DocumentRevision);
+            NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
+                await store.GetChapterIndexStateAsync());
+            Assert.Equal(2, state.DocumentRevision);
+            Assert.Single(await store.GetChapterAnnotationSummariesAsync(chapterId: chapter.Id));
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
     private static string CreateDatabasePath() =>
         Path.Combine(Path.GetTempPath(), $"chapter-annotations-{Guid.NewGuid():N}.sqlite");
 
