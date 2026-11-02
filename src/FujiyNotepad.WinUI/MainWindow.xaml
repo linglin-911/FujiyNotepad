@@ -378,8 +378,6 @@
                     <Grid Grid.Row="3">
                         <ListView x:Name="SmallAnnotationList"
                                   SelectionChanged="SmallAnnotationList_SelectionChanged"
-                                  DoubleTapped="SmallAnnotationList_DoubleTapped"
-                                  IsDoubleTapEnabled="True"
                                   IsItemClickEnabled="True"
                                   ItemClick="SmallAnnotationList_ItemClick"
                                   SelectionMode="Single" />
