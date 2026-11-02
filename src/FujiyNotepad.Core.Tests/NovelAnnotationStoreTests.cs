@@ -176,6 +176,7 @@ public sealed class NovelAnnotationStoreTests
             Assert.Equal(1, summary.AnchorCount);
             Assert.Equal(0, summary.OrphanedAnchorCount);
             Assert.Equal(120L, summary.FirstActiveAnchorOffset);
+            Assert.Equal("他没有回头，只把剑收了起来。", summary.FirstActiveAnchorQuote);
             Assert.Single(await store.GetAnchorsForAnnotationAsync(id));
         }
         finally
@@ -187,6 +188,29 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    [Fact]
+    public async Task GetAnnotationSummariesAsync_WhenCategoryHasNoAnnotations_ReturnsEmpty()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid emptyCategory = await store.CreateCategoryAsync("空分类");
+            Guid usedCategory = await store.CreateCategoryAsync("有内容的分类");
+            await store.CreateAnnotationAsync("已有批注", usedCategory, "测试");
+
+            Assert.Empty(await store.GetAnnotationSummariesAsync(emptyCategory));
+            Assert.Single(await store.GetAnnotationSummariesAsync(usedCategory));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
     public async Task CategoryCrudAndMerge_PreserveNotesAndUpdateTheirCategory()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
