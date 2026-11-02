@@ -225,7 +225,8 @@ public sealed partial class MainWindow
             IReadOnlyList<ChapterAnnotationSummary> summaries =
                 await store.GetChapterAnnotationSummariesAsync(
                     chapterId, categoryId, searchText, cancellationToken: cancellationToken);
-            if (requestVersion != chapterAnnotationRefreshVersion
+            if (cancellationToken.IsCancellationRequested
+                || requestVersion != chapterAnnotationRefreshVersion
                 || !ReferenceEquals(store, activeAnnotationStore)
                 || !ReferenceEquals(project, activeNovelProject))
                 return;
@@ -278,7 +279,16 @@ public sealed partial class MainWindow
                 {
                     ChapterAnnotationList.SelectedItem = item;
                     UpdateChapterAnnotationActionButtons();
-                    await NavigateToChapterAsync(summary.Chapter);
+                    if (summary.Chapter.IsActive)
+                    {
+                        await NavigateToChapterAsync(summary.Chapter);
+                    }
+                    else
+                    {
+                        await ShowNovelProjectMessageAsync(
+                            "原章节已不存在",
+                            "这条章节批注已保留，但对应章节标题已从原文中删除，无法保证旧位置仍然对应原章节。可以通过“编辑”将它重新指定到现有章节。");
+                    }
                 };
                 ChapterAnnotationList.Items.Add(item);
                 if (selectedId == summary.Annotation.Id)
@@ -312,6 +322,10 @@ public sealed partial class MainWindow
             }
 
             UpdateChapterAnnotationActionButtons();
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer chapter/category/search selection superseded this query.
         }
         catch (Exception ex)
         {
@@ -369,6 +383,12 @@ public sealed partial class MainWindow
                     await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
                 }
                 chapterAnnotationChapters = existing;
+                if (state is not null
+                    && (state.DocumentRevision != project.Metadata.DocumentRevision
+                        || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
+                {
+                    LblStatus.Text = "原文或章节识别规则已有变化，章节索引可能过期；请点击“重新识别”确认更新。";
+                }
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
@@ -424,6 +444,143 @@ public sealed partial class MainWindow
                     chapterIndexBuildCancellation = null;
                 buildCancellation.Dispose();
             }
+        }
+    }
+
+    private async void RebuildChapterIndex_Click(object sender, RoutedEventArgs e)
+    {
+        NovelAnnotationStore? store = activeAnnotationStore;
+        NovelProject? project = activeNovelProject;
+        LineProvider? lines = provider;
+        if (store is null || project is null || lines is null)
+            return;
+
+        if (!LineIndexer.IsCompleted || filteredSource is not null)
+        {
+            await ShowNovelProjectMessageAsync(
+                "暂时无法重新识别章节",
+                filteredSource is not null
+                    ? "请先退出筛选视图，再重新识别章节。"
+                    : "请等待全文行索引完成后，再重新识别章节。");
+            return;
+        }
+
+        int generation = ++chapterIndexBuildVersion;
+        chapterIndexBuildCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        chapterIndexBuildCancellation = cancellation;
+        chapterIndexBuildRunningVersion = generation;
+        RebuildChapterIndexButton.IsEnabled = false;
+        LblStatus.Text = "正在重新扫描章节标题...";
+
+        try
+        {
+            IReadOnlyList<NovelChapter> existing = await store.GetChaptersAsync();
+            long revision = project.Metadata.DocumentRevision;
+            IReadOnlyList<NovelChapter> detected = await Task.Run(
+                () => NovelChapterIndexBuilder.Build(lines, revision, cancellation.Token),
+                cancellation.Token);
+
+            if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
+                return;
+
+            NovelChapterIndexReconciliation comparison =
+                NovelChapterIndexReconciler.Reconcile(existing, detected);
+            var details = new List<string>
+            {
+                $"原索引章节数：{existing.Count:N0}",
+                $"重新识别章节数：{comparison.Chapters.Count:N0}",
+                $"新增：{comparison.Added.Count:N0}    删除：{comparison.Removed.Count:N0}    标题变化：{comparison.Renamed.Count:N0}",
+                "",
+            };
+
+            static void AppendChapterNames(List<string> target, string heading,
+                IEnumerable<string> names)
+            {
+                string[] values = names.Take(15).ToArray();
+                if (values.Length == 0)
+                    return;
+                target.Add(heading);
+                target.AddRange(values.Select(value => "  · " + value));
+                if (names.Skip(15).Any())
+                    target.Add("  · ……其余项目省略");
+                target.Add("");
+            }
+
+            AppendChapterNames(details, "新增章节：", comparison.Added.Select(chapter => chapter.Title));
+            AppendChapterNames(details, "删除章节：", comparison.Removed.Select(chapter => chapter.Title));
+            AppendChapterNames(details, "标题变化：", comparison.Renamed.Select(change =>
+                $"{change.Previous.Title}  →  {change.Current.Title}"));
+
+            if (!comparison.HasChanges)
+            {
+                details.Add("没有发现章节标题的新增、删除或改名。");
+                details.Add("确认后仍会更新章节范围和索引版本。");
+            }
+
+            details.Add("");
+            details.Add("安全说明：被删除章节的已有章节批注不会被删除，会保留为“原章节已删除”记录；");
+            details.Add("已有小批注锚点会按新章节范围重新归属，失效或旧版本锚点不会被强行移动。");
+            details.Add("确认后才会更新数据库；取消则完全保留当前索引。");
+
+            var dialog = new ContentDialog
+            {
+                Title = "章节重新识别结果",
+                Content = new ScrollViewer
+                {
+                    Content = new TextBlock
+                    {
+                        Text = string.Join(Environment.NewLine, details),
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                    MaxHeight = 460,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                },
+                PrimaryButtonText = "确认更新索引",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                || !IsCurrentChapterIndexRequest(generation, store, project, lines))
+                return;
+
+            await store.ReplaceChapterIndexAsync(
+                comparison.Chapters, revision, NovelChapterIndexBuilder.CurrentParserVersion,
+                cancellation.Token);
+            if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
+                return;
+
+            chapterAnnotationChapters = await store.GetChaptersAsync();
+            if (selectedChapterAnnotationChapterId is Guid selected
+                && chapterAnnotationChapters.All(chapter => chapter.Id != selected))
+            {
+                selectedChapterAnnotationChapterId = null;
+            }
+
+            await LoadChapterAnnotationsAsync();
+            LblStatus.Text = $"章节重新识别完成：当前索引 {chapterAnnotationChapters.Count:N0} 章；已保留被删除章节的历史批注。";
+        }
+        catch (OperationCanceledException)
+        {
+            // The project was closed or switched while the index was being rebuilt.
+        }
+        catch (Exception ex)
+        {
+            diagnostics.LogSwallowed("Re-identify chapter index", ex);
+            if (ReferenceEquals(store, activeAnnotationStore))
+                await ShowNovelProjectMessageAsync("重新识别章节失败", ex.Message);
+        }
+        finally
+        {
+            if (chapterIndexBuildRunningVersion == generation)
+                chapterIndexBuildRunningVersion = -1;
+            if (ReferenceEquals(chapterIndexBuildCancellation, cancellation))
+                chapterIndexBuildCancellation = null;
+            cancellation.Dispose();
+            if (ReferenceEquals(store, activeAnnotationStore))
+                RebuildChapterIndexButton.IsEnabled = true;
         }
     }
 
