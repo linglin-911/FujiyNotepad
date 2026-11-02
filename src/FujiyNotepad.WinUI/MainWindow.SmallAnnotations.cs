@@ -166,6 +166,14 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
+                IReadOnlyDictionary<Guid, IReadOnlyList<AnnotationAnchor>> anchorsByAnnotation =
+                    await store.GetAnchorsForAnnotationsAsync(summaries.Select(item => item.Annotation.Id));
+                if (requestVersion != smallAnnotationRefreshVersion
+                    || !ReferenceEquals(store, activeAnnotationStore))
+                {
+                    return;
+                }
+
                 refreshingSmallAnnotationUi = true;
                 try
                 {
@@ -173,7 +181,7 @@ namespace FujiyNotepad.WinUI
                     ListViewItem? itemToSelect = null;
                     foreach (NovelAnnotationSummary summary in summaries)
                     {
-                        ListViewItem item = BuildSmallAnnotationListItem(summary, smallAnnotationCategoryNames);
+                        ListViewItem item = BuildSmallAnnotationListItem(\n                            summary, smallAnnotationCategoryNames,\n                            anchorsByAnnotation.TryGetValue(summary.Annotation.Id, out IReadOnlyList<AnnotationAnchor>? anchors)\n                                ? anchors : Array.Empty<AnnotationAnchor>());
                         SmallAnnotationList.Items.Add(item);
                         if (summary.Annotation.Id == selectedAnnotationId)
                             itemToSelect = item;
@@ -209,8 +217,10 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        private static ListViewItem BuildSmallAnnotationListItem(
-            NovelAnnotationSummary summary, IReadOnlyDictionary<Guid, string> categoryNames)
+        private ListViewItem BuildSmallAnnotationListItem(
+            NovelAnnotationSummary summary,
+            IReadOnlyDictionary<Guid, string> categoryNames,
+            IReadOnlyList<AnnotationAnchor>? anchors = null)
         {
             NovelAnnotation annotation = summary.Annotation;
             string title = string.IsNullOrWhiteSpace(annotation.Title) ? "（未命名批注）" : annotation.Title;
@@ -220,7 +230,7 @@ namespace FujiyNotepad.WinUI
                     : "未分类";
             int activeAnchors = Math.Max(0, summary.AnchorCount - summary.OrphanedAnchorCount);
 
-            var content = new StackPanel { Spacing = 3 };
+            var content = new StackPanel { Spacing = 4 };
             content.Children.Add(new TextBlock
             {
                 Text = title,
@@ -234,15 +244,53 @@ namespace FujiyNotepad.WinUI
                 Opacity = 0.82,
                 TextWrapping = TextWrapping.Wrap,
             });
-            content.Children.Add(new TextBlock
+
+            if (anchors is { Count: > 0 })
             {
-                Text = string.IsNullOrWhiteSpace(summary.FirstActiveAnchorQuote)
-                    ? "原文：暂无有效关联"
-                    : $"原文：{CreateSmallAnnotationExcerpt(summary.FirstActiveAnchorQuote, 72)}",
-                FontSize = 11,
-                Opacity = 0.82,
-                TextWrapping = TextWrapping.Wrap,
-            });
+                int occurrence = 0;
+                foreach (AnnotationAnchor anchor in anchors)
+                {
+                    occurrence++;
+                    bool eligible = !anchor.IsOrphaned
+                        && activeNovelProject is { } project
+                        && anchor.DocumentRevision == project.Metadata.DocumentRevision;
+                    string status = eligible ? "" : "（已失效或版本不匹配）";
+                    var quoteButton = new Button
+                    {
+                        Tag = anchor,
+                        IsEnabled = eligible,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Padding = new Thickness(4, 2, 4, 2),
+                        Content = new TextBlock
+                        {
+                            Text = $"原文 {occurrence}：{CreateSmallAnnotationExcerpt(anchor.Quote, 100)}{status}",
+                            FontSize = 11,
+                            Opacity = 0.86,
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                    };
+                    quoteButton.Click += async (_, args) =>
+                    {
+                        args.Handled = true;
+                        await NavigateToSmallAnnotationAnchorAsync(anchor);
+                    };
+                    content.Children.Add(quoteButton);
+                }
+            }
+            else
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(summary.FirstActiveAnchorQuote)
+                        ? "原文：暂无有效关联"
+                        : $"原文：{CreateSmallAnnotationExcerpt(summary.FirstActiveAnchorQuote, 100)}",
+                    FontSize = 11,
+                    Opacity = 0.82,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+
             content.Children.Add(new TextBlock
             {
                 Text = $"{category}  ·  有效位置 {activeAnchors}/{summary.AnchorCount}"
@@ -437,23 +485,48 @@ namespace FujiyNotepad.WinUI
             try
             {
                 long offset = map.GetOffset(position.Line, position.Column);
-                IReadOnlyList<AnnotationAnchor> anchors = await store.GetAnchorsAtOffsetAsync(offset);
+                IReadOnlyList<AnnotationAnchor> directAnchors = await store.GetAnchorsAtOffsetAsync(offset);
                 if (!ReferenceEquals(store, activeAnnotationStore)
                     || !ReferenceEquals(project, activeNovelProject))
                 {
                     return;
                 }
 
-                anchors = anchors.Where(anchor =>
+                directAnchors = directAnchors.Where(anchor =>
                     !anchor.IsOrphaned
                     && anchor.DocumentRevision == project.Metadata.DocumentRevision
                     && TryResolveSmallAnnotationAnchor(anchor, out _)).ToList();
+                if (directAnchors.Count == 0)
+                    return;
+
+                // A click anywhere inside a larger annotated range should also reveal annotations whose
+                // source ranges are fully contained by that larger range. This makes nested notes discoverable
+                // even when the click lands outside the smaller quote itself.
+                long queryStart = directAnchors.Min(anchor => anchor.StartOffset);
+                long queryEnd = directAnchors.Max(anchor => anchor.EndOffset);
+                IReadOnlyList<AnnotationAnchor> intersecting =
+                    await store.GetAnchorsIntersectingRangeAsync(queryStart, queryEnd);
+                IReadOnlyList<AnnotationAnchor> anchors = intersecting
+                    .Where(candidate =>
+                        !candidate.IsOrphaned
+                        && candidate.DocumentRevision == project.Metadata.DocumentRevision
+                        && directAnchors.Any(parent =>
+                            candidate.StartOffset >= parent.StartOffset
+                            && candidate.EndOffset <= parent.EndOffset)
+                        && TryResolveSmallAnnotationAnchor(candidate, out _))
+                    .GroupBy(candidate => candidate.Id)
+                    .Select(group => group.First())
+                    .OrderBy(candidate => candidate.StartOffset)
+                    .ThenByDescending(candidate => candidate.EndOffset)
+                    .ToList();
                 if (anchors.Count == 0)
                     return;
 
                 HashSet<Guid> annotationIds = anchors.Select(anchor => anchor.AnnotationId).ToHashSet();
+                long matchedStart = anchors.Min(anchor => anchor.StartOffset);
+                long matchedEnd = anchors.Max(anchor => anchor.EndOffset);
                 IReadOnlyList<NovelAnnotation> notes =
-                    await store.GetAnnotationsIntersectingRangeAsync(offset, checked(offset + 1));
+                    await store.GetAnnotationsIntersectingRangeAsync(matchedStart, matchedEnd);
                 notes = notes.Where(note => annotationIds.Contains(note.Id)).ToList();
                 if (notes.Count > 0
                     && ReferenceEquals(store, activeAnnotationStore)
@@ -1061,7 +1134,12 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
+            // GoToLineColumn places the target line at the top. Move the viewport afterward so the
+            // selected occurrence is presented around the vertical center, with enough context above/below.
             View.GoToLineColumn(position.Line, position.Column);
+            int centeredFirstLine = position.Line - Math.Max(1, View.FullyVisibleLineCount / 2);
+            View.FirstVisibleLine = Math.Clamp(centeredFirstLine, 0, View.MaxFirstLine);
+            SyncScrollBars();
             View.FocusCanvas();
         }
 
