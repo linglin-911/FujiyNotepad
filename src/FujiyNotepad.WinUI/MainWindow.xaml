@@ -419,8 +419,13 @@
                             <TextBlock x:Name="ChapterAnnotationCount" Text="0 条批注"
                                        Style="{ThemeResource CaptionTextBlockStyle}" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="×" Click="CloseChapterAnnotations_Click"
-                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭章节批注面板" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="RebuildChapterIndexButton" Content="重新识别"
+                                    Click="RebuildChapterIndex_Click" Padding="8,4"
+                                    ToolTipService.ToolTip="重新扫描原文章节，并在确认后更新索引" />
+                            <Button Content="×" Click="CloseChapterAnnotations_Click"
+                                    MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭章节批注面板" />
+                        </StackPanel>
                     </Grid>
                     <TextBox x:Name="ChapterAnnotationSearchBox" Grid.Row="1"
                              PlaceholderText="搜索标题或批注内容..."
