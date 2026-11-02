@@ -33,6 +33,9 @@ namespace FujiyNotepad.WinUI
         private NovelAnnotationStore? activeAnnotationStore;
         private DocumentTextOffsetMap? annotationOffsetMap;
         private bool refreshingSmallAnnotationUi;
+        private int annotationMarkerRefreshVersion;
+        private int lastAnnotationMarkerStartLine = -1;
+        private int lastAnnotationMarkerEndLine = -1;
         private TextEncoding currentEncoding = TextEncoding.Utf8;
         private bool encodingAutoDetect = true;
 
@@ -58,6 +61,7 @@ namespace FujiyNotepad.WinUI
 
         private readonly DispatcherQueueTimer indexRefreshTimer;
         private readonly DispatcherQueueTimer findPreviewTimer;
+        private readonly DispatcherQueueTimer annotationMarkerRefreshTimer;
         private readonly DispatcherQueueTimer followTailTimer;
         private readonly DiagnosticLog diagnostics = DiagnosticLog.Default();
         private CancellationTokenSource? cancelIndexing;
@@ -130,11 +134,17 @@ namespace FujiyNotepad.WinUI
             settings = settingsStore.Load();
             ApplyStartupSettings();
 
-            View.ViewChanged += SyncScrollBars;
+            View.ViewChanged += OnReaderViewChanged;
             View.CaretChanged += UpdateCursorStatus;
             View.FontChanged += OnFontChanged;
             View.CreateSmallAnnotationRequested += CreateSmallAnnotationFromSelection;
             View.AddSelectionToSmallAnnotationRequested += AddSelectionToExistingSmallAnnotation;
+            View.AnnotationMarkerClicked += OnAnnotationMarkerClicked;
+
+            annotationMarkerRefreshTimer = DispatcherQueue.CreateTimer();
+            annotationMarkerRefreshTimer.Interval = TimeSpan.FromMilliseconds(90);
+            annotationMarkerRefreshTimer.IsRepeating = false;
+            annotationMarkerRefreshTimer.Tick += (_, _) => _ = RefreshVisibleSmallAnnotationMarkersAsync();
 
             indexRefreshTimer = DispatcherQueue.CreateTimer();
             indexRefreshTimer.Interval = TimeSpan.FromMilliseconds(150);
@@ -157,6 +167,7 @@ namespace FujiyNotepad.WinUI
                 SaveWindowState();
                 StopWatchingFile();
                 followTailTimer.Stop();
+                annotationMarkerRefreshTimer.Stop();
                 cancelIndexing?.Cancel();
                 findCts?.Cancel();
                 source?.Dispose();
@@ -348,6 +359,7 @@ namespace FujiyNotepad.WinUI
                 activeNovelProject = project;
                 activeAnnotationStore = store;
                 annotationOffsetMap = provider is null ? null : new DocumentTextOffsetMap(provider);
+                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
                 Title = $"{Path.GetFileName(project.DocumentPath)} - Fujiy Notepad [{project.Metadata.Title}]";
                 UpdateNovelProjectMenu();
                 LblStatus.Text = $"Novel project: {project.Metadata.Title}";
@@ -511,6 +523,11 @@ namespace FujiyNotepad.WinUI
             activeAnnotationStore = null;
             activeNovelProject = null;
             annotationOffsetMap = null;
+            annotationMarkerRefreshTimer.Stop();
+            annotationMarkerRefreshVersion++;
+            lastAnnotationMarkerStartLine = -1;
+            lastAnnotationMarkerEndLine = -1;
+            View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
             SmallAnnotationPane.Visibility = Visibility.Collapsed;
             SmallAnnotationsItem.IsChecked = false;
             if (store is not null)
@@ -1300,6 +1317,22 @@ namespace FujiyNotepad.WinUI
             {
                 LblStatus.Text = StatusText.LineCount(provider.LineCount) + " (indexing stopped)";
             }
+        }
+
+        private void OnReaderViewChanged()
+        {
+            SyncScrollBars();
+
+            if (activeAnnotationStore is null || activeNovelProject is null || filteredSource is not null)
+            {
+                annotationMarkerRefreshTimer.Stop();
+                if (activeAnnotationStore is null || filteredSource is not null)
+                    View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
+                return;
+            }
+
+            annotationMarkerRefreshTimer.Stop();
+            annotationMarkerRefreshTimer.Start();
         }
 
         private void SyncScrollBars()
