@@ -57,6 +57,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 EndOffset INTEGER NOT NULL,
                 ChapterNumber INTEGER NOT NULL,
                 DocumentRevision INTEGER NOT NULL DEFAULT 1,
+                IsActive INTEGER NOT NULL DEFAULT 1,
                 CHECK (StartOffset >= 0 AND EndOffset >= StartOffset)
             );
             CREATE INDEX IF NOT EXISTS IX_Chapters_StartOffset ON Chapters(StartOffset);
@@ -105,6 +106,30 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_ChapterId ON AnnotationAnchors(ChapterId);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        // Projects created by earlier builds have a Chapters table without the active/archive flag.
+        bool hasActiveColumn = false;
+        await using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = "PRAGMA table_info(Chapters);";
+            await using var reader = await schema.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (string.Equals(reader.GetString(1), "IsActive", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasActiveColumn = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasActiveColumn)
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE Chapters ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         initialized = true;
     }
 
@@ -226,6 +251,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             ORDER BY UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$chapterActive",
+            (object?)(chapterIsActive is null ? null : chapterIsActive.Value ? 1 : 0) ?? DBNull.Value);
         string? pattern = string.IsNullOrWhiteSpace(searchText) ? null : "%" + EscapeLike(searchText.Trim()) + "%";
         command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
 
@@ -437,14 +464,15 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
-            VALUES ($id, $title, $start, $end, $number, $revision)
+            INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
+            VALUES ($id, $title, $start, $end, $number, $revision, $active)
             ON CONFLICT(Id) DO UPDATE SET
                 Title = excluded.Title,
                 StartOffset = excluded.StartOffset,
                 EndOffset = excluded.EndOffset,
                 ChapterNumber = excluded.ChapterNumber,
-                DocumentRevision = excluded.DocumentRevision;
+                DocumentRevision = excluded.DocumentRevision,
+                IsActive = excluded.IsActive;
             """;
         command.Parameters.AddWithValue("$id", chapter.Id.ToString("D"));
         command.Parameters.AddWithValue("$title", chapter.Title);
@@ -452,18 +480,26 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.Parameters.AddWithValue("$end", chapter.EndOffset);
         command.Parameters.AddWithValue("$number", chapter.ChapterNumber);
         command.Parameters.AddWithValue("$revision", chapter.DocumentRevision);
+        command.Parameters.AddWithValue("$active", chapter.IsActive ? 1 : 0);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(CancellationToken cancellationToken = default) =>
+        GetChaptersAsync(includeInactive: false, cancellationToken);
+
+    public async Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(
+        bool includeInactive, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
-            FROM Chapters ORDER BY StartOffset, ChapterNumber;
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive
+            FROM Chapters
+            WHERE ($includeInactive = 1 OR IsActive = 1)
+            ORDER BY IsActive DESC, StartOffset, ChapterNumber;
             """;
+        command.Parameters.AddWithValue("$includeInactive", includeInactive ? 1 : 0);
         var result = new List<NovelChapter>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -474,7 +510,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 reader.GetInt64(2),
                 reader.GetInt64(3),
                 reader.GetInt32(4),
-                reader.GetInt64(5)));
+                reader.GetInt64(5),
+                reader.GetInt32(6) != 0));
         }
         return result;
     }
@@ -539,7 +576,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using (var count = connection.CreateCommand())
         {
             count.Transaction = (SqliteTransaction)transaction;
-            count.CommandText = "SELECT COUNT(*) FROM Chapters;";
+            count.CommandText = "SELECT COUNT(*) FROM Chapters WHERE IsActive = 1;";
             existingChapterCount = Convert.ToInt64(
                 await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
         }
@@ -574,7 +611,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
             await using var revisionCheck = connection.CreateCommand();
             revisionCheck.Transaction = (SqliteTransaction)transaction;
-            revisionCheck.CommandText = "SELECT COUNT(*) FROM Chapters WHERE DocumentRevision <> $revision;";
+            revisionCheck.CommandText = "SELECT COUNT(*) FROM Chapters WHERE IsActive = 1 AND DocumentRevision <> $revision;";
             revisionCheck.Parameters.AddWithValue("$revision", documentRevision);
             long staleCount = Convert.ToInt64(
                 await revisionCheck.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
@@ -600,8 +637,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             insert.Transaction = (SqliteTransaction)transaction;
             insert.CommandText = """
-                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
-                VALUES ($id, $title, $start, $end, $number, $revision);
+                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
+                VALUES ($id, $title, $start, $end, $number, $revision, 1);
                 """;
             var id = insert.Parameters.Add("$id", SqliteType.Text);
             var title = insert.Parameters.Add("$title", SqliteType.Text);
@@ -665,6 +702,119 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Replaces the active chapter index atomically. Unmatched old chapters are archived rather than
+    /// deleted, preserving their chapter annotations. Matched IDs remain stable across re-indexing.
+    /// </summary>
+    public async Task ReplaceChapterIndexAsync(
+        IReadOnlyList<NovelChapter> chapters,
+        long documentRevision,
+        int parserVersion = NovelChapterIndexBuilder.CurrentParserVersion,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(chapters);
+        if (documentRevision < 1 || parserVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(documentRevision));
+
+        long previousEnd = -1;
+        foreach (NovelChapter chapter in chapters)
+        {
+            if (chapter.StartOffset < 0 || chapter.EndOffset <= chapter.StartOffset
+                || chapter.StartOffset < previousEnd
+                || chapter.DocumentRevision != documentRevision)
+                throw new ArgumentException(
+                    "Chapter ranges must be ordered, non-overlapping, non-empty, and use the current document revision.",
+                    nameof(chapters));
+            previousEnd = chapter.EndOffset;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (var archive = connection.CreateCommand())
+        {
+            archive.Transaction = (SqliteTransaction)transaction;
+            archive.CommandText = "UPDATE Chapters SET IsActive = 0 WHERE IsActive = 1;";
+            await archive.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var upsert = connection.CreateCommand())
+        {
+            upsert.Transaction = (SqliteTransaction)transaction;
+            upsert.CommandText = """
+                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
+                VALUES ($id, $title, $start, $end, $number, $revision, 1)
+                ON CONFLICT(Id) DO UPDATE SET
+                    Title = excluded.Title,
+                    StartOffset = excluded.StartOffset,
+                    EndOffset = excluded.EndOffset,
+                    ChapterNumber = excluded.ChapterNumber,
+                    DocumentRevision = excluded.DocumentRevision,
+                    IsActive = 1;
+                """;
+            var id = upsert.Parameters.Add("$id", SqliteType.Text);
+            var title = upsert.Parameters.Add("$title", SqliteType.Text);
+            var start = upsert.Parameters.Add("$start", SqliteType.Integer);
+            var end = upsert.Parameters.Add("$end", SqliteType.Integer);
+            var number = upsert.Parameters.Add("$number", SqliteType.Integer);
+            var revision = upsert.Parameters.Add("$revision", SqliteType.Integer);
+            foreach (NovelChapter chapter in chapters)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                id.Value = chapter.Id.ToString("D");
+                title.Value = chapter.Title;
+                start.Value = chapter.StartOffset;
+                end.Value = chapter.EndOffset;
+                number.Value = chapter.ChapterNumber;
+                revision.Value = documentRevision;
+                await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        // Re-associate current-version small-note anchors with the newly indexed active chapter ranges.
+        // Stale or orphaned anchors are deliberately left untouched.
+        await using (var anchors = connection.CreateCommand())
+        {
+            anchors.Transaction = (SqliteTransaction)transaction;
+            anchors.CommandText = """
+                UPDATE AnnotationAnchors
+                SET ChapterId = (
+                    SELECT c.Id FROM Chapters c
+                    WHERE c.IsActive = 1
+                      AND c.StartOffset <= AnnotationAnchors.StartOffset
+                      AND c.EndOffset > AnnotationAnchors.StartOffset
+                    ORDER BY c.StartOffset DESC
+                    LIMIT 1
+                )
+                WHERE IsOrphaned = 0 AND DocumentRevision = $revision;
+                """;
+            anchors.Parameters.AddWithValue("$revision", documentRevision);
+            await anchors.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var state = connection.CreateCommand())
+        {
+            state.Transaction = (SqliteTransaction)transaction;
+            state.CommandText = """
+                INSERT INTO ChapterIndexState (Id, DocumentRevision, ParserVersion, ChapterCount, IndexedAt)
+                VALUES (1, $revision, $parser, $count, $indexed)
+                ON CONFLICT(Id) DO UPDATE SET
+                    DocumentRevision = excluded.DocumentRevision,
+                    ParserVersion = excluded.ParserVersion,
+                    ChapterCount = excluded.ChapterCount,
+                    IndexedAt = excluded.IndexedAt;
+                """;
+            state.Parameters.AddWithValue("$revision", documentRevision);
+            state.Parameters.AddWithValue("$parser", parserVersion);
+            state.Parameters.AddWithValue("$count", chapters.Count);
+            state.Parameters.AddWithValue("$indexed", DateTimeOffset.UtcNow.ToString("O"));
+            await state.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<NovelChapter?> GetChapterAtOffsetAsync(long offset,
         CancellationToken cancellationToken = default)
     {
@@ -677,7 +827,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.CommandText = """
             SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
             FROM Chapters
-            WHERE StartOffset <= $offset AND EndOffset > $offset
+            WHERE IsActive = 1 AND StartOffset <= $offset AND EndOffset > $offset
             ORDER BY StartOffset DESC
             LIMIT 1;
             """;
@@ -866,19 +1016,20 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
     public async Task<IReadOnlyList<ChapterAnnotationSummary>> GetChapterAnnotationSummariesAsync(
         Guid? chapterId = null, Guid? categoryId = null, string? searchText = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool? chapterIsActive = null)
     {
         EnsureInitialized();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT a.Id, a.ChapterId, a.CategoryId, a.Title, a.Content, a.CreatedAt, a.UpdatedAt,
-                   c.Id, c.Title, c.StartOffset, c.EndOffset, c.ChapterNumber, c.DocumentRevision,
+                   c.Id, c.Title, c.StartOffset, c.EndOffset, c.ChapterNumber, c.DocumentRevision, c.IsActive,
                    cat.Id, cat.Name, cat.Color, cat.SortOrder, cat.CreatedAt
             FROM ChapterAnnotations a
             INNER JOIN Chapters c ON c.Id = a.ChapterId
             LEFT JOIN ChapterAnnotationCategories cat ON cat.Id = a.CategoryId
             WHERE ($chapter IS NULL OR a.ChapterId = $chapter)
+              AND ($chapterActive IS NULL OR c.IsActive = $chapterActive)
               AND ($category IS NULL OR a.CategoryId = $category)
               AND ($search IS NULL
                    OR a.Title LIKE $search ESCAPE '\'
@@ -911,15 +1062,16 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 reader.GetInt64(9),
                 reader.GetInt64(10),
                 reader.GetInt32(11),
-                reader.GetInt64(12));
-            ChapterAnnotationCategory? category = reader.IsDBNull(13)
+                reader.GetInt64(12),
+                reader.GetInt32(13) != 0);
+            ChapterAnnotationCategory? category = reader.IsDBNull(14)
                 ? null
                 : new ChapterAnnotationCategory(
-                    Guid.Parse(reader.GetString(13)),
-                    reader.GetString(14),
-                    reader.IsDBNull(15) ? null : reader.GetString(15),
-                    reader.GetInt32(16),
-                    DateTimeOffset.Parse(reader.GetString(17)));
+                    Guid.Parse(reader.GetString(14)),
+                    reader.GetString(15),
+                    reader.IsDBNull(16) ? null : reader.GetString(16),
+                    reader.GetInt32(17),
+                    DateTimeOffset.Parse(reader.GetString(18)));
             result.Add(new ChapterAnnotationSummary(annotation, chapter, category));
         }
         return result;
@@ -1199,7 +1351,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             selectChapters.CommandText = """
                 SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
                 FROM Chapters
-                WHERE EndOffset > $start OR StartOffset >= $start;
+                WHERE IsActive = 1 AND (EndOffset > $start OR StartOffset >= $start);
                 """;
             selectChapters.Parameters.AddWithValue("$start", edit.StartOffset);
             await using var reader = await selectChapters.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -1271,11 +1423,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             updateIndexState.Transaction = (SqliteTransaction)transaction;
             updateIndexState.CommandText = """
                 UPDATE ChapterIndexState
-                SET DocumentRevision = $revision,
-                    ChapterCount = (SELECT COUNT(*) FROM Chapters)
+                SET ChapterCount = (SELECT COUNT(*) FROM Chapters WHERE IsActive = 1)
                 WHERE Id = 1;
                 """;
-            updateIndexState.Parameters.AddWithValue("$revision", newDocumentRevision);
             await updateIndexState.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
