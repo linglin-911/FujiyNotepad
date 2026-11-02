@@ -37,6 +37,40 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task GetAnchorsForAnnotationsAsync_ReturnsRequestedAnchorsGroupedByAnnotation()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid first = await store.CreateAnnotationAsync("first");
+            Guid second = await store.CreateAnnotationAsync("second");
+            Guid ignored = await store.CreateAnnotationAsync("ignored");
+            await store.AddAnchorAsync(first, 10, 20, "first occurrence");
+            await store.AddAnchorAsync(first, 30, 40, "second occurrence");
+            await store.AddAnchorAsync(second, 50, 60, "third occurrence");
+            await store.AddAnchorAsync(ignored, 70, 80, "not requested");
+
+            IReadOnlyDictionary<Guid, IReadOnlyList<AnnotationAnchor>> result =
+                await store.GetAnchorsForAnnotationsAsync(new[] { first, second });
+
+            Assert.Equal(2, result.Count);
+            Assert.Equal(2, result[first].Count);
+            Assert.Equal(1, result[second].Count);
+            Assert.All(result[first], anchor => Assert.Equal(first, anchor.AnnotationId));
+            Assert.DoesNotContain(ignored, result.Keys);
+            Assert.Empty(await store.GetAnchorsForAnnotationsAsync(Array.Empty<Guid>()));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task RangeQueries_ReturnAllOverlappingNotesIncludingNestedRanges()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
