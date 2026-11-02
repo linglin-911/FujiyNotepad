@@ -736,6 +736,7 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
+                NovelChapter? chapter = await store.GetChapterAtOffsetAsync(selected.Value.StartOffset);
                 Guid annotationId = await store.CreateAnnotationWithAnchorAsync(
                     values.Content,
                     selected.Value.StartOffset,
@@ -743,6 +744,7 @@ namespace FujiyNotepad.WinUI
                     selected.Value.Quote,
                     categoryId: values.CategoryId,
                     title: values.Title,
+                    chapterId: chapter?.Id,
                     documentRevision: project.Metadata.DocumentRevision);
 
                 SmallAnnotationsItem.IsChecked = true;
@@ -784,11 +786,13 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
+                NovelChapter? chapter = await store.GetChapterAtOffsetAsync(selected.Value.StartOffset);
                 await store.AddAnchorAsync(
                     target.Annotation.Id,
                     selected.Value.StartOffset,
                     selected.Value.EndOffset,
                     selected.Value.Quote,
+                    chapterId: chapter?.Id,
                     documentRevision: project.Metadata.DocumentRevision);
 
                 SmallAnnotationsItem.IsChecked = true;
