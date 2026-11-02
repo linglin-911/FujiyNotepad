@@ -1147,11 +1147,8 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
-            // GoToLineColumn places the target line at the top. Move the viewport afterward so the
-            // selected occurrence is presented around the vertical center, with enough context above/below.
             View.GoToLineColumn(position.Line, position.Column);
-            int centeredFirstLine = position.Line - Math.Max(1, View.FullyVisibleLineCount / 2);
-            View.FirstVisibleLine = Math.Clamp(centeredFirstLine, 0, View.MaxFirstLine);
+            View.CenterCaretVertically();
             SyncScrollBars();
             View.FocusCanvas();
         }
