@@ -28,6 +28,9 @@ namespace FujiyNotepad.WinUI
 
             bool show = SmallAnnotationsItem.IsChecked;
             SmallAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (!show)
+                CancelSmallAnnotationCardSingleTap();
+
             if (show)
             {
                 await ReloadSmallAnnotationCategoriesAsync();
@@ -37,6 +40,7 @@ namespace FujiyNotepad.WinUI
 
         private void CloseSmallAnnotations_Click(object sender, RoutedEventArgs e)
         {
+            CancelSmallAnnotationCardSingleTap();
             SmallAnnotationsItem.IsChecked = false;
             SmallAnnotationPane.Visibility = Visibility.Collapsed;
         }
@@ -161,6 +165,7 @@ namespace FujiyNotepad.WinUI
 
         private async Task RefreshSmallAnnotationsAsync(Guid? preferredAnnotationId = null)
         {
+            CancelSmallAnnotationCardSingleTap();
             NovelAnnotationStore? store = activeAnnotationStore;
             if (store is null)
                 return;
