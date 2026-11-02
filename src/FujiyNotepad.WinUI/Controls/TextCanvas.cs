@@ -86,11 +86,15 @@ namespace FujiyNotepad.WinUI.Controls
 
         private bool isSelecting;
         private Point lastPointer;
+        private Point pointerDownPosition;
+        private readonly Dictionary<int, List<TextAnnotationMarker>> annotationMarkersByLine = new();
+        private readonly Color annotationMarkerColor = Color.FromArgb(255, 0xC5, 0x7A, 0x20);
 
         public event Action? ViewChanged;
         public event Action<TextPosition>? CaretChanged;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
+        public event Action<TextPosition>? AnnotationMarkerClicked;
 
         private MenuFlyoutItem? createSmallAnnotationItem;
         private MenuFlyoutItem? addToSmallAnnotationItem;
@@ -316,6 +320,41 @@ namespace FujiyNotepad.WinUI.Controls
                     ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
         }
 
+        /// <summary>Replaces the source ranges whose text should receive small-annotation markers.</summary>
+        public void SetAnnotationMarkers(IEnumerable<TextAnnotationMarker> markers)
+        {
+            annotationMarkersByLine.Clear();
+
+            foreach (IGrouping<int, TextAnnotationMarker> group in markers
+                         .Where(marker => marker.Line >= 0 && marker.StartColumn >= 0
+                                          && marker.EndColumn > marker.StartColumn)
+                         .GroupBy(marker => marker.Line))
+            {
+                var merged = new List<TextAnnotationMarker>();
+                foreach (TextAnnotationMarker marker in group
+                             .OrderBy(marker => marker.StartColumn)
+                             .ThenBy(marker => marker.EndColumn))
+                {
+                    if (merged.Count == 0 || marker.StartColumn > merged[^1].EndColumn)
+                    {
+                        merged.Add(marker);
+                    }
+                    else
+                    {
+                        TextAnnotationMarker previous = merged[^1];
+                        merged[^1] = previous with
+                        {
+                            EndColumn = Math.Max(previous.EndColumn, marker.EndColumn),
+                        };
+                    }
+                }
+
+                annotationMarkersByLine[group.Key] = merged;
+            }
+
+            canvas.Invalidate();
+        }
+
         /// <summary>The selected text when it lies on a single source line; otherwise null (issue #130).</summary>
         public string? GetSelectedTextOnSingleLine() => engine.GetSelectedTextOnSingleLine();
 
@@ -399,6 +438,7 @@ namespace FujiyNotepad.WinUI.Controls
         public void SetProvider(ILineSource? newProvider)
         {
             Ready();
+            annotationMarkersByLine.Clear();
             ClearTextLayoutCache();
             lastAccessibilityLine = -1; // a new file: re-announce the caret line even if it lands on line 0 again
             engine.SetProvider(newProvider);
@@ -531,6 +571,7 @@ namespace FujiyNotepad.WinUI.Controls
             Focus(Microsoft.UI.Xaml.FocusState.Pointer);
             Ready();
             lastPointer = e.GetCurrentPoint(this).Position;
+            pointerDownPosition = lastPointer;
             bool shift = IsDown(VirtualKey.Shift);
             engine.PointerPress(HitTestText(lastPointer.X, lastPointer.Y), shift);
             isSelecting = true;
@@ -553,12 +594,41 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
         {
-            if (isSelecting)
+            if (!isSelecting)
+                return;
+
+            Point released = e.GetCurrentPoint(this).Position;
+            bool isClick = Math.Abs(released.X - pointerDownPosition.X) <= 4
+                           && Math.Abs(released.Y - pointerDownPosition.Y) <= 4;
+
+            isSelecting = false;
+            autoScrollTimer.Stop();
+            ReleasePointerCapture(e.Pointer);
+
+            if (isClick)
             {
-                isSelecting = false;
-                autoScrollTimer.Stop();
-                ReleasePointerCapture(e.Pointer);
+                TextPosition position = HitTestText(released.X, released.Y);
+                if (HasAnnotationMarkerAt(position))
+                    AnnotationMarkerClicked?.Invoke(position);
             }
+        }
+
+        private bool HasAnnotationMarkerAt(TextPosition position)
+        {
+            if (!annotationMarkersByLine.TryGetValue(position.Line, out List<TextAnnotationMarker>? markers))
+                return false;
+
+            foreach (TextAnnotationMarker marker in markers)
+            {
+                if ((position.Column >= marker.StartColumn && position.Column < marker.EndColumn)
+                    || (position.Column > 0 && position.Column - 1 >= marker.StartColumn
+                        && position.Column - 1 < marker.EndColumn))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void OnPointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -834,6 +904,8 @@ namespace FujiyNotepad.WinUI.Controls
                     ds.DrawText(line.Display, new Vector2((float)line.TextX, ty), textColor, textFormat);
                 }
 
+                DrawAnnotationMarkers(ds, layout, line, ty);
+
                 if (line.Whitespace is { Count: > 0 })
                 {
                     DrawWhitespaceMarkers(ds, line, ty);
@@ -891,6 +963,41 @@ namespace FujiyNotepad.WinUI.Controls
                 // Device loss or an invalid native layout must not make the read-only viewer unusable.
                 ClearTextLayoutCache();
                 return null;
+            }
+        }
+
+        private void DrawAnnotationMarkers(
+            CanvasDrawingSession ds, CanvasTextLayout? layout, VisibleLine line, float top)
+        {
+            if (layout is null || !annotationMarkersByLine.TryGetValue(
+                    line.LineIndex, out List<TextAnnotationMarker>? markers))
+            {
+                return;
+            }
+
+            float y = top + (float)Math.Max(1, lineHeight - 1.5);
+            foreach (TextAnnotationMarker marker in markers)
+            {
+                int startIndex = engine.GetDisplayIndexForColumn(line.LineIndex, marker.StartColumn)
+                                 - line.DisplayStartIndex;
+                int endIndex = engine.GetDisplayIndexForColumn(line.LineIndex, marker.EndColumn)
+                               - line.DisplayStartIndex;
+                startIndex = Math.Clamp(startIndex, 0, line.Display.Length);
+                endIndex = Math.Clamp(endIndex, 0, line.Display.Length);
+                if (endIndex <= startIndex)
+                    continue;
+
+                Vector2 start = layout.GetCaretPosition(startIndex, trailingSideOfCharacter: false);
+                Vector2 end = layout.GetCaretPosition(endIndex, trailingSideOfCharacter: false);
+                float left = (float)(line.TextX + Math.Min(start.X, end.X));
+                float right = (float)(line.TextX + Math.Max(start.X, end.X));
+                const float dashLength = 3.5f;
+                const float dashGap = 2.5f;
+
+                for (float x = left; x < right; x += dashLength + dashGap)
+                {
+                    ds.DrawLine(x, y, Math.Min(x + dashLength, right), y, annotationMarkerColor, 1.25f);
+                }
             }
         }
 
