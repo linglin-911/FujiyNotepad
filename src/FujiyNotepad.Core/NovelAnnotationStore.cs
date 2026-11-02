@@ -485,7 +485,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     }
 
     public Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(CancellationToken cancellationToken = default) =>
-        GetChaptersAsync(includeInactive: false, cancellationToken);
+        GetChaptersAsync(includeInactive: false, cancellationToken: cancellationToken);
 
     public async Task<IReadOnlyList<NovelChapter>> GetChaptersAsync(
         bool includeInactive, CancellationToken cancellationToken = default)
@@ -667,7 +667,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 UPDATE AnnotationAnchors
                 SET ChapterId = (
                     SELECT c.Id FROM Chapters c
-                    WHERE c.StartOffset <= AnnotationAnchors.StartOffset
+                    WHERE c.IsActive = 1
+                      AND c.StartOffset <= AnnotationAnchors.StartOffset
                       AND c.EndOffset > AnnotationAnchors.StartOffset
                     ORDER BY c.StartOffset DESC
                     LIMIT 1
@@ -1038,6 +1039,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             ORDER BY c.ChapterNumber, c.StartOffset, a.UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$chapterActive",
+            (object?)(chapterIsActive is null ? null : chapterIsActive.Value ? 1 : 0) ?? DBNull.Value);
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
         string? pattern = string.IsNullOrWhiteSpace(searchText)
             ? null
