@@ -1128,7 +1128,7 @@ namespace FujiyNotepad.WinUI.Controls
                     hitLine.LineIndex,
                     hitLine.DisplayStartIndex + localIndex,
                     trailing: false,
-                    characterCount);
+                    displayCharacterCount: characterCount);
             }
 
             int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
