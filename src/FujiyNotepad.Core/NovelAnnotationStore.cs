@@ -58,7 +58,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 ChapterNumber INTEGER NOT NULL,
                 DocumentRevision INTEGER NOT NULL DEFAULT 1,
                 IsActive INTEGER NOT NULL DEFAULT 1,
-                CHECK (StartOffset >= 0 AND EndOffset >= StartOffset)
+                BodyStartOffset INTEGER NOT NULL DEFAULT 0,
+                BodySha256 TEXT NOT NULL DEFAULT '',
+                CHECK (StartOffset >= 0 AND EndOffset >= StartOffset),
+                CHECK (BodyStartOffset >= StartOffset AND BodyStartOffset <= EndOffset)
             );
             CREATE INDEX IF NOT EXISTS IX_Chapters_StartOffset ON Chapters(StartOffset);
             CREATE TABLE IF NOT EXISTS ChapterIndexState (
@@ -107,26 +110,35 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             """;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-        // Projects created by earlier builds have a Chapters table without the active/archive flag.
-        bool hasActiveColumn = false;
+        // Additive migrations keep existing projects and their stable ChapterIds intact.
+        var chapterColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var schema = connection.CreateCommand())
         {
             schema.CommandText = "PRAGMA table_info(Chapters);";
             await using var reader = await schema.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                if (string.Equals(reader.GetString(1), "IsActive", StringComparison.OrdinalIgnoreCase))
-                {
-                    hasActiveColumn = true;
-                    break;
-                }
-            }
+                chapterColumns.Add(reader.GetString(1));
         }
 
-        if (!hasActiveColumn)
+        if (!chapterColumns.Contains("IsActive"))
         {
             await using var migrate = connection.CreateCommand();
             migrate.CommandText = "ALTER TABLE Chapters ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!chapterColumns.Contains("BodyStartOffset"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE Chapters ADD COLUMN BodyStartOffset INTEGER NOT NULL DEFAULT 0;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await using var backfill = connection.CreateCommand();
+            backfill.CommandText = "UPDATE Chapters SET BodyStartOffset = StartOffset;";
+            await backfill.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!chapterColumns.Contains("BodySha256"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE Chapters ADD COLUMN BodySha256 TEXT NOT NULL DEFAULT '';";
             await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -462,15 +474,18 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
-            VALUES ($id, $title, $start, $end, $number, $revision, $active)
+            INSERT INTO Chapters
+                (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256)
+            VALUES ($id, $title, $start, $end, $number, $revision, $active, $bodyStart, $bodyHash)
             ON CONFLICT(Id) DO UPDATE SET
                 Title = excluded.Title,
                 StartOffset = excluded.StartOffset,
                 EndOffset = excluded.EndOffset,
                 ChapterNumber = excluded.ChapterNumber,
                 DocumentRevision = excluded.DocumentRevision,
-                IsActive = excluded.IsActive;
+                IsActive = excluded.IsActive,
+                BodyStartOffset = excluded.BodyStartOffset,
+                BodySha256 = excluded.BodySha256;
             """;
         command.Parameters.AddWithValue("$id", chapter.Id.ToString("D"));
         command.Parameters.AddWithValue("$title", chapter.Title);
@@ -479,6 +494,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.Parameters.AddWithValue("$number", chapter.ChapterNumber);
         command.Parameters.AddWithValue("$revision", chapter.DocumentRevision);
         command.Parameters.AddWithValue("$active", chapter.IsActive ? 1 : 0);
+        command.Parameters.AddWithValue("$bodyStart", chapter.BodyStartOffset >= chapter.StartOffset
+            ? chapter.BodyStartOffset : chapter.StartOffset);
+        command.Parameters.AddWithValue("$bodyHash", chapter.BodySha256);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -492,7 +510,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256
             FROM Chapters
             WHERE ($includeInactive = 1 OR IsActive = 1)
             ORDER BY IsActive DESC, StartOffset, ChapterNumber;
@@ -509,7 +527,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 reader.GetInt64(3),
                 reader.GetInt32(4),
                 reader.GetInt64(5),
-                reader.GetInt32(6) != 0));
+                reader.GetInt32(6) != 0,
+                reader.GetInt64(7),
+                reader.GetString(8)));
         }
         return result;
     }
@@ -523,7 +543,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256
             FROM Chapters
             WHERE Id = $id AND ($includeInactive = 1 OR IsActive = 1);
             """;
@@ -540,7 +560,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             reader.GetInt64(3),
             reader.GetInt32(4),
             reader.GetInt64(5),
-            reader.GetInt32(6) != 0);
+            reader.GetInt32(6) != 0,
+            reader.GetInt64(7),
+            reader.GetString(8));
     }
 
     public async Task<NovelChapterIndexState?> GetChapterIndexStateAsync(
@@ -664,8 +686,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             insert.Transaction = (SqliteTransaction)transaction;
             insert.CommandText = """
-                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
-                VALUES ($id, $title, $start, $end, $number, $revision, 1);
+                INSERT INTO Chapters
+                    (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256)
+                VALUES ($id, $title, $start, $end, $number, $revision, 1, $bodyStart, $bodyHash);
                 """;
             var id = insert.Parameters.Add("$id", SqliteType.Text);
             var title = insert.Parameters.Add("$title", SqliteType.Text);
@@ -673,6 +696,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             var end = insert.Parameters.Add("$end", SqliteType.Integer);
             var number = insert.Parameters.Add("$number", SqliteType.Integer);
             var revision = insert.Parameters.Add("$revision", SqliteType.Integer);
+            var bodyStart = insert.Parameters.Add("$bodyStart", SqliteType.Integer);
+            var bodyHash = insert.Parameters.Add("$bodyHash", SqliteType.Text);
 
             foreach (NovelChapter chapter in chapters)
             {
@@ -683,6 +708,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 end.Value = chapter.EndOffset;
                 number.Value = chapter.ChapterNumber;
                 revision.Value = chapter.DocumentRevision;
+                bodyStart.Value = chapter.BodyStartOffset;
+                bodyHash.Value = chapter.BodySha256;
                 await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -696,7 +723,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                     SELECT c.Id FROM Chapters c
                     WHERE c.IsActive = 1
                       AND c.StartOffset <= AnnotationAnchors.StartOffset
-                      AND c.EndOffset > AnnotationAnchors.StartOffset
+                      AND c.EndOffset >= AnnotationAnchors.EndOffset
+                      AND AnnotationAnchors.EndOffset > AnnotationAnchors.StartOffset
                     ORDER BY c.StartOffset DESC
                     LIMIT 1
                 )
@@ -771,15 +799,18 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             upsert.Transaction = (SqliteTransaction)transaction;
             upsert.CommandText = """
-                INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive)
-                VALUES ($id, $title, $start, $end, $number, $revision, 1)
+                INSERT INTO Chapters
+                    (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256)
+                VALUES ($id, $title, $start, $end, $number, $revision, 1, $bodyStart, $bodyHash)
                 ON CONFLICT(Id) DO UPDATE SET
                     Title = excluded.Title,
                     StartOffset = excluded.StartOffset,
                     EndOffset = excluded.EndOffset,
                     ChapterNumber = excluded.ChapterNumber,
                     DocumentRevision = excluded.DocumentRevision,
-                    IsActive = 1;
+                    IsActive = 1,
+                    BodyStartOffset = excluded.BodyStartOffset,
+                    BodySha256 = excluded.BodySha256;
                 """;
             var id = upsert.Parameters.Add("$id", SqliteType.Text);
             var title = upsert.Parameters.Add("$title", SqliteType.Text);
@@ -787,6 +818,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             var end = upsert.Parameters.Add("$end", SqliteType.Integer);
             var number = upsert.Parameters.Add("$number", SqliteType.Integer);
             var revision = upsert.Parameters.Add("$revision", SqliteType.Integer);
+            var bodyStart = upsert.Parameters.Add("$bodyStart", SqliteType.Integer);
+            var bodyHash = upsert.Parameters.Add("$bodyHash", SqliteType.Text);
             foreach (NovelChapter chapter in chapters)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -796,6 +829,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 end.Value = chapter.EndOffset;
                 number.Value = chapter.ChapterNumber;
                 revision.Value = documentRevision;
+                bodyStart.Value = chapter.BodyStartOffset;
+                bodyHash.Value = chapter.BodySha256;
                 await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -811,7 +846,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                     SELECT c.Id FROM Chapters c
                     WHERE c.IsActive = 1
                       AND c.StartOffset <= AnnotationAnchors.StartOffset
-                      AND c.EndOffset > AnnotationAnchors.StartOffset
+                      AND c.EndOffset >= AnnotationAnchors.EndOffset
+                      AND AnnotationAnchors.EndOffset > AnnotationAnchors.StartOffset
                     ORDER BY c.StartOffset DESC
                     LIMIT 1
                 )
@@ -853,7 +889,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive, BodyStartOffset, BodySha256
             FROM Chapters
             WHERE IsActive = 1 AND StartOffset <= $offset AND EndOffset > $offset
             ORDER BY StartOffset DESC
@@ -870,7 +906,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             reader.GetInt64(2),
             reader.GetInt64(3),
             reader.GetInt32(4),
-            reader.GetInt64(5));
+            reader.GetInt64(5),
+            reader.GetInt32(6) != 0,
+            reader.GetInt64(7),
+            reader.GetString(8));
     }
 
     public async Task<Guid> CreateChapterAnnotationCategoryAsync(string name, string? color = null,
@@ -1052,6 +1091,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         command.CommandText = """
             SELECT a.Id, a.ChapterId, a.CategoryId, a.Title, a.Content, a.CreatedAt, a.UpdatedAt,
                    c.Id, c.Title, c.StartOffset, c.EndOffset, c.ChapterNumber, c.DocumentRevision, c.IsActive,
+                   c.BodyStartOffset, c.BodySha256,
                    cat.Id, cat.Name, cat.Color, cat.SortOrder, cat.CreatedAt
             FROM ChapterAnnotations a
             INNER JOIN Chapters c ON c.Id = a.ChapterId
@@ -1090,15 +1130,17 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 reader.GetInt64(10),
                 reader.GetInt32(11),
                 reader.GetInt64(12),
-                reader.GetInt32(13) != 0);
-            ChapterAnnotationCategory? category = reader.IsDBNull(14)
+                reader.GetInt32(13) != 0,
+                reader.GetInt64(14),
+                reader.GetString(15));
+            ChapterAnnotationCategory? category = reader.IsDBNull(16)
                 ? null
                 : new ChapterAnnotationCategory(
-                    Guid.Parse(reader.GetString(14)),
-                    reader.GetString(15),
-                    reader.IsDBNull(16) ? null : reader.GetString(16),
-                    reader.GetInt32(17),
-                    DateTimeOffset.Parse(reader.GetString(18)));
+                    Guid.Parse(reader.GetString(16)),
+                    reader.GetString(17),
+                    reader.IsDBNull(18) ? null : reader.GetString(18),
+                    reader.GetInt32(19),
+                    DateTimeOffset.Parse(reader.GetString(20)));
             result.Add(new ChapterAnnotationSummary(annotation, chapter, category));
         }
         return result;
@@ -1440,7 +1482,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             selectChapters.Transaction = (SqliteTransaction)transaction;
             selectChapters.CommandText = """
-                SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
+                SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, BodyStartOffset, BodySha256
                 FROM Chapters
                 WHERE IsActive = 1 AND (EndOffset > $start OR StartOffset >= $start)
                   AND DocumentRevision = $previousRevision;
@@ -1456,7 +1498,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                     reader.GetInt64(2),
                     reader.GetInt64(3),
                     reader.GetInt32(4),
-                    reader.GetInt64(5)));
+                    reader.GetInt64(5),
+                    true,
+                    reader.GetInt64(6),
+                    reader.GetString(7)));
             }
         }
 
@@ -1465,13 +1510,16 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             updateChapters.Transaction = (SqliteTransaction)transaction;
             updateChapters.CommandText = """
                 UPDATE Chapters
-                SET StartOffset = $start, EndOffset = $end, DocumentRevision = $revision
+                SET StartOffset = $start, EndOffset = $end, BodyStartOffset = $bodyStart,
+                    BodySha256 = $bodyHash, DocumentRevision = $revision
                 WHERE Id = $id;
                 """;
             var startParameter = updateChapters.Parameters.Add("$start", SqliteType.Integer);
             var endParameter = updateChapters.Parameters.Add("$end", SqliteType.Integer);
             var revisionParameter = updateChapters.Parameters.Add("$revision", SqliteType.Integer);
             var idParameter = updateChapters.Parameters.Add("$id", SqliteType.Text);
+            var bodyStartParameter = updateChapters.Parameters.Add("$bodyStart", SqliteType.Integer);
+            var bodyHashParameter = updateChapters.Parameters.Add("$bodyHash", SqliteType.Text);
 
             foreach (NovelChapter chapter in affectedChapters)
             {
@@ -1481,6 +1529,12 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 endParameter.Value = transformed.EndOffset;
                 revisionParameter.Value = newDocumentRevision;
                 idParameter.Value = chapter.Id.ToString("D");
+                bodyStartParameter.Value = AnnotationAnchorTransformer.TransformRange(
+                    chapter.BodyStartOffset, chapter.BodyStartOffset, edit).StartOffset;
+                bool bodyWasEdited = edit.DeletedLength > 0
+                    ? edit.StartOffset < chapter.EndOffset && edit.DeletedEnd > chapter.BodyStartOffset
+                    : edit.StartOffset >= chapter.BodyStartOffset && edit.StartOffset <= chapter.EndOffset;
+                bodyHashParameter.Value = bodyWasEdited ? "" : chapter.BodySha256;
                 await updateChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }

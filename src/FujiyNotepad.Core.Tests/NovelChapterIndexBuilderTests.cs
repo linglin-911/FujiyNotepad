@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using FujiyNotepad.Core;
 using FujiyNotepad.TestSupport;
 
@@ -62,6 +64,9 @@ public sealed class NovelChapterIndexBuilderTests
         long finalHeading = thirdHeading + text[4].Length + 2;
 
         Assert.Equal(text[0].Length + 2, chapters[0].StartOffset);
+        Assert.Equal(text[0].Length + 2 + text[1].Length + 1, chapters[0].BodyStartOffset);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("正文😀\n"))),
+            chapters[0].BodySha256);
         Assert.Equal(secondHeading, chapters[1].StartOffset);
         Assert.Equal(thirdHeading, chapters[2].StartOffset);
         Assert.Equal(finalHeading, chapters[3].StartOffset);
@@ -75,6 +80,23 @@ public sealed class NovelChapterIndexBuilderTests
                 LineEnding.Lf => 1,
                 _ => 0,
             }), chapters[^1].EndOffset);
+    }
+
+    [Fact]
+    public void Build_NormalizesCrLfAndLfBeforeComputingBodyFingerprint()
+    {
+        var crlf = new FakeLinesWithEndings(
+            ["第1章 开始", "正文第一行", "正文第二行"],
+            [LineEnding.CrLf, LineEnding.CrLf, LineEnding.None]);
+        var lf = new FakeLinesWithEndings(
+            ["第1章 开始", "正文第一行", "正文第二行"],
+            [LineEnding.Lf, LineEnding.Lf, LineEnding.None]);
+
+        NovelChapter crlfChapter = Assert.Single(NovelChapterIndexBuilder.Build(crlf));
+        NovelChapter lfChapter = Assert.Single(NovelChapterIndexBuilder.Build(lf));
+
+        Assert.Equal(crlfChapter.BodySha256, lfChapter.BodySha256);
+        Assert.NotEqual(crlfChapter.BodyStartOffset, lfChapter.BodyStartOffset);
     }
 
     [Fact]

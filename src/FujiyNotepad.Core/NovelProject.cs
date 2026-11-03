@@ -9,14 +9,19 @@ namespace FujiyNotepad.Core;
 /// </summary>
 public sealed class NovelProject
 {
-    private NovelProject(string rootPath, NovelProjectMetadata metadata)
+    private NovelProject(string rootPath, NovelProjectMetadata metadata, bool documentFingerprintMatchesMetadata = true)
     {
         RootPath = Path.GetFullPath(rootPath);
         Metadata = metadata;
+        IsDocumentFingerprintCurrent = documentFingerprintMatchesMetadata;
     }
 
     public string RootPath { get; }
     public NovelProjectMetadata Metadata { get; }
+
+    /// <summary>True when the complete document currently on disk matches the saved project fingerprint.</summary>
+    public bool IsDocumentFingerprintCurrent { get; private set; } = true;
+
     public string DocumentPath => Path.Combine(RootPath, Metadata.DocumentFileName);
     public string DatabasePath => Path.Combine(RootPath, "annotations.sqlite");
     public string BackupDirectory => Path.Combine(RootPath, "backups");
@@ -120,7 +125,11 @@ public sealed class NovelProject
             throw new InvalidDataException("The project document is missing or points outside the project folder.");
         }
 
-        return new NovelProject(root, metadata);
+        string actualHash = await ComputeSha256Async(documentPath, cancellationToken).ConfigureAwait(false);
+        bool fingerprintMatches = new FileInfo(documentPath).Length == metadata.DocumentLength
+            && string.Equals(actualHash, metadata.DocumentSha256, StringComparison.OrdinalIgnoreCase);
+
+        return new NovelProject(root, metadata, fingerprintMatches);
     }
 
     /// <summary>Recomputes the project document hash after an edit has been durably saved.</summary>
@@ -131,6 +140,7 @@ public sealed class NovelProject
         Metadata.DocumentSha256 = await ComputeSha256Async(DocumentPath, cancellationToken).ConfigureAwait(false);
         Metadata.DocumentRevision++;
         await SaveMetadataAsync(cancellationToken).ConfigureAwait(false);
+        IsDocumentFingerprintCurrent = true;
     }
 
     public async Task SaveMetadataAsync(CancellationToken cancellationToken = default)

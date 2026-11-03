@@ -34,6 +34,25 @@ public sealed class NovelChapterIndexReconcilerTests
     }
 
     [Fact]
+    public void Reconcile_ReportsBodyChangesWithoutChangingStableChapterId()
+    {
+        Guid chapterId = Guid.NewGuid();
+        var existing = new NovelChapter(chapterId, "第1章 开始", 0, 100, 1, 1, true, 20, "OLD-HASH");
+        var detected = new NovelChapter(Guid.NewGuid(), "第1章 新标题", 0, 120, 1, 2, true, 24, "NEW-HASH");
+
+        NovelChapterIndexReconciliation result =
+            NovelChapterIndexReconciler.Reconcile([existing], [detected]);
+
+        NovelChapter current = Assert.Single(result.Chapters);
+        Assert.Equal(chapterId, current.Id);
+        Assert.Equal(24, current.BodyStartOffset);
+        Assert.Equal("NEW-HASH", current.BodySha256);
+        Assert.Single(result.Renamed);
+        Assert.Single(result.ContentChanged);
+        Assert.True(result.HasChanges);
+    }
+
+    [Fact]
     public void Reconcile_DeletedHeadingIsNotMatchedToPreviousChapterWhoseRangeExpanded()
     {
         var sixth = new NovelChapter(Guid.NewGuid(), "第六章", 0, 100, 1, 1);

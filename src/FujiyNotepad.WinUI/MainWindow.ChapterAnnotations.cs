@@ -388,10 +388,31 @@ public sealed partial class MainWindow
             if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
                 return;
 
+            if (!project.IsDocumentFingerprintCurrent)
+            {
+                chapterAnnotationChapters = await store.GetChaptersAsync();
+                LblStatus.Text = "项目原文与上次保存的指纹不一致，请打开章节批注面板并点击“重新识别”检查变化。";
+                if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+                    await LoadChapterAnnotationsAsync();
+                return;
+            }
+
             if (state is { ParserVersion: NovelChapterIndexBuilder.CurrentParserVersion }
                 && state.DocumentRevision == project.Metadata.DocumentRevision)
             {
                 chapterAnnotationChapters = await store.GetChaptersAsync();
+                bool fingerprintsReady = chapterAnnotationChapters.All(chapter =>
+                    chapter.BodyStartOffset >= chapter.StartOffset
+                    && chapter.BodyStartOffset <= chapter.EndOffset
+                    && !string.IsNullOrWhiteSpace(chapter.BodySha256));
+                if (fingerprintsReady)
+                {
+                    if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+                        await LoadChapterAnnotationsAsync();
+                    return;
+                }
+
+                LblStatus.Text = "当前章节索引缺少正文指纹，请点击“重新识别”升级章节索引。";
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
@@ -403,12 +424,17 @@ public sealed partial class MainWindow
                 // Never replace chapter IDs automatically: chapter annotations depend on them.
                 // If this is a legacy index without state metadata, record it only when every row
                 // already belongs to the current document revision.
+                bool legacyFingerprintMissing = existing.Any(chapter =>
+                    chapter.BodyStartOffset < chapter.StartOffset || string.IsNullOrWhiteSpace(chapter.BodySha256));
                 if (state is null
+                    && !legacyFingerprintMissing
                     && existing.All(chapter => chapter.DocumentRevision == project.Metadata.DocumentRevision))
                 {
                     await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
                 }
                 chapterAnnotationChapters = existing;
+                if (legacyFingerprintMissing)
+                    LblStatus.Text = "旧章节索引缺少正文指纹，请点击“重新识别”完成升级。";
                 if (state is not null
                     && (state.DocumentRevision != project.Metadata.DocumentRevision
                         || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
@@ -502,7 +528,10 @@ public sealed partial class MainWindow
         try
         {
             IReadOnlyList<NovelChapter> existing = await store.GetChaptersAsync();
-            long revision = project.Metadata.DocumentRevision;
+            bool documentFingerprintChanged = !project.IsDocumentFingerprintCurrent;
+            long revision = documentFingerprintChanged
+                ? checked(project.Metadata.DocumentRevision + 1)
+                : project.Metadata.DocumentRevision;
             IReadOnlyList<NovelChapter> detected = await Task.Run(
                 () => NovelChapterIndexBuilder.Build(lines, revision, cancellation.Token),
                 cancellation.Token);
@@ -516,7 +545,7 @@ public sealed partial class MainWindow
             {
                 $"原索引章节数：{existing.Count:N0}",
                 $"重新识别章节数：{comparison.Chapters.Count:N0}",
-                $"新增：{comparison.Added.Count:N0}    删除：{comparison.Removed.Count:N0}    标题变化：{comparison.Renamed.Count:N0}",
+                $"新增：{comparison.Added.Count:N0}    删除：{comparison.Removed.Count:N0}    标题变化：{comparison.Renamed.Count:N0}    正文变化：{comparison.ContentChanged.Count:N0}",
                 "",
             };
 
@@ -537,16 +566,19 @@ public sealed partial class MainWindow
             AppendChapterNames(details, "删除章节：", comparison.Removed.Select(chapter => chapter.Title));
             AppendChapterNames(details, "标题变化：", comparison.Renamed.Select(change =>
                 $"{change.Previous.Title}  →  {change.Current.Title}"));
+            AppendChapterNames(details, "正文内容变化：", comparison.ContentChanged.Select(change =>
+                change.Current.Title));
 
             if (!comparison.HasChanges)
             {
-                details.Add("没有发现章节标题的新增、删除或改名。");
+                details.Add("没有发现章节标题的新增、删除、改名或正文变化。");
                 details.Add("确认后仍会更新章节范围和索引版本。");
             }
 
             details.Add("");
             details.Add("安全说明：被删除章节的已有章节批注不会被删除，会保留为“原章节已删除”记录；");
-            details.Add("已有小批注锚点会按新章节范围重新归属，失效或旧版本锚点不会被强行移动。");
+            details.Add("正文指纹变化只代表对应章节需要重新校验小批注锚点；其他章节的锚点不应被连带扫描。");
+            details.Add("已有章节批注继续绑定稳定 ChapterId；被删除章节的批注保留在归档章节中。");
             details.Add("确认后才会更新数据库；取消则完全保留当前索引。");
 
             var dialog = new ContentDialog
@@ -575,6 +607,8 @@ public sealed partial class MainWindow
             await store.ReplaceChapterIndexAsync(
                 comparison.Chapters, revision, NovelChapterIndexBuilder.CurrentParserVersion,
                 cancellation.Token);
+            if (documentFingerprintChanged)
+                await project.RefreshDocumentFingerprintAsync(cancellation.Token);
             if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
                 return;
 
@@ -698,9 +732,10 @@ public sealed partial class MainWindow
             return false;
         }
 
-        bool staleIndexState = state is not null
-            && (state.DocumentRevision != project.Metadata.DocumentRevision
-                || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion);
+        bool staleIndexState = !project.IsDocumentFingerprintCurrent
+            || (state is not null
+                && (state.DocumentRevision != project.Metadata.DocumentRevision
+                    || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion));
         bool staleChapterRows = state is null
             && chapterAnnotationChapters.Any(chapter =>
                 chapter.DocumentRevision != project.Metadata.DocumentRevision);

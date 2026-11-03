@@ -53,7 +53,9 @@ public sealed record NovelChapter(
     long EndOffset,
     int ChapterNumber,
     long DocumentRevision = 1,
-    bool IsActive = true);
+    bool IsActive = true,
+    long BodyStartOffset = -1,
+    string BodySha256 = "");
 
 /// <summary>A category used only by chapter annotations; stored separately from small-annotation categories.</summary>
 public sealed record ChapterAnnotationCategory(

@@ -159,6 +159,31 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task ChapterStore_PersistsBodyStartOffsetAndFingerprint()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid id = Guid.NewGuid();
+            var chapter = new NovelChapter(id, "第1章", 100, 500, 1, 3, true, 116, "ABCDEF012345");
+
+            await store.UpsertChapterAsync(chapter);
+
+            NovelChapter stored = Assert.Single(await store.GetChaptersAsync());
+            Assert.Equal(116, stored.BodyStartOffset);
+            Assert.Equal("ABCDEF012345", stored.BodySha256);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task ApplyDocumentEdit_UpdatesChapterRangesWithAnchorsAtomically()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
