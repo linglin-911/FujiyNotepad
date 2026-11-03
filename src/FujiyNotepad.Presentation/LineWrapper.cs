@@ -3,13 +3,12 @@ using FujiyNotepad.Core;
 namespace FujiyNotepad.Presentation
 {
     /// <summary>
-    /// Splits one source line into wrapped display rows for an optional word-wrap view (issue #31). Wrapping is
-    /// by display column (so tabs and double-width characters count correctly) and by character — a row is the
-    /// longest run of characters whose display width fits <c>wrapColumns</c>, with at least one character per
-    /// row so progress is always made (a lone character wider than the viewport still gets its own row).
+    /// Legacy fixed-cell word wrapper (issue #31). It splits a source line by the display-column values in
+    /// <see cref="LineColumns"/> and is retained while the current TextLayoutEngine is migrated.
+    /// It is not suitable for proportional-font measurement: the future ITextLayoutProvider must use the
+    /// active font's real shaping/layout result and return visual-row ranges in source UTF-16 coordinates.
     ///
-    /// Pure and device-free: the engine feeds it a <see cref="LineColumns"/> (already tab-expanded) and a
-    /// column budget derived from the viewport width, and it returns char-index ranges. Headlessly unit-tested.
+    /// This helper remains pure and device-free so the old monospace path and its tests stay available during migration.
     /// </summary>
     public static class LineWrapper
     {
