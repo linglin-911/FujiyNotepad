@@ -624,6 +624,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Grid Grid.Row="0">
@@ -640,21 +641,32 @@
                         <TextBox x:Name="BigAnnotationReferenceSearchBox" Grid.Row="1"
                                  PlaceholderText="搜索参考批注标题、正文或原文..."
                                  TextChanged="BigAnnotationReferenceSearchBox_TextChanged" />
-                        <Grid Grid.Row="2" ColumnSpacing="6">
+                        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                    Spacing="20" VerticalAlignment="Center">
+                            <ToggleSwitch x:Name="BigAnnotationSmallVisibilityToggle"
+                                          Header="小批" IsOn="True"
+                                          OnContent="显示" OffContent="隐藏"
+                                          Toggled="BigAnnotationSmallVisibility_Toggled" />
+                            <ToggleSwitch x:Name="BigAnnotationChapterVisibilityToggle"
+                                          Header="章批" IsOn="True"
+                                          OnContent="显示" OffContent="隐藏"
+                                          Toggled="BigAnnotationChapterVisibility_Toggled" />
+                        </StackPanel>
+                        <Grid Grid.Row="3" ColumnSpacing="6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <ComboBox x:Name="BigAnnotationSmallCategoryFilter"
-                                      PlaceholderText="小批注：全部分类"
+                                      PlaceholderText="小批：全部分类"
                                       SelectionChanged="BigAnnotationSmallCategoryFilter_SelectionChanged" />
                             <ComboBox x:Name="BigAnnotationChapterCategoryFilter" Grid.Column="1"
-                                      PlaceholderText="章节批注：全部分类"
+                                      PlaceholderText="章批：全部分类"
                                       SelectionChanged="BigAnnotationChapterCategoryFilter_SelectionChanged" />
                         </Grid>
-                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
+                        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="BigAnnotationReferenceGroups" Spacing="8" />
+                            <StackPanel x:Name="BigAnnotationReferenceGroups" Spacing="3" />
                         </ScrollViewer>
                     </Grid>
 
