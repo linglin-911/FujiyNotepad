@@ -170,44 +170,51 @@ public sealed partial class MainWindow
             refreshingChapterAnnotationUi = true;
             try
             {
-                // Reset both selector sources and their generated item containers before repopulating.
-                // Keeping the chapter/category selectors on plain strings also avoids WinUI's
-                // ComboBoxItem/record binding and stale-container edge cases after re-identification.
+                // Use explicit ComboBoxItem containers throughout. Do not mix ItemsSource with Items,
+                // and do not assign null to DisplayMemberPath while rebuilding a live WinUI ComboBox.
                 ChapterAnnotationChapterFilter.SelectedIndex = -1;
-                ChapterAnnotationChapterFilter.ItemsSource = null;
                 ChapterAnnotationChapterFilter.Items.Clear();
                 ChapterAnnotationCategoryFilter.SelectedIndex = -1;
-                ChapterAnnotationCategoryFilter.ItemsSource = null;
                 ChapterAnnotationCategoryFilter.Items.Clear();
 
-                var chapterOptions = new List<string> { "全部章节" };
-                chapterOptions.AddRange(chapters.Select(chapter => chapter.Title));
-                ChapterAnnotationChapterFilter.DisplayMemberPath = null;
-                ChapterAnnotationChapterFilter.ItemsSource = chapterOptions;
+                ChapterAnnotationChapterFilter.Items.Add(
+                    new ComboBoxItem { Content = "全部章节" });
+                foreach (NovelChapter chapter in chapters)
+                {
+                    ChapterAnnotationChapterFilter.Items.Add(new ComboBoxItem
+                    {
+                        Content = chapter.Title,
+                        Tag = chapter.Id,
+                    });
+                }
                 int selectedChapterIndex = selectedChapterAnnotationChapterId is Guid selectedChapterId
                     ? chapters.ToList().FindIndex(chapter => chapter.Id == selectedChapterId) + 1
                     : 0;
                 ChapterAnnotationChapterFilter.SelectedIndex =
                     selectedChapterIndex >= 0 ? selectedChapterIndex : 0;
-                int selectedChapterOption = ChapterAnnotationChapterFilter.SelectedIndex;
-                selectedChapterAnnotationChapterId = selectedChapterOption > 0
-                    && selectedChapterOption - 1 < chapters.Count
-                        ? chapters[selectedChapterOption - 1].Id
+                selectedChapterAnnotationChapterId =
+                    (ChapterAnnotationChapterFilter.SelectedItem as ComboBoxItem)?.Tag is Guid chapterId
+                        ? chapterId
                         : null;
 
-                var categoryOptions = new List<string> { "全部分类" };
-                categoryOptions.AddRange(categories.Select(category => category.Name));
-                ChapterAnnotationCategoryFilter.DisplayMemberPath = null;
-                ChapterAnnotationCategoryFilter.ItemsSource = categoryOptions;
+                ChapterAnnotationCategoryFilter.Items.Add(
+                    new ComboBoxItem { Content = "全部分类" });
+                foreach (ChapterAnnotationCategory category in categories)
+                {
+                    ChapterAnnotationCategoryFilter.Items.Add(new ComboBoxItem
+                    {
+                        Content = category.Name,
+                        Tag = category.Id,
+                    });
+                }
                 int selectedCategoryIndex = selectedChapterAnnotationCategoryId is Guid selectedCategoryId
                     ? categories.ToList().FindIndex(category => category.Id == selectedCategoryId) + 1
                     : 0;
                 ChapterAnnotationCategoryFilter.SelectedIndex =
                     selectedCategoryIndex >= 0 ? selectedCategoryIndex : 0;
-                int selectedCategoryOption = ChapterAnnotationCategoryFilter.SelectedIndex;
-                selectedChapterAnnotationCategoryId = selectedCategoryOption > 0
-                    && selectedCategoryOption - 1 < categories.Count
-                        ? categories[selectedCategoryOption - 1].Id
+                selectedChapterAnnotationCategoryId =
+                    (ChapterAnnotationCategoryFilter.SelectedItem as ComboBoxItem)?.Tag is Guid categoryId
+                        ? categoryId
                         : null;
             }
             finally
@@ -984,15 +991,21 @@ public sealed partial class MainWindow
         if (availableChapters.Count == 0)
             throw new InvalidOperationException("没有可供选择的章节。");
 
-        // Keep the selector's visual items lightweight. The project may contain thousands of chapters;
-        // plain strings avoid WinUI reflection/template failures from a large list of nested record types.
+        // Use the same explicit item-container pattern as the working category manager.
+        // The selected item carries the stable database ID; display text is never used as identity.
         var chapterBox = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemsSource = availableChapters.Select(chapter =>
-                chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}").ToList(),
             MaxDropDownHeight = 420,
         };
+        foreach (NovelChapter chapter in availableChapters)
+        {
+            chapterBox.Items.Add(new ComboBoxItem
+            {
+                Content = chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}",
+                Tag = chapter.Id,
+            });
+        }
         int initialChapterIndex = availableChapters.FindIndex(chapter => chapter.Id == initialChapterId);
         chapterBox.SelectedIndex = initialChapterIndex >= 0 ? initialChapterIndex : 0;
 
@@ -1001,15 +1014,21 @@ public sealed partial class MainWindow
             PlaceholderText = "批注标题（可选）",
             Text = initialTitle ?? "",
         };
-        var categoryOptions = new List<string> { "未分类" };
-        categoryOptions.AddRange(categories.Select(category => category.Name));
         var categoryBox = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             PlaceholderText = "选择分类",
-            ItemsSource = categoryOptions,
             MaxDropDownHeight = 420,
         };
+        categoryBox.Items.Add(new ComboBoxItem { Content = "未分类" });
+        foreach (ChapterAnnotationCategory category in categories)
+        {
+            categoryBox.Items.Add(new ComboBoxItem
+            {
+                Content = category.Name,
+                Tag = category.Id,
+            });
+        }
         int initialCategoryIndex = initialCategoryId is Guid selectedCategory
             ? categories.ToList().FindIndex(category => category.Id == selectedCategory) + 1
             : 0;
@@ -1051,23 +1070,26 @@ public sealed partial class MainWindow
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return null;
-        int selectedChapterIndex = chapterBox.SelectedIndex;
-        if (selectedChapterIndex < 0 || selectedChapterIndex >= availableChapters.Count)
+        Guid? selectedChapterId =
+            (chapterBox.SelectedItem as ComboBoxItem)?.Tag is Guid chapterId ? chapterId : null;
+        NovelChapter? selectedChapter = selectedChapterId is Guid id
+            ? availableChapters.FirstOrDefault(chapter => chapter.Id == id)
+            : null;
+        if (selectedChapter is null)
         {
             await ShowNovelProjectMessageAsync("尚未选择章节", "请选择这条章节批注所属的章节。");
             return null;
         }
-        NovelChapter selectedChapter = availableChapters[selectedChapterIndex];
         if (string.IsNullOrWhiteSpace(contentBox.Text))
         {
             await ShowNovelProjectMessageAsync("批注内容不能为空", "请输入章节批注内容后再保存。");
             return null;
         }
 
-        int selectedCategoryOption = categoryBox.SelectedIndex;
-        Guid? categoryId = selectedCategoryOption > 0 && selectedCategoryOption - 1 < categories.Count
-            ? categories[selectedCategoryOption - 1].Id
-            : null;
+        Guid? categoryId =
+            (categoryBox.SelectedItem as ComboBoxItem)?.Tag is Guid selectedCategoryId
+                ? selectedCategoryId
+                : null;
         string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
         return new ChapterAnnotationEditValues(
             selectedChapter.Id, title, contentBox.Text, categoryId);
