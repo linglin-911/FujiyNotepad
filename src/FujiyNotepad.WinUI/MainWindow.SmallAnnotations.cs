@@ -1307,13 +1307,33 @@ namespace FujiyNotepad.WinUI
 
             try
             {
-                // Search the whole file as a streaming line scan. A text editor may normalize every
-                // mixed/LF line ending to CRLF when saving, so the offset drift can be much larger
-                // than the small heading deletion itself. The locator normalizes line endings for
-                // comparison but returns offsets using the current document's actual terminators.
-                LblStatus.Text = "正在全文查找原文摘录，尝试修复小批注位置...";
-                AnnotationAnchorQuoteMatch? match = await Task.Run(
-                    () => AnnotationAnchorQuoteLocator.FindUniqueMatch(lines, anchor.Quote));
+                AnnotationAnchorQuoteMatch? match;
+                Guid? repairedChapterId = anchor.ChapterId;
+                if (anchor.ChapterId is Guid savedChapterId)
+                {
+                    // A chapter-bound anchor must never be relocated by matching text in another chapter.
+                    // Use its saved chapter range only when that range has been updated to the current revision.
+                    NovelChapter? chapter = await store.GetChapterByIdAsync(savedChapterId);
+                    if (chapter is null || !chapter.IsActive
+                        || chapter.DocumentRevision != project.Metadata.DocumentRevision)
+                    {
+                        return null;
+                    }
+
+                    LblStatus.Text = "正在对应章节内查找原文摘录...";
+                    match = await Task.Run(() =>
+                        AnnotationAnchorQuoteLocator.FindUniqueMatchInRange(
+                            lines, anchor.Quote, map, chapter.StartOffset, chapter.EndOffset));
+                }
+                else
+                {
+                    // Legacy anchors without a chapter association need one full-document lookup.
+                    // Once matched, they are assigned to a chapter so later repairs stay chapter-scoped.
+                    LblStatus.Text = "正在全文查找旧版小批注摘录...";
+                    match = await Task.Run(
+                        () => AnnotationAnchorQuoteLocator.FindUniqueMatch(lines, anchor.Quote));
+                }
+
                 if (match is null
                     || !ReferenceEquals(project, activeNovelProject)
                     || !ReferenceEquals(store, activeAnnotationStore)
@@ -1339,22 +1359,21 @@ namespace FujiyNotepad.WinUI
                     return null;
                 }
 
-                // Do not attach the repaired anchor to a chapter unless that index is known to match
-                // the current document revision and parser.
-                Guid? chapterId = null;
-                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
-                if (indexState is { } currentIndex
-                    && currentIndex.DocumentRevision == project.Metadata.DocumentRevision
-                    && currentIndex.ParserVersion == NovelChapterIndexBuilder.CurrentParserVersion)
+                if (repairedChapterId is null)
                 {
-                    chapterId = (await store.GetChapterAtOffsetAsync(repairedStart))?.Id;
+                    NovelChapter? matchedChapter = await store.GetChapterAtOffsetAsync(repairedStart);
+                    if (matchedChapter is { } currentChapter
+                        && currentChapter.DocumentRevision == project.Metadata.DocumentRevision)
+                    {
+                        repairedChapterId = currentChapter.Id;
+                    }
                 }
 
                 bool updated = await store.TryRepairAnchorAsync(
                     anchor,
                     repairedStart,
                     repairedEnd,
-                    chapterId,
+                    repairedChapterId,
                     project.Metadata.DocumentRevision);
                 if (!updated)
                     return null;
@@ -1363,7 +1382,7 @@ namespace FujiyNotepad.WinUI
                 {
                     StartOffset = repairedStart,
                     EndOffset = repairedEnd,
-                    ChapterId = chapterId,
+                    ChapterId = repairedChapterId,
                     DocumentRevision = project.Metadata.DocumentRevision,
                     IsOrphaned = false,
                 };
