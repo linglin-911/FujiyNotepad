@@ -538,6 +538,7 @@ namespace FujiyNotepad.WinUI
             ChapterDirectoryPane.Visibility = Visibility.Collapsed;
             ChapterDirectorySearchBox.Text = "";
             ChapterDirectoryList.ItemsSource = null;
+            chapterDirectoryVisibleChapters = Array.Empty<NovelChapter>();
             ChapterDirectoryEmptyState.Text = "";
             ChapterDirectoryEmptyState.Visibility = Visibility.Collapsed;
             selectedChapterAnnotationChapterId = null;

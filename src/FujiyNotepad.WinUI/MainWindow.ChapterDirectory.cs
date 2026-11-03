@@ -118,10 +118,11 @@ public sealed partial class MainWindow
 
         if (chapterDirectoryVisibleChapters.Count == 0)
         {
+            bool indexRunning = chapterIndexBuildRunningVersion == chapterIndexBuildVersion;
             ChapterDirectoryEmptyState.Text = chapterAnnotationChapters.Count == 0
-                ? LineIndexer.IsCompleted
-                    ? "没有识别到章节标题。"
-                    : "正在识别章节，请稍候..."
+                ? !LineIndexer.IsCompleted || indexRunning
+                    ? "正在识别章节，请稍候..."
+                    : "没有识别到章节标题。"
                 : "没有找到匹配的章节标题。";
             ChapterDirectoryEmptyState.Visibility = Visibility.Visible;
         }
