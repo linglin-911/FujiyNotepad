@@ -221,6 +221,77 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task ApplyDocumentEdit_UpdatesRevisionOfUnaffectedEarlierAnchorsAndChapters()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid earlierChapterId = Guid.NewGuid();
+            Guid laterChapterId = Guid.NewGuid();
+            Guid annotationId = await store.CreateAnnotationAsync("revision");
+            await store.UpsertChapterAsync(new NovelChapter(earlierChapterId, "第一章", 0, 100, 1));
+            await store.UpsertChapterAsync(new NovelChapter(laterChapterId, "第二章", 200, 400, 2));
+            await store.AddAnchorAsync(annotationId, 20, 30, "earlier");
+            await store.AddAnchorAsync(annotationId, 250, 260, "later");
+
+            await store.ApplyDocumentEditAsync(new DocumentEdit(220, 5, 2), newDocumentRevision: 2);
+
+            var anchors = await store.GetAnchorsForAnnotationAsync(annotationId);
+            Assert.Equal((20L, 30L, 2L), (anchors[0].StartOffset, anchors[0].EndOffset, anchors[0].DocumentRevision));
+            Assert.Equal((247L, 257L, 2L), (anchors[1].StartOffset, anchors[1].EndOffset, anchors[1].DocumentRevision));
+
+            var chapters = await store.GetChaptersAsync();
+            NovelChapter earlier = Assert.Single(chapters.Where(chapter => chapter.Id == earlierChapterId));
+            NovelChapter later = Assert.Single(chapters.Where(chapter => chapter.Id == laterChapterId));
+            Assert.Equal((0L, 100L, 2L), (earlier.StartOffset, earlier.EndOffset, earlier.DocumentRevision));
+            Assert.Equal((200L, 397L, 2L), (later.StartOffset, later.EndOffset, later.DocumentRevision));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task TryRepairAnchor_UpdatesOnlyWhenTheExpectedSavedAnchorStillExists()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid annotationId = await store.CreateAnnotationAsync("repair");
+            await store.AddAnchorAsync(annotationId, 100, 105, "quote", documentRevision: 1);
+            AnnotationAnchor original = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+
+            bool repaired = await store.TryRepairAnchorAsync(
+                original, 96, 101, chapterId: null, documentRevision: 2);
+            Assert.True(repaired);
+
+            AnnotationAnchor updated = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+            Assert.Equal((96L, 101L, 2L, "quote"),
+                (updated.StartOffset, updated.EndOffset, updated.DocumentRevision, updated.Quote));
+
+            // A stale copy cannot overwrite the repaired range a second time.
+            bool staleUpdate = await store.TryRepairAnchorAsync(
+                original, 90, 95, chapterId: null, documentRevision: 3);
+            Assert.False(staleUpdate);
+            updated = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+            Assert.Equal((96L, 101L, 2L), (updated.StartOffset, updated.EndOffset, updated.DocumentRevision));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task CreateAnnotationWithAnchor_IsAtomicAndAppearsInSummarySearch()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
