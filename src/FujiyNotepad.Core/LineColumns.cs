@@ -3,14 +3,14 @@ using System.Text;
 namespace FujiyNotepad.Core
 {
     /// <summary>
-    /// Maps a source line to its on-screen representation under a fixed tab size: the display string
-    /// (tabs expanded to spaces) plus a column map so character positions and pixel positions can be
-    /// converted both ways for rendering, hit-testing, and selection. Assumes a monospace font, so one
-    /// display column equals one character cell.
+    /// Legacy fixed-cell projection used by the current TextLayoutEngine: the display string (tabs expanded
+    /// to spaces) plus column maps for the old monospace rendering path. Its column values are not pixel
+    /// geometry and must not be used by the proportional-font backend. The new layout provider receives the
+    /// original source line and returns all hit-test/caret/range positions as source UTF-16 offsets.
     /// </summary>
     public sealed class LineColumns
     {
-        /// <summary>The original line text (tabs preserved); used for selection and copy.</summary>
+        /// <summary>The original line text (tabs preserved); used for selection and copy. This remains the source of truth.</summary>
         public string Source { get; }
 
         /// <summary>The line with tabs expanded to spaces; used for rendering.</summary>
@@ -36,6 +36,7 @@ namespace FujiyNotepad.Core
             this.displayIndexAt = displayIndexAt;
         }
 
+        /// <summary>Legacy monospace display-cell width; not a proportional-font measurement.</summary>
         public int TotalColumns => columnAt is null ? Source.Length : columnAt[Source.Length];
 
         /// <summary>Maps a source UTF-16 index to the corresponding index in the tab-expanded display text.</summary>
@@ -200,6 +201,7 @@ namespace FujiyNotepad.Core
             (c >= '\uFFE0' && c <= '\uFFE6');    // Fullwidth signs
 
         /// <summary>Display column where the caret sits before source character <paramref name="charIndex"/>.</summary>
+        /// <summary>Legacy fixed-cell column mapping. Do not use as an X-coordinate in proportional layout.</summary>
         public int ColumnOfCharIndex(int charIndex)
         {
             if (charIndex <= 0)
@@ -222,6 +224,7 @@ namespace FujiyNotepad.Core
         /// Source character index whose caret position is nearest to display column
         /// <paramref name="column"/> (used to turn a clicked x-position into a caret location).
         /// </summary>
+        /// <summary>Legacy fixed-cell hit-test mapping. Proportional layout must use its layout provider instead.</summary>
         public int CharIndexOfColumn(double column)
         {
             if (column <= 0 || double.IsNaN(column))
