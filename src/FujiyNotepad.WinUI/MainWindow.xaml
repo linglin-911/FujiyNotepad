@@ -523,6 +523,13 @@
                 </Grid>
             </Border>
 
+            <Button x:Name="ReturnToBigAnnotationButton" Grid.Row="0" Grid.Column="0"
+                    Content="← 返回大批注" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="12" Padding="10,5" Visibility="Collapsed"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    Click="ReturnToBigAnnotationWorkspace_Click"
+                    ToolTipService.ToolTip="返回当前大批注工作区" />
+
         </Grid>
 
 
@@ -624,7 +631,6 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Grid Grid.Row="0">
@@ -641,28 +647,37 @@
                         <TextBox x:Name="BigAnnotationReferenceSearchBox" Grid.Row="1"
                                  PlaceholderText="搜索参考批注标题、正文或原文..."
                                  TextChanged="BigAnnotationReferenceSearchBox_TextChanged" />
-                        <StackPanel Grid.Row="2" Orientation="Horizontal"
-                                    Spacing="20" VerticalAlignment="Center">
-                            <ToggleSwitch x:Name="BigAnnotationSmallVisibilityToggle"
-                                          Header="小批" IsOn="True"
-                                          OnContent="显示" OffContent="隐藏" />
-                            <ToggleSwitch x:Name="BigAnnotationChapterVisibilityToggle"
-                                          Header="章批" IsOn="True"
-                                          OnContent="显示" OffContent="隐藏" />
-                        </StackPanel>
-                        <Grid Grid.Row="3" ColumnSpacing="6">
+                        <Grid Grid.Row="2" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <ComboBox x:Name="BigAnnotationSmallCategoryFilter"
-                                      PlaceholderText="小批：全部分类"
-                                      SelectionChanged="BigAnnotationSmallCategoryFilter_SelectionChanged" />
-                            <ComboBox x:Name="BigAnnotationChapterCategoryFilter" Grid.Column="1"
-                                      PlaceholderText="章批：全部分类"
-                                      SelectionChanged="BigAnnotationChapterCategoryFilter_SelectionChanged" />
+                            <Grid Grid.Column="0" ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="BigAnnotationSmallCategoryFilter"
+                                          PlaceholderText="小批：全部分类"
+                                          SelectionChanged="BigAnnotationSmallCategoryFilter_SelectionChanged" />
+                                <ToggleSwitch x:Name="BigAnnotationSmallVisibilityToggle" Grid.Column="1"
+                                              IsOn="True" OnContent="显示" OffContent="隐藏"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid Grid.Column="1" ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="BigAnnotationChapterCategoryFilter"
+                                          PlaceholderText="章批：全部分类"
+                                          SelectionChanged="BigAnnotationChapterCategoryFilter_SelectionChanged" />
+                                <ToggleSwitch x:Name="BigAnnotationChapterVisibilityToggle" Grid.Column="1"
+                                              IsOn="True" OnContent="显示" OffContent="隐藏"
+                                              VerticalAlignment="Center" />
+                            </Grid>
                         </Grid>
-                        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
+                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel x:Name="BigAnnotationReferenceGroups" Spacing="3" />
                         </ScrollViewer>

@@ -32,6 +32,7 @@ public sealed partial class MainWindow
         {
             BigAnnotationsItem.IsChecked = false;
             BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
+            ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -42,6 +43,15 @@ public sealed partial class MainWindow
             return;
         }
 
+        await ShowBigAnnotationWorkspaceAsync();
+    }
+
+    private async Task ShowBigAnnotationWorkspaceAsync()
+    {
+        if (activeAnnotationStore is null || activeNovelProject is null)
+            return;
+
+        ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
         CancelSmallAnnotationCardSingleTap();
         SmallAnnotationsItem.IsChecked = false;
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
@@ -51,6 +61,7 @@ public sealed partial class MainWindow
         ChapterDirectoryPane.Visibility = Visibility.Collapsed;
         chapterAnnotationFilterDebounce?.Cancel();
 
+        BigAnnotationsItem.IsChecked = true;
         BigAnnotationWorkspace.Visibility = Visibility.Visible;
         BigAnnotationListView.Visibility = Visibility.Visible;
         BigAnnotationEditorView.Visibility = Visibility.Collapsed;
@@ -61,6 +72,19 @@ public sealed partial class MainWindow
             resumeBigAnnotationId = null;
             await OpenBigAnnotationEditorAsync(resumeId);
         }
+    }
+
+    private async void ReturnToBigAnnotationWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (resumeBigAnnotationId is null
+            || activeAnnotationStore is null
+            || activeNovelProject is null)
+        {
+            ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        await ShowBigAnnotationWorkspaceAsync();
     }
 
     private async void CloseBigAnnotationWorkspace_Click(object sender, RoutedEventArgs e)
@@ -76,6 +100,7 @@ public sealed partial class MainWindow
             return false;
 
         resumeBigAnnotationId = null;
+        ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
         ResetBigAnnotationEditorState();
         HideBigAnnotationWorkspace();
         return true;
@@ -96,6 +121,7 @@ public sealed partial class MainWindow
         bigAnnotationCategories = Array.Empty<BigAnnotationCategory>();
         selectedBigAnnotationCategoryId = null;
         resumeBigAnnotationId = null;
+        ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
         refreshingBigAnnotationUi = true;
         try
         {
@@ -915,13 +941,6 @@ public sealed partial class MainWindow
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
-            chapterHeaderContent.Children.Add(new TextBlock
-            {
-                Text = $"小批 {smallItems.Length} / 章批 {chapterItems.Length}",
-                Opacity = 0.65,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
 
             var chapterToggle = new Button
             {
@@ -958,17 +977,37 @@ public sealed partial class MainWindow
             headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             headerRow.Children.Add(chapterToggle);
 
-            var jumpChapterButton = new Button
+            var chapterCount = new TextBlock
             {
-                Content = "跳转",
-                Padding = new Thickness(8, 2, 8, 2),
-                MinHeight = 28,
+                Text = $"小批 {smallItems.Length} / 章批 {chapterItems.Length}",
+                Opacity = 0.65,
+                FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            jumpChapterButton.Click += async (_, _) =>
-                await NavigateFromBigAnnotationChapterReferenceAsync(chapter);
-            Grid.SetColumn(jumpChapterButton, 1);
-            headerRow.Children.Add(jumpChapterButton);
+            Grid.SetColumn(chapterCount, 1);
+            headerRow.Children.Add(chapterCount);
+
+            // Chapter navigation is useful when chapter annotations exist; small-annotation
+            // excerpts below are themselves clickable navigation targets.
+            if (chapterItems.Length > 0)
+            {
+                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var jumpChapterButton = new Button
+                {
+                    Content = "跳转",
+                    Padding = new Thickness(3, 1, 3, 1),
+                    MinHeight = 24,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    BorderThickness = new Thickness(0),
+                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                    Opacity = 0.6,
+                    FontSize = 12,
+                };
+                jumpChapterButton.Click += async (_, _) =>
+                    await NavigateFromBigAnnotationChapterReferenceAsync(chapter);
+                Grid.SetColumn(jumpChapterButton, 2);
+                headerRow.Children.Add(jumpChapterButton);
+            }
 
             var group = new StackPanel { Spacing = 2 };
             group.Children.Add(headerRow);
@@ -1000,42 +1039,42 @@ public sealed partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
         });
 
+        // Categories are metadata, not tree nodes: keep the label beneath the note and above its sources.
+        details.Children.Add(BuildBigAnnotationCategoryBadge(category));
+
         for (int index = 0; index < reference.Anchors.Count; index++)
         {
             BigAnnotationSmallAnchorReference anchorReference = reference.Anchors[index];
-            var locationRow = new Grid { ColumnSpacing = 8 };
-            locationRow.ColumnDefinitions.Add(new ColumnDefinition
-            {
-                Width = new GridLength(1, GridUnitType.Star),
-            });
-            locationRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            locationRow.Children.Add(new TextBlock
-            {
-                Text = $"原文位置 {index + 1} · {anchorReference.Chapter.Title}",
-                FontSize = 12,
-                Opacity = 0.7,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            var navigate = new Button
-            {
-                Content = "定位",
-                Padding = new Thickness(8, 1, 8, 1),
-                MinHeight = 24,
-            };
-            AnnotationAnchor capturedAnchor = anchorReference.Anchor;
-            navigate.Click += async (_, _) => await NavigateFromBigAnnotationAnchorAsync(capturedAnchor);
-            Grid.SetColumn(navigate, 1);
-            locationRow.Children.Add(navigate);
-            details.Children.Add(locationRow);
             details.Children.Add(new TextBlock
             {
-                Text = anchorReference.Anchor.Quote,
-                TextWrapping = TextWrapping.Wrap,
+                Text = $"原文{index + 1} · {anchorReference.Chapter.Title}",
                 FontSize = 12,
-                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
-                Margin = new Thickness(8, 0, 0, 5),
+                Opacity = 0.7,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
             });
+
+            // The quoted source text itself is the navigation target; there is no extra "定位" button.
+            var quoteButton = new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = anchorReference.Anchor.Quote,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 12,
+                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                },
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(4, 2, 4, 2),
+                MinHeight = 24,
+                BorderThickness = new Thickness(0),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            };
+            AnnotationAnchor capturedAnchor = anchorReference.Anchor;
+            quoteButton.Click += async (_, _) =>
+                await NavigateFromBigAnnotationAnchorAsync(capturedAnchor);
+            details.Children.Add(quoteButton);
         }
 
         var arrow = new FontIcon { Glyph = "\uE70D", FontSize = 11 };
@@ -1053,21 +1092,6 @@ public sealed partial class MainWindow
                 Text = title,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            headerContent.Children.Add(new TextBlock
-            {
-                Text = category,
-                Opacity = 0.7,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-        }
-        else
-        {
-            headerContent.Children.Add(new TextBlock
-            {
-                Text = category,
-                VerticalAlignment = VerticalAlignment.Center,
             });
         }
         headerContent.Children.Add(new TextBlock
@@ -1101,6 +1125,28 @@ public sealed partial class MainWindow
         return new Border { Child = panel };
     }
 
+    private static Border BuildBigAnnotationCategoryBadge(string category)
+    {
+        return new Border
+        {
+            Child = new TextBlock
+            {
+                Text = category,
+                FontSize = 11,
+                Opacity = 0.8,
+            },
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(5, 1, 5, 1),
+            Margin = new Thickness(0, 1, 0, 3),
+            CornerRadius = new CornerRadius(3),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+                { Opacity = 0.25 },
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+                { Opacity = 0.08 },
+        };
+    }
+
     private Border BuildBigAnnotationChapterReferenceCard(ChapterAnnotationSummary reference)
     {
         string? title = string.IsNullOrWhiteSpace(reference.Annotation.Title)
@@ -1112,18 +1158,7 @@ public sealed partial class MainWindow
             Text = reference.Annotation.Content,
             TextWrapping = TextWrapping.Wrap,
         });
-
-        var navigate = new Button
-        {
-            Content = $"定位章节 · {reference.Chapter.Title}",
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(8, 1, 8, 1),
-            MinHeight = 24,
-        };
-        NovelChapter capturedChapter = reference.Chapter;
-        navigate.Click += async (_, _) =>
-            await NavigateFromBigAnnotationChapterReferenceAsync(capturedChapter);
-        details.Children.Add(navigate);
+        details.Children.Add(BuildBigAnnotationCategoryBadge(category));
 
         var arrow = new FontIcon { Glyph = "\uE70D", FontSize = 11 };
         var headerContent = new StackPanel
@@ -1141,19 +1176,13 @@ public sealed partial class MainWindow
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
-            headerContent.Children.Add(new TextBlock
-            {
-                Text = category,
-                Opacity = 0.7,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
         }
         else
         {
             headerContent.Children.Add(new TextBlock
             {
-                Text = category,
+                Text = "章节批注",
+                Opacity = 0.75,
                 VerticalAlignment = VerticalAlignment.Center,
             });
         }
@@ -1188,6 +1217,8 @@ public sealed partial class MainWindow
 
         resumeBigAnnotationId = editingBigAnnotationId;
         HideBigAnnotationWorkspace();
+        ReturnToBigAnnotationButton.Visibility = resumeBigAnnotationId is null
+            ? Visibility.Collapsed : Visibility.Visible;
         await NavigateToSmallAnnotationAnchorAsync(anchor);
     }
 
@@ -1206,6 +1237,8 @@ public sealed partial class MainWindow
 
         resumeBigAnnotationId = editingBigAnnotationId;
         HideBigAnnotationWorkspace();
+        ReturnToBigAnnotationButton.Visibility = resumeBigAnnotationId is null
+            ? Visibility.Collapsed : Visibility.Visible;
         if (filteredSource is not null)
             ExitFilterToFullView();
         await NavigateToChapterAsync(chapter);
