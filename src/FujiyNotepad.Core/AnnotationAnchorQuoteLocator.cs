@@ -197,7 +197,7 @@ public static class AnnotationAnchorQuoteLocator
 
                 if (terminatorLength > 0)
                 {
-                    Consume('\\n', documentOffset, documentOffset + terminatorLength);
+                    Consume('\n', documentOffset, documentOffset + terminatorLength);
                     documentOffset += terminatorLength;
                 }
             }
