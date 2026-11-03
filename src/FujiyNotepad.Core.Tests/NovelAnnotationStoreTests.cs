@@ -292,6 +292,7 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    [Fact]
     public async Task TryRepairAnchor_RefreshesRevisionWhenRangeIsUnchanged()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
@@ -319,7 +320,6 @@ public sealed class NovelAnnotationStoreTests
         }
     }
 
-    [Fact]
     public async Task CreateAnnotationWithAnchor_IsAtomicAndAppearsInSummarySearch()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
