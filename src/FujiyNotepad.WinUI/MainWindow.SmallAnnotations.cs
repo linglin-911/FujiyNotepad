@@ -1190,6 +1190,7 @@ namespace FujiyNotepad.WinUI
             if (filteredSource is not null)
                 ExitFilterToFullView();
 
+            bool refreshAnnotationUi = false;
             bool anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out TextPosition position);
             if (!anchorResolved && !LineIndexer.IsCompleted)
             {
@@ -1247,8 +1248,7 @@ namespace FujiyNotepad.WinUI
                     ChapterId = chapterId,
                     DocumentRevision = project.Metadata.DocumentRevision,
                 };
-                await RefreshSmallAnnotationsAsync(anchor.AnnotationId);
-                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
+                refreshAnnotationUi = true;
                 LblStatus.Text = "已核对原文位置，并同步小批注的文档版本。";
             }
 
@@ -1264,8 +1264,7 @@ namespace FujiyNotepad.WinUI
                     && TryResolveSmallAnnotationAnchor(repaired, out position))
                 {
                     anchor = repaired;
-                    await RefreshSmallAnnotationsAsync(anchor.AnnotationId);
-                    await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
+                    refreshAnnotationUi = true;
                     LblStatus.Text = "已根据唯一匹配的原文摘录修复一处小批注位置。";
                 }
                 else
@@ -1279,10 +1278,18 @@ namespace FujiyNotepad.WinUI
                 }
             }
 
+            // Navigate as soon as the anchor is verified. Rebuilding the full annotation list
+            // and refreshing visible markers are secondary UI work and must not delay the jump.
             View.GoToLineColumn(position.Line, position.Column);
             View.CenterCaretVertically();
             SyncScrollBars();
             View.FocusCanvas();
+
+            if (refreshAnnotationUi)
+            {
+                _ = RefreshSmallAnnotationsAsync(anchor.AnnotationId);
+                _ = RefreshVisibleSmallAnnotationMarkersAsync(force: true);
+            }
         }
 
         private async Task<AnnotationAnchor?> TryRepairSmallAnnotationAnchorAsync(
