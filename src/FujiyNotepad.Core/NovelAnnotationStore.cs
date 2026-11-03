@@ -708,7 +708,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 end.Value = chapter.EndOffset;
                 number.Value = chapter.ChapterNumber;
                 revision.Value = chapter.DocumentRevision;
-                bodyStart.Value = chapter.BodyStartOffset;
+                bodyStart.Value = chapter.BodyStartOffset >= chapter.StartOffset
+                    ? chapter.BodyStartOffset : chapter.StartOffset;
                 bodyHash.Value = chapter.BodySha256;
                 await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -829,7 +830,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 end.Value = chapter.EndOffset;
                 number.Value = chapter.ChapterNumber;
                 revision.Value = documentRevision;
-                bodyStart.Value = chapter.BodyStartOffset;
+                bodyStart.Value = chapter.BodyStartOffset >= chapter.StartOffset
+                    ? chapter.BodyStartOffset : chapter.StartOffset;
                 bodyHash.Value = chapter.BodySha256;
                 await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
