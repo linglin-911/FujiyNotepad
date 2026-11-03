@@ -1293,6 +1293,67 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             pair => pair.Key, pair => (IReadOnlyList<AnnotationAnchor>)pair.Value);
     }
 
+    /// <summary>
+    /// Repairs one annotation anchor only when its persisted identity, old range and quote still match.
+    /// The caller must have found exactly one occurrence of the saved quote near the old position.
+    /// </summary>
+    public async Task<bool> TryRepairAnchorAsync(
+        AnnotationAnchor expectedAnchor,
+        long newStartOffset,
+        long newEndOffset,
+        Guid? chapterId,
+        long documentRevision,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(expectedAnchor);
+        if (newStartOffset < 0 || newEndOffset <= newStartOffset
+            || newEndOffset - newStartOffset != expectedAnchor.Quote.Length
+            || documentRevision < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(newStartOffset),
+                "The repaired anchor must be a non-empty range matching the saved quote.");
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var update = connection.CreateCommand();
+        update.Transaction = (SqliteTransaction)transaction;
+        update.CommandText = """
+            UPDATE AnnotationAnchors
+            SET StartOffset = $newStart, EndOffset = $newEnd, ChapterId = $chapter,
+                DocumentRevision = $revision, IsOrphaned = 0
+            WHERE Id = $id AND AnnotationId = $annotation
+              AND StartOffset = $oldStart AND EndOffset = $oldEnd
+              AND Quote = $quote AND DocumentRevision = $oldRevision
+              AND IsOrphaned = 0;
+            """;
+        update.Parameters.AddWithValue("$newStart", newStartOffset);
+        update.Parameters.AddWithValue("$newEnd", newEndOffset);
+        update.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
+        update.Parameters.AddWithValue("$revision", documentRevision);
+        update.Parameters.AddWithValue("$id", expectedAnchor.Id.ToString("D"));
+        update.Parameters.AddWithValue("$annotation", expectedAnchor.AnnotationId.ToString("D"));
+        update.Parameters.AddWithValue("$oldStart", expectedAnchor.StartOffset);
+        update.Parameters.AddWithValue("$oldEnd", expectedAnchor.EndOffset);
+        update.Parameters.AddWithValue("$quote", expectedAnchor.Quote);
+        update.Parameters.AddWithValue("$oldRevision", expectedAnchor.DocumentRevision);
+
+        bool repaired = await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+        if (repaired)
+        {
+            await using var touch = connection.CreateCommand();
+            touch.Transaction = (SqliteTransaction)transaction;
+            touch.CommandText = "UPDATE Annotations SET UpdatedAt = $updated WHERE Id = $id;";
+            touch.Parameters.AddWithValue("$id", expectedAnchor.AnnotationId.ToString("D"));
+            touch.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+            await touch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return repaired;
+    }
+
     public async Task<IReadOnlyList<AnnotationAnchor>> GetAnchorsAtOffsetAsync(long offset,
         CancellationToken cancellationToken = default)
     {
@@ -1414,6 +1475,34 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 idParameter.Value = anchor.Id.ToString("D");
                 await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        // Ranges wholly before the edit do not move, but they still belong to the new document
+        // revision. Leaving their old revision would make otherwise-valid notes impossible to open.
+        await using (var updateEarlierAnchors = connection.CreateCommand())
+        {
+            updateEarlierAnchors.Transaction = (SqliteTransaction)transaction;
+            updateEarlierAnchors.CommandText = """
+                UPDATE AnnotationAnchors
+                SET DocumentRevision = $revision
+                WHERE IsOrphaned = 0 AND EndOffset <= $start;
+                """;
+            updateEarlierAnchors.Parameters.AddWithValue("$revision", newDocumentRevision);
+            updateEarlierAnchors.Parameters.AddWithValue("$start", edit.StartOffset);
+            await updateEarlierAnchors.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var updateEarlierChapters = connection.CreateCommand())
+        {
+            updateEarlierChapters.Transaction = (SqliteTransaction)transaction;
+            updateEarlierChapters.CommandText = """
+                UPDATE Chapters
+                SET DocumentRevision = $revision
+                WHERE IsActive = 1 AND EndOffset <= $start;
+                """;
+            updateEarlierChapters.Parameters.AddWithValue("$revision", newDocumentRevision);
+            updateEarlierChapters.Parameters.AddWithValue("$start", edit.StartOffset);
+            await updateEarlierChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await using (var updateIndexState = connection.CreateCommand())
