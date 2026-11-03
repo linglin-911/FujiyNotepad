@@ -278,14 +278,16 @@ namespace FujiyNotepad.WinUI
                 foreach (AnnotationAnchor anchor in anchors)
                 {
                     occurrence++;
-                    bool eligible = !anchor.IsOrphaned
-                        && activeNovelProject is { } project
+                    bool versionMatches = activeNovelProject is { } project
                         && anchor.DocumentRevision == project.Metadata.DocumentRevision;
-                    string status = eligible ? "" : "（已失效或版本不匹配）";
+                    bool canAttemptNavigation = !anchor.IsOrphaned;
+                    string status = anchor.IsOrphaned
+                        ? "（已失效）"
+                        : versionMatches ? "" : "（位置待校验，点击尝试修复）";
                     var quoteButton = new Button
                     {
                         Tag = anchor,
-                        IsEnabled = eligible,
+                        IsEnabled = canAttemptNavigation,
                         HorizontalAlignment = HorizontalAlignment.Stretch,
                         HorizontalContentAlignment = HorizontalAlignment.Stretch,
                         Padding = new Thickness(4, 2, 4, 2),
@@ -1188,8 +1190,8 @@ namespace FujiyNotepad.WinUI
             if (filteredSource is not null)
                 ExitFilterToFullView();
 
-            if (!TryResolveSmallAnnotationAnchor(anchor, out TextPosition position)
-                && !LineIndexer.IsCompleted)
+            bool anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out TextPosition position);
+            if (!anchorResolved && !LineIndexer.IsCompleted)
             {
                 // A project reopened from disk may not have indexed the saved anchor yet. Resume a stopped
                 // indexer if necessary, then wait asynchronously rather than resolving to the current frontier.
@@ -1207,9 +1209,50 @@ namespace FujiyNotepad.WinUI
 
                 View.UpdateTotalLines(provider.LineCount);
                 SyncScrollBars();
+                anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out position);
             }
 
-            if (!TryResolveSmallAnnotationAnchor(anchor, out position))
+            // A document edit can leave an anchor's quote at exactly the same offset. In that case
+            // the range is already verified; advance only its revision instead of leaving it stale
+            // (which would hide its marker and disable its source button indefinitely).
+            if (anchorResolved && anchor.DocumentRevision != project.Metadata.DocumentRevision)
+            {
+                Guid? chapterId = null;
+                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
+                if (indexState is { } currentIndex
+                    && currentIndex.DocumentRevision == project.Metadata.DocumentRevision
+                    && currentIndex.ParserVersion == NovelChapterIndexBuilder.CurrentParserVersion)
+                {
+                    chapterId = (await store.GetChapterAtOffsetAsync(anchor.StartOffset))?.Id;
+                }
+
+                bool revisionUpdated = await store.TryRepairAnchorAsync(
+                    anchor,
+                    anchor.StartOffset,
+                    anchor.EndOffset,
+                    chapterId,
+                    project.Metadata.DocumentRevision);
+                if (!revisionUpdated
+                    || !ReferenceEquals(project, activeNovelProject)
+                    || !ReferenceEquals(store, activeAnnotationStore))
+                {
+                    await ShowMessageAsync(
+                        "批注位置需要刷新",
+                        "原文位置已核对，但批注记录在此期间发生变化。请刷新批注列表后重新尝试。");
+                    return;
+                }
+
+                anchor = anchor with
+                {
+                    ChapterId = chapterId,
+                    DocumentRevision = project.Metadata.DocumentRevision,
+                };
+                await RefreshSmallAnnotationsAsync(anchor.AnnotationId);
+                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
+                LblStatus.Text = "已核对原文位置，并同步小批注的文档版本。";
+            }
+
+            if (!anchorResolved)
             {
                 // A small edit before the quote changes its absolute offset. External editors may
                 // also normalize mixed/LF line endings to CRLF, shifting every later offset. Auto-repair
