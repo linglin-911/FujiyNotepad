@@ -20,9 +20,6 @@ public sealed partial class MainWindow
     private CancellationTokenSource? chapterAnnotationFilterDebounce;
     private IReadOnlyList<NovelChapter> chapterAnnotationChapters = Array.Empty<NovelChapter>();
 
-    // Public display properties are required by WinUI's DisplayMemberPath reflection binding.
-    public sealed record ChapterAnnotationChapterOption(NovelChapter? Chapter, string DisplayTitle);
-    public sealed record ChapterAnnotationCategoryOption(Guid? CategoryId, string DisplayTitle);
     private sealed record ChapterAnnotationEditValues(
         Guid ChapterId, string? Title, string Content, Guid? CategoryId);
 
