@@ -514,6 +514,35 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    public async Task<NovelChapter?> GetChapterByIdAsync(
+        Guid chapterId,
+        bool includeInactive = false,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision, IsActive
+            FROM Chapters
+            WHERE Id = $id AND ($includeInactive = 1 OR IsActive = 1);
+            """;
+        command.Parameters.AddWithValue("$id", chapterId.ToString("D"));
+        command.Parameters.AddWithValue("$includeInactive", includeInactive ? 1 : 0);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            return null;
+
+        return new NovelChapter(
+            Guid.Parse(reader.GetString(0)),
+            reader.GetString(1),
+            reader.GetInt64(2),
+            reader.GetInt64(3),
+            reader.GetInt32(4),
+            reader.GetInt64(5),
+            reader.GetInt32(6) != 0);
+    }
+
     public async Task<NovelChapterIndexState?> GetChapterIndexStateAsync(
         CancellationToken cancellationToken = default)
     {
