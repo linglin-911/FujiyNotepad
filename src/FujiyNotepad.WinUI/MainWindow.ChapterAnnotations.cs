@@ -765,7 +765,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             diagnostics.LogSwallowed("Create chapter annotation from reader position", ex);
-            await ShowNovelProjectMessageAsync("无法创建章节批注", $"{ex.GetType().Name}: {ex.Message}");
+            await ShowNovelProjectMessageAsync("无法创建章节批注", ex.ToString());
         }
     }
 
@@ -896,7 +896,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             diagnostics.LogSwallowed("Create chapter annotation from pane", ex);
-            await ShowNovelProjectMessageAsync("创建章节批注失败", $"{ex.GetType().Name}: {ex.Message}");
+            await ShowNovelProjectMessageAsync("创建章节批注失败", ex.ToString());
         }
     }
 
