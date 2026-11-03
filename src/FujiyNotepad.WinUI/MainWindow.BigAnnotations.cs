@@ -150,7 +150,6 @@ public sealed partial class MainWindow
         try
         {
             IReadOnlyList<BigAnnotationCategory> categories = await store.GetBigAnnotationCategoriesAsync();
-            IReadOnlyList<NovelChapter> chapters = await store.GetChaptersAsync();
             if (!ReferenceEquals(store, activeAnnotationStore)
                 || !ReferenceEquals(project, activeNovelProject))
                 return;
@@ -995,9 +994,6 @@ public sealed partial class MainWindow
         {
             Padding = new Thickness(6),
             Margin = new Thickness(4, 2, 4, 2),
-            BorderThickness = new Thickness(1),
-            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Microsoft.UI.Colors.Gray) { Opacity = 0.3 },
             Child = panel,
         };
     }
