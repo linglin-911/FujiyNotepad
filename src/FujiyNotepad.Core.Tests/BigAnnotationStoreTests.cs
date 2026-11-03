@@ -158,6 +158,46 @@ public sealed class BigAnnotationStoreTests
     }
 
     [Fact]
+    public async Task EditingOrDeletingSmallAndChapterAnnotations_DoesNotChangeBigAnnotation()
+    {
+        string path = CreateDatabasePath();
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            NovelChapter[] chapters = CreateChapters(2);
+            Assert.True(await store.SaveChapterIndexIfEmptyAsync(chapters, 1));
+
+            Guid bigId = await store.CreateBigAnnotationAsync(
+                "阶段总结", "独立的大批注正文", null, chapters.Select(chapter => chapter.Id).ToArray());
+            Guid smallId = await store.CreateAnnotationAsync("小批注原文分析");
+            await store.AddAnchorAsync(smallId, 10, 20, "第一处原文", chapters[0].Id);
+            Guid chapterNoteId = await store.CreateChapterAnnotationAsync(
+                chapters[0].Id, "章节批注原文", title: "本章分析");
+
+            Assert.True(await store.UpdateAnnotationAsync(smallId, "修改后的小批注正文", title: "修改后的小批注"));
+            Assert.True(await store.UpdateChapterAnnotationAsync(
+                chapterNoteId, chapters[0].Id, "修改后的章节批注正文", title: "修改后的章节批注"));
+
+            BigAnnotation before = Assert.IsType<BigAnnotation>(await store.GetBigAnnotationAsync(bigId));
+            IReadOnlyList<Guid> chaptersBefore =
+                (await store.GetBigAnnotationChaptersAsync(bigId)).Select(chapter => chapter.Id).ToArray();
+
+            await store.DeleteAnnotationAsync(smallId);
+            await store.DeleteChapterAnnotationAsync(chapterNoteId);
+
+            BigAnnotation after = Assert.IsType<BigAnnotation>(await store.GetBigAnnotationAsync(bigId));
+            Assert.Equal(before, after);
+            Assert.Equal(chaptersBefore,
+                (await store.GetBigAnnotationChaptersAsync(bigId)).Select(chapter => chapter.Id));
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task BigAnnotation_UpdateWithoutChangingRange_CanPreserveAnArchivedChapterRange()
     {
         string path = CreateDatabasePath();

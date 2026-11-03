@@ -93,8 +93,6 @@ public sealed record ChapterAnnotationSummary(
     NovelChapter Chapter,
     ChapterAnnotationCategory? Category);
 
-/// <summary>Records which parser revision indexed a project's chapter headings.</summary>
-
 /// <summary>A category used only by big annotations.</summary>
 public sealed record BigAnnotationCategory(
     Guid Id,
@@ -136,6 +134,7 @@ public sealed record BigAnnotationSmallReference(
     AnnotationCategory? Category,
     IReadOnlyList<BigAnnotationSmallAnchorReference> Anchors);
 
+/// <summary>Records which parser revision indexed a project's chapter headings.</summary>
 public sealed record NovelChapterIndexState(
     long DocumentRevision,
     int ParserVersion,
