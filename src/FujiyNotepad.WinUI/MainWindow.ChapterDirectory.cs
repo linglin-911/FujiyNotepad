@@ -114,7 +114,11 @@ public sealed partial class MainWindow
             .OrderBy(chapter => chapter.StartOffset)
             .ThenBy(chapter => chapter.ChapterNumber)
             .ToArray();
-        ChapterDirectoryList.ItemsSource = chapterDirectoryVisibleChapters;
+        // Keep the directory list on the same explicit Items pattern as the chapter filters.
+        // The WinUI ItemsSource setter throws E_INVALIDARG for this project's runtime item collection.
+        ChapterDirectoryList.Items.Clear();
+        foreach (NovelChapter chapter in chapterDirectoryVisibleChapters)
+            ChapterDirectoryList.Items.Add(chapter);
 
         if (chapterDirectoryVisibleChapters.Count == 0)
         {
