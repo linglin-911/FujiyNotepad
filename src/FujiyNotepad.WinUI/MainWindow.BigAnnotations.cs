@@ -956,13 +956,16 @@ public sealed partial class MainWindow
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 250,
             });
 
             var chapterToggle = new Button
             {
                 Content = chapterHeaderContent,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Left,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
+                MaxWidth = 290,
+                MinWidth = 0,
                 Padding = new Thickness(2, 4, 2, 4),
                 MinHeight = 28,
                 BorderThickness = new Thickness(0),
@@ -985,11 +988,8 @@ public sealed partial class MainWindow
                 chapterArrow.Glyph = expand ? "\uE70D" : "\uE76C";
             };
 
-            var headerRow = new Grid { ColumnSpacing = 6 };
-            headerRow.ColumnDefinitions.Add(new ColumnDefinition
-            {
-                Width = new GridLength(1, GridUnitType.Star),
-            });
+            var headerRow = new Grid { ColumnSpacing = 8 };
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             headerRow.Children.Add(chapterToggle);
 
@@ -1011,12 +1011,16 @@ public sealed partial class MainWindow
                 var jumpChapterButton = new Button
                 {
                     Content = "跳转",
-                    Padding = new Thickness(3, 1, 3, 1),
+                    Padding = new Thickness(6, 2, 6, 2),
                     MinHeight = 24,
+                    MinWidth = 44,
                     VerticalAlignment = VerticalAlignment.Center,
-                    BorderThickness = new Thickness(0),
-                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
-                    Opacity = 0.6,
+                    CornerRadius = new CornerRadius(4),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+                        { Opacity = 0.35 },
+                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+                        { Opacity = 0.06 },
                     FontSize = 12,
                 };
                 jumpChapterButton.Click += async (_, _) =>
@@ -1048,29 +1052,48 @@ public sealed partial class MainWindow
         string? title = string.IsNullOrWhiteSpace(reference.Annotation.Title)
             ? null : reference.Annotation.Title.Trim();
         string category = reference.Category?.Name ?? "未分类";
-        var details = new StackPanel { Spacing = 5, Visibility = Visibility.Visible };
-        details.Children.Add(new TextBlock
+        var panel = new StackPanel { Spacing = 4, Margin = new Thickness(12, 1, 0, 3) };
+
+        if (title is not null)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        panel.Children.Add(new TextBlock
         {
             Text = reference.Annotation.Content,
             TextWrapping = TextWrapping.Wrap,
         });
 
-        // Categories are metadata, not tree nodes: keep the label beneath the note and above its sources.
-        details.Children.Add(BuildBigAnnotationCategoryBadge(category));
+        panel.Children.Add(BuildBigAnnotationCategoryBadge(category));
+
+        // The source count is metadata, not a collapsible tree node.
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{reference.Anchors.Count}处原文",
+            FontSize = 12,
+            Opacity = 0.65,
+            Margin = new Thickness(0, 1, 0, 0),
+        });
 
         for (int index = 0; index < reference.Anchors.Count; index++)
         {
             BigAnnotationSmallAnchorReference anchorReference = reference.Anchors[index];
-            details.Children.Add(new TextBlock
+            var sourceContent = new StackPanel { Spacing = 2 };
+            sourceContent.Children.Add(new TextBlock
             {
                 Text = $"原文{index + 1} · {anchorReference.Chapter.Title}",
                 FontSize = 12,
                 Opacity = 0.7,
-                Margin = new Thickness(0, 2, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
 
-            // The quoted source text itself is the navigation target; there is no extra "定位" button.
+            // Keep the quote clickable while visually grouping its label and text as one source.
             var quoteButton = new Button
             {
                 Content = new TextBlock
@@ -1090,54 +1113,19 @@ public sealed partial class MainWindow
             AnnotationAnchor capturedAnchor = anchorReference.Anchor;
             quoteButton.Click += async (_, _) =>
                 await NavigateFromBigAnnotationAnchorAsync(capturedAnchor);
-            details.Children.Add(quoteButton);
-        }
+            sourceContent.Children.Add(quoteButton);
 
-        var arrow = new FontIcon { Glyph = "\uE70D", FontSize = 11 };
-        var headerContent = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 7,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        headerContent.Children.Add(arrow);
-        if (title is not null)
-        {
-            headerContent.Children.Add(new TextBlock
+            panel.Children.Add(new Border
             {
-                Text = title,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 2, 0, 3),
+                Padding = new Thickness(7, 2, 0, 2),
+                BorderThickness = new Thickness(1, 0, 0, 0),
+                BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+                    { Opacity = 0.45 },
+                Child = sourceContent,
             });
         }
-        headerContent.Children.Add(new TextBlock
-        {
-            Text = $"{reference.Anchors.Count} 处原文",
-            Opacity = 0.65,
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
 
-        var header = new Button
-        {
-            Content = headerContent,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(2, 3, 2, 3),
-            MinHeight = 26,
-            BorderThickness = new Thickness(0),
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
-        header.Click += (_, _) =>
-        {
-            bool expand = details.Visibility != Visibility.Visible;
-            details.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
-            arrow.Glyph = expand ? "\uE70D" : "\uE76C";
-        };
-
-        var panel = new StackPanel { Spacing = 3, Margin = new Thickness(12, 1, 0, 3) };
-        panel.Children.Add(header);
-        panel.Children.Add(details);
         return new Border { Child = panel };
     }
 
