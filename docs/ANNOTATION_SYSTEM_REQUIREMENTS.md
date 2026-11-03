@@ -435,6 +435,16 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新代码提交
 
+当前比例字体改造分支：feature/reader-proportional-font-layout，基于批注功能分支提交 87545052d545ecedd2a00e9c51198cefc5f85372 创建。
+
+Phase 1 主要提交：
+- c40bdfa1cb1fcb29ac738fe867a80264a8e349b1：布局接口契约。
+- 7fb8f43946ee6ac759156a9496b466c43c815fba：布局契约测试。
+- cc9fb1c78833bb7e58d6488df99bdbd715077202、ffb9bfcf38ca5772339f0bf0fc8c69414ccf0962、a29d365a661989e27295a3c612f14c47495eaf5f：标记旧固定宽度实现。
+- f16e42bbd32cd342dfbf819bde5d188f7eba014d、006210dc9ba609d3cab9594506eca95d1a1f5de9、42d1476ce3d6013ceb4ea30ddf955a7769c85e29：架构和需求文档。
+
+本轮未接入新渲染后端，未改变现有绘制、批注数据或大文件读取行为；构建与自动化测试待本地执行。
+
 `d23e5776b3f76c1a42261a4489bda025affbd180`（纠正大批注参考资料区层级：目录树严格为“章节标题 → 批注”两层；小批/章批类型、对应分类和小批原文数量作为同一行平级标签；取消章节批注自身的折叠节点；小批与章批正文统一使用圆角淡色背景卡片；原文跳转返回按钮改为带左箭头的实色按钮，并通过动态预留左侧阅读栏位避免遮挡原文。）
 
 `f807463e341e7b17831a6c096751cdcad78f25eb`（补充空白新建大批注的返回恢复：即使尚未输入标题和正文、因此还没有数据库 ID，跳转到原文后也保留编辑器内存状态，点击返回可继续当前新建草稿。）
