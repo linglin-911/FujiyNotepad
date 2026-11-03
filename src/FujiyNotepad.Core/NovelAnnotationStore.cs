@@ -1307,12 +1307,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     {
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(expectedAnchor);
-        if (newStartOffset < 0 || newEndOffset <= newStartOffset
-            || newEndOffset - newStartOffset != expectedAnchor.Quote.Length
-            || documentRevision < 1)
+        if (newStartOffset < 0 || newEndOffset <= newStartOffset || documentRevision < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(newStartOffset),
-                "The repaired anchor must be a non-empty range matching the saved quote.");
+                "The repaired anchor must be a non-empty range.");
         }
 
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
