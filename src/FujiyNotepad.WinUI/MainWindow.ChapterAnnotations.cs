@@ -1086,7 +1086,7 @@ public sealed partial class MainWindow
             (categoryBox.SelectedItem as ComboBoxItem)?.Tag is Guid id ? id : null;
         string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
         return new ChapterAnnotationEditValues(
-            selectedChapter.Chapter.Id, title, contentBox.Text, categoryId);
+            selectedChapter.Id, title, contentBox.Text, categoryId);
     }
 
     private async void ManageChapterAnnotationCategories_Click(object sender, RoutedEventArgs e)
