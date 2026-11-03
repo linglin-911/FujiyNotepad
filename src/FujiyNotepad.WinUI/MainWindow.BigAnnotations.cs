@@ -91,6 +91,8 @@ public sealed partial class MainWindow
         bigAnnotationReferenceRefreshCancellation = null;
         bigAnnotationListRefreshVersion++;
         bigAnnotationReferenceRefreshVersion++;
+        bigAnnotationCategories = Array.Empty<BigAnnotationCategory>();
+        selectedBigAnnotationCategoryId = null;
         resumeBigAnnotationId = null;
         ResetBigAnnotationEditorState();
         BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
@@ -834,6 +836,25 @@ public sealed partial class MainWindow
             header.Click += (_, _) =>
                 details.Visibility = details.Visibility == Visibility.Visible
                     ? Visibility.Collapsed : Visibility.Visible;
+            var groupHeader = new Grid { ColumnSpacing = 6 };
+            groupHeader.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star),
+            });
+            groupHeader.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = GridLength.Auto,
+            });
+            groupHeader.Children.Add(header);
+            var jumpChapterButton = new Button
+            {
+                Content = "跳转",
+                VerticalAlignment = VerticalAlignment.Stretch,
+            };
+            jumpChapterButton.Click += async (_, _) =>
+                await NavigateFromBigAnnotationChapterReferenceAsync(chapter);
+            Grid.SetColumn(jumpChapterButton, 1);
+            groupHeader.Children.Add(jumpChapterButton);
 
             if (smallItems.Length == 0 && chapterItems.Length == 0)
             {
@@ -853,15 +874,12 @@ public sealed partial class MainWindow
             }
 
             var group = new StackPanel { Spacing = 4 };
-            group.Children.Add(header);
+            group.Children.Add(groupHeader);
             group.Children.Add(details);
             BigAnnotationReferenceGroups.Children.Add(new Border
             {
                 Padding = new Thickness(6),
                 Margin = new Thickness(0, 2, 0, 4),
-                BorderThickness = new Thickness(0, 0, 0, 1),
-                BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                    Microsoft.UI.Colors.Gray) { Opacity = 0.35 },
                 Child = group,
             });
         }
@@ -914,9 +932,6 @@ public sealed partial class MainWindow
         {
             Padding = new Thickness(6),
             Margin = new Thickness(4, 2, 4, 2),
-            BorderThickness = new Thickness(1),
-            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Microsoft.UI.Colors.Gray) { Opacity = 0.3 },
             Child = panel,
         };
     }
