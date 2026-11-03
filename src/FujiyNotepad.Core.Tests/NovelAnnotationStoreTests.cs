@@ -292,6 +292,34 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task TryRepairAnchor_RefreshesRevisionWhenRangeIsUnchanged()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+            Guid annotationId = await store.CreateAnnotationAsync("unchanged range");
+            await store.AddAnchorAsync(annotationId, 100, 105, "quote", documentRevision: 1);
+            AnnotationAnchor original = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+
+            bool refreshed = await store.TryRepairAnchorAsync(
+                original, 100, 105, chapterId: null, documentRevision: 2);
+
+            Assert.True(refreshed);
+            AnnotationAnchor updated = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+            Assert.Equal((100L, 105L, 2L, "quote"),
+                (updated.StartOffset, updated.EndOffset, updated.DocumentRevision, updated.Quote));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task CreateAnnotationWithAnchor_IsAtomicAndAppearsInSummarySearch()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
