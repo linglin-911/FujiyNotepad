@@ -95,7 +95,7 @@ public sealed partial class MainWindow
             return;
 
         selectedChapterAnnotationCategoryId =
-            (ChapterAnnotationCategoryFilter.SelectedItem as ChapterAnnotationCategoryOption)?.CategoryId;
+            (ChapterAnnotationCategoryFilter.SelectedItem as ComboBoxItem)?.Tag is Guid id ? id : null;
         ScheduleChapterAnnotationRefresh();
     }
 
