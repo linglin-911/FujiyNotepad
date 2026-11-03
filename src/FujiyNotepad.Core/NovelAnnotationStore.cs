@@ -1384,7 +1384,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     {
         EnsureInitialized();
         edit.Validate();
+        if (newDocumentRevision < 2)
+            throw new ArgumentOutOfRangeException(nameof(newDocumentRevision));
 
+        long previousDocumentRevision = newDocumentRevision - 1;
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -1395,9 +1398,11 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             select.CommandText = """
                 SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
                 FROM AnnotationAnchors
-                WHERE EndOffset > $start OR StartOffset >= $start;
+                WHERE (EndOffset > $start OR StartOffset >= $start)
+                  AND DocumentRevision = $previousRevision;
                 """;
             select.Parameters.AddWithValue("$start", edit.StartOffset);
+            select.Parameters.AddWithValue("$previousRevision", previousDocumentRevision);
             await using var reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 affected.Add(ReadAnchor(reader));
@@ -1410,9 +1415,11 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             selectChapters.CommandText = """
                 SELECT Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision
                 FROM Chapters
-                WHERE IsActive = 1 AND (EndOffset > $start OR StartOffset >= $start);
+                WHERE IsActive = 1 AND (EndOffset > $start OR StartOffset >= $start)
+                  AND DocumentRevision = $previousRevision;
                 """;
             selectChapters.Parameters.AddWithValue("$start", edit.StartOffset);
+            selectChapters.Parameters.AddWithValue("$previousRevision", previousDocumentRevision);
             await using var reader = await selectChapters.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
@@ -1485,10 +1492,12 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             updateEarlierAnchors.CommandText = """
                 UPDATE AnnotationAnchors
                 SET DocumentRevision = $revision
-                WHERE IsOrphaned = 0 AND EndOffset <= $start;
+                WHERE IsOrphaned = 0 AND EndOffset <= $start
+                  AND DocumentRevision = $previousRevision;
                 """;
             updateEarlierAnchors.Parameters.AddWithValue("$revision", newDocumentRevision);
             updateEarlierAnchors.Parameters.AddWithValue("$start", edit.StartOffset);
+            updateEarlierAnchors.Parameters.AddWithValue("$previousRevision", previousDocumentRevision);
             await updateEarlierAnchors.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -1498,10 +1507,12 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             updateEarlierChapters.CommandText = """
                 UPDATE Chapters
                 SET DocumentRevision = $revision
-                WHERE IsActive = 1 AND EndOffset <= $start;
+                WHERE IsActive = 1 AND EndOffset <= $start
+                  AND DocumentRevision = $previousRevision;
                 """;
             updateEarlierChapters.Parameters.AddWithValue("$revision", newDocumentRevision);
             updateEarlierChapters.Parameters.AddWithValue("$start", edit.StartOffset);
+            updateEarlierChapters.Parameters.AddWithValue("$previousRevision", previousDocumentRevision);
             await updateEarlierChapters.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
