@@ -94,6 +94,48 @@ public sealed record ChapterAnnotationSummary(
     ChapterAnnotationCategory? Category);
 
 /// <summary>Records which parser revision indexed a project's chapter headings.</summary>
+
+/// <summary>A category used only by big annotations.</summary>
+public sealed record BigAnnotationCategory(
+    Guid Id,
+    string Name,
+    string? Color = null,
+    int SortOrder = 0,
+    DateTimeOffset? CreatedAt = null);
+
+/// <summary>An independent long-form note associated with an ordered range of chapters.</summary>
+public sealed record BigAnnotation(
+    Guid Id,
+    Guid? CategoryId,
+    string? Title,
+    string Content,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>A compact list projection with its category and first/last chapter labels.</summary>
+public sealed record BigAnnotationSummary(
+    BigAnnotation Annotation,
+    BigAnnotationCategory? Category,
+    int ChapterCount,
+    int? FirstChapterNumber,
+    int? LastChapterNumber,
+    string? FirstChapterTitle,
+    string? LastChapterTitle);
+
+/// <summary>One small-annotation source anchor and the chapter containing it.</summary>
+public sealed record BigAnnotationSmallAnchorReference(
+    AnnotationAnchor Anchor,
+    NovelChapter Chapter);
+
+/// <summary>
+/// One small annotation shown once in the big-annotation reference pane, with every selected-chapter
+/// location retained for navigation.
+/// </summary>
+public sealed record BigAnnotationSmallReference(
+    NovelAnnotation Annotation,
+    AnnotationCategory? Category,
+    IReadOnlyList<BigAnnotationSmallAnchorReference> Anchors);
+
 public sealed record NovelChapterIndexState(
     long DocumentRevision,
     int ParserVersion,
