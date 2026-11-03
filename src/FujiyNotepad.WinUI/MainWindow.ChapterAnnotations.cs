@@ -20,7 +20,9 @@ public sealed partial class MainWindow
     private CancellationTokenSource? chapterAnnotationFilterDebounce;
     private IReadOnlyList<NovelChapter> chapterAnnotationChapters = Array.Empty<NovelChapter>();
 
-    private sealed record ChapterAnnotationChapterOption(NovelChapter Chapter, string DisplayTitle);
+    // Public display properties are required by WinUI's DisplayMemberPath reflection binding.
+    public sealed record ChapterAnnotationChapterOption(NovelChapter? Chapter, string DisplayTitle);
+    public sealed record ChapterAnnotationCategoryOption(Guid? CategoryId, string DisplayTitle);
     private sealed record ChapterAnnotationEditValues(
         Guid ChapterId, string? Title, string Content, Guid? CategoryId);
 
@@ -67,7 +69,7 @@ public sealed partial class MainWindow
             return;
 
         selectedChapterAnnotationChapterId =
-            (ChapterAnnotationChapterFilter.SelectedItem as ChapterAnnotationChapterOption)?.Chapter.Id;
+            (ChapterAnnotationChapterFilter.SelectedItem as ChapterAnnotationChapterOption)?.Chapter?.Id;
 
         // While the chapter dropdown is open, wheel-scrolling through a large novel should only
         // move the highlighted item. Do not issue a database query for every intermediate selection;
@@ -90,7 +92,7 @@ public sealed partial class MainWindow
             return;
 
         selectedChapterAnnotationCategoryId =
-            ChapterAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid id } ? id : null;
+            (ChapterAnnotationCategoryFilter.SelectedItem as ChapterAnnotationCategoryOption)?.CategoryId;
         ScheduleChapterAnnotationRefresh();
     }
 
@@ -163,49 +165,42 @@ public sealed partial class MainWindow
             refreshingChapterAnnotationUi = true;
             try
             {
-                // Bind data items rather than constructing a ComboBoxItem for every chapter.
-                // WinUI can then virtualize the large chapter list instead of retaining hundreds
-                // or thousands of UI containers while the user scrolls the selector.
-                List<ChapterAnnotationChapterOption> chapterOptions = chapters
-                    .Select(chapter => new ChapterAnnotationChapterOption(chapter, chapter.Title))
-                    .ToList();
+                // Include explicit "all" entries. PlaceholderText is not reliably displayed by WinUI
+                // when ItemsSource is non-empty and SelectedItem is null.
+                // Public option types keep DisplayMemberPath working through WinUI reflection binding.
+                var chapterOptions = new List<ChapterAnnotationChapterOption>
+                {
+                    new(null, "全部章节"),
+                };
+                chapterOptions.AddRange(chapters.Select(chapter =>
+                    new ChapterAnnotationChapterOption(chapter, chapter.Title)));
                 ChapterAnnotationChapterFilter.DisplayMemberPath =
                     nameof(ChapterAnnotationChapterOption.DisplayTitle);
                 ChapterAnnotationChapterFilter.ItemsSource = chapterOptions;
-                ChapterAnnotationChapterFilter.SelectedItem = chapterOptions.FirstOrDefault(option =>
-                    option.Chapter.Id == selectedChapterAnnotationChapterId);
+                int selectedChapterIndex = selectedChapterAnnotationChapterId is Guid selectedChapterId
+                    ? chapterOptions.FindIndex(option => option.Chapter?.Id == selectedChapterId)
+                    : 0;
+                ChapterAnnotationChapterFilter.SelectedIndex =
+                    selectedChapterIndex >= 0 ? selectedChapterIndex : 0;
                 selectedChapterAnnotationChapterId =
-                    (ChapterAnnotationChapterFilter.SelectedItem as ChapterAnnotationChapterOption)?.Chapter.Id;
+                    (ChapterAnnotationChapterFilter.SelectedItem as ChapterAnnotationChapterOption)?.Chapter?.Id;
 
-                ChapterAnnotationCategoryFilter.Items.Clear();
-                ChapterAnnotationCategoryFilter.Items.Add(new ComboBoxItem { Content = "全部分类" });
-                foreach (ChapterAnnotationCategory category in categories)
+                var categoryOptions = new List<ChapterAnnotationCategoryOption>
                 {
-                    ChapterAnnotationCategoryFilter.Items.Add(new ComboBoxItem
-                    {
-                        Content = category.Name,
-                        Tag = category.Id,
-                    });
-                }
-
-                int selectedCategoryIndex = 0;
-                if (selectedChapterAnnotationCategoryId is Guid selectedCategory)
-                {
-                    for (int index = 1; index < ChapterAnnotationCategoryFilter.Items.Count; index++)
-                    {
-                        if (ChapterAnnotationCategoryFilter.Items[index] is ComboBoxItem { Tag: Guid id }
-                            && id == selectedCategory)
-                        {
-                            selectedCategoryIndex = index;
-                            break;
-                        }
-                    }
-                }
-                ChapterAnnotationCategoryFilter.SelectedIndex = selectedCategoryIndex;
+                    new(null, "全部分类"),
+                };
+                categoryOptions.AddRange(categories.Select(category =>
+                    new ChapterAnnotationCategoryOption(category.Id, category.Name)));
+                ChapterAnnotationCategoryFilter.DisplayMemberPath =
+                    nameof(ChapterAnnotationCategoryOption.DisplayTitle);
+                ChapterAnnotationCategoryFilter.ItemsSource = categoryOptions;
+                int selectedCategoryIndex = selectedChapterAnnotationCategoryId is Guid selectedCategoryId
+                    ? categoryOptions.FindIndex(option => option.CategoryId == selectedCategoryId)
+                    : 0;
+                ChapterAnnotationCategoryFilter.SelectedIndex =
+                    selectedCategoryIndex >= 0 ? selectedCategoryIndex : 0;
                 selectedChapterAnnotationCategoryId =
-                    ChapterAnnotationCategoryFilter.SelectedItem is ComboBoxItem { Tag: Guid selectedCategoryId }
-                        ? selectedCategoryId
-                        : null;
+                    (ChapterAnnotationCategoryFilter.SelectedItem as ChapterAnnotationCategoryOption)?.CategoryId;
             }
             finally
             {
@@ -663,6 +658,52 @@ public sealed partial class MainWindow
         return best;
     }
 
+    private async Task<bool> EnsureChapterIndexAvailableForCreationAsync()
+    {
+        NovelAnnotationStore? store = activeAnnotationStore;
+        NovelProject? project = activeNovelProject;
+        if (store is null || project is null || provider is null || filteredSource is not null)
+            return false;
+
+        chapterAnnotationChapters = await store.GetChaptersAsync();
+        NovelChapterIndexState? state = await store.GetChapterIndexStateAsync();
+
+        if (chapterAnnotationChapters.Count == 0 && state is null && LineIndexer.IsCompleted)
+        {
+            await EnsureChapterIndexAsync();
+            chapterAnnotationChapters = await store.GetChaptersAsync();
+            state = await store.GetChapterIndexStateAsync();
+        }
+
+        if (!LineIndexer.IsCompleted)
+        {
+            await ShowNovelProjectMessageAsync(
+                "章节索引尚未完成",
+                "请等待全文索引完成后，再创建章节批注。");
+            return false;
+        }
+
+        if (state is not null
+            && (state.DocumentRevision != project.Metadata.DocumentRevision
+                || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
+        {
+            await ShowNovelProjectMessageAsync(
+                "章节索引已过期",
+                "当前原文或章节识别规则已经发生变化。请先点击右上角“重新识别”，确认更新章节索引后再创建章节批注。");
+            return false;
+        }
+
+        if (chapterAnnotationChapters.Count == 0)
+        {
+            await ShowNovelProjectMessageAsync(
+                "没有可用章节",
+                "当前原文没有识别到章节标题，无法创建章节批注。");
+            return false;
+        }
+
+        return true;
+    }
+
     private async void CreateChapterAnnotationFromPosition(TextPosition position)
     {
         if (activeAnnotationStore is null || annotationOffsetMap is null
@@ -671,17 +712,32 @@ public sealed partial class MainWindow
 
         try
         {
-            if (chapterAnnotationChapters.Count == 0)
-                await EnsureChapterIndexAsync();
+            if (!await EnsureChapterIndexAvailableForCreationAsync())
+                return;
 
-            long offset = annotationOffsetMap.GetOffset(position.Line, position.Column);
+            LineProvider lines = provider;
+            DocumentTextOffsetMap map = annotationOffsetMap;
+            if (position.Line < 0 || position.Line >= lines.LineCount)
+            {
+                diagnostics.LogSwallowed(
+                    "Create chapter annotation from invalid reader position",
+                    new ArgumentOutOfRangeException(nameof(position), $"Line {position.Line} is outside the indexed range 0..{lines.LineCount - 1}."));
+                await ShowNovelProjectMessageAsync(
+                    "无法确定右键位置",
+                    "右键位置尚未进入全文索引范围，请稍候等待索引完成后再试。");
+                return;
+            }
+
+            string clickedLine = lines.GetLineUncached(position.Line);
+            int column = Math.Clamp(position.Column, 0, clickedLine.Length);
+            long offset = map.GetOffset(position.Line, column);
             NovelChapter? chapter = chapterAnnotationChapters.FirstOrDefault(candidate =>
-                candidate.StartOffset <= offset && candidate.EndOffset > offset);
+                candidate.IsActive && candidate.StartOffset <= offset && candidate.EndOffset > offset);
             if (chapter is null)
             {
                 await ShowNovelProjectMessageAsync(
                     "当前位置不属于已识别章节",
-                    "请先重新识别章节，或将右键位置移动到某个已识别章节的正文范围内。");
+                    "请将右键位置移动到某个已识别章节的正文范围内；如果章节标题刚刚修改过，请先重新识别章节。");
                 return;
             }
 
@@ -689,7 +745,8 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            await ShowNovelProjectMessageAsync("无法创建章节批注", ex.Message);
+            diagnostics.LogSwallowed("Create chapter annotation from reader position", ex);
+            await ShowNovelProjectMessageAsync("无法创建章节批注", $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -803,12 +860,15 @@ public sealed partial class MainWindow
 
         try
         {
+            if (!await EnsureChapterIndexAvailableForCreationAsync())
+                return;
+
             NovelChapter? chapter = GetDominantVisibleChapter();
             if (chapter is null)
             {
                 await ShowNovelProjectMessageAsync(
                     "当前可见区域没有已识别章节",
-                    "请先完成章节识别，并将阅读位置移动到某个章节正文范围内。");
+                    "请将阅读位置移动到某个已识别章节的正文范围内。");
                 return;
             }
 
@@ -816,7 +876,8 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            await ShowNovelProjectMessageAsync("创建章节批注失败", ex.Message);
+            diagnostics.LogSwallowed("Create chapter annotation from pane", ex);
+            await ShowNovelProjectMessageAsync("创建章节批注失败", $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -914,41 +975,42 @@ public sealed partial class MainWindow
                 chapter,
                 chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}"))
             .ToList();
+        if (chapterOptions.Count == 0)
+            throw new InvalidOperationException("没有可供选择的章节。");
+
         var chapterBox = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             DisplayMemberPath = nameof(ChapterAnnotationChapterOption.DisplayTitle),
             ItemsSource = chapterOptions,
+            MaxDropDownHeight = 420,
         };
-        chapterBox.SelectedItem = chapterOptions.FirstOrDefault(option =>
-            option.Chapter.Id == initialChapterId);
+        int initialChapterIndex = chapterOptions.FindIndex(option => option.Chapter?.Id == initialChapterId);
+        chapterBox.SelectedIndex = initialChapterIndex >= 0 ? initialChapterIndex : 0;
 
         var titleBox = new TextBox
         {
             PlaceholderText = "批注标题（可选）",
             Text = initialTitle ?? "",
         };
+        var categoryOptions = new List<ChapterAnnotationCategoryOption>
+        {
+            new(null, "未分类"),
+        };
+        categoryOptions.AddRange(categories.Select(category =>
+            new ChapterAnnotationCategoryOption(category.Id, category.Name)));
         var categoryBox = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             PlaceholderText = "选择分类",
+            DisplayMemberPath = nameof(ChapterAnnotationCategoryOption.DisplayTitle),
+            ItemsSource = categoryOptions,
+            MaxDropDownHeight = 420,
         };
-        categoryBox.Items.Add(new ComboBoxItem { Content = "未分类" });
-        foreach (ChapterAnnotationCategory category in categories)
-            categoryBox.Items.Add(new ComboBoxItem { Content = category.Name, Tag = category.Id });
-
-        categoryBox.SelectedIndex = 0;
-        if (initialCategoryId is Guid selectedCategory)
-        {
-            for (int index = 1; index < categoryBox.Items.Count; index++)
-            {
-                if (categoryBox.Items[index] is ComboBoxItem { Tag: Guid categoryGuid } && categoryGuid == selectedCategory)
-                {
-                    categoryBox.SelectedIndex = index;
-                    break;
-                }
-            }
-        }
+        int initialCategoryIndex = initialCategoryId is Guid selectedCategory
+            ? categoryOptions.FindIndex(option => option.CategoryId == selectedCategory)
+            : 0;
+        categoryBox.SelectedIndex = initialCategoryIndex >= 0 ? initialCategoryIndex : 0;
 
         var contentBox = new TextBox
         {
@@ -986,7 +1048,7 @@ public sealed partial class MainWindow
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return null;
-        if (chapterBox.SelectedItem is not ChapterAnnotationChapterOption selectedChapter)
+        if (chapterBox.SelectedItem is not ChapterAnnotationChapterOption { Chapter: { } selectedChapter })
         {
             await ShowNovelProjectMessageAsync("尚未选择章节", "请选择这条章节批注所属的章节。");
             return null;
@@ -997,7 +1059,8 @@ public sealed partial class MainWindow
             return null;
         }
 
-        Guid? categoryId = categoryBox.SelectedItem is ComboBoxItem { Tag: Guid id } ? id : null;
+        Guid? categoryId =
+            (categoryBox.SelectedItem as ChapterAnnotationCategoryOption)?.CategoryId;
         string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
         return new ChapterAnnotationEditValues(
             selectedChapter.Chapter.Id, title, contentBox.Text, categoryId);
