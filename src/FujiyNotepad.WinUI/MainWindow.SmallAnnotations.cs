@@ -1211,9 +1211,9 @@ namespace FujiyNotepad.WinUI
 
             if (!TryResolveSmallAnnotationAnchor(anchor, out position))
             {
-                // A small edit before the quote (for example deleting a chapter heading) changes its
-                // absolute offset without changing the saved excerpt. Only auto-repair when that exact
-                // excerpt appears once in a bounded window around the old position.
+                // A small edit before the quote changes its absolute offset. External editors may
+                // also normalize mixed/LF line endings to CRLF, shifting every later offset. Auto-repair
+                // only when the normalized saved excerpt occurs exactly once in the complete document.
                 AnnotationAnchor? repaired = await TryRepairSmallAnnotationAnchorAsync(anchor, project, store);
                 if (repaired is not null
                     && ReferenceEquals(project, activeNovelProject)
@@ -1227,8 +1227,9 @@ namespace FujiyNotepad.WinUI
                 }
                 else
                 {
+                    LblStatus.Text = "原文摘录没有找到唯一匹配，未自动修改批注关联。";
                     string reason = LineIndexer.IsCompleted
-                        ? "保存的原文摘录在原位置未找到，附近也没有唯一匹配。为避免跳错位置，系统没有自动修改关联。若原文内容确实未变，只是前面的文字被删除或插入，可以再次尝试；如果摘录重复或本身被修改，需要人工处理。"
+                        ? "保存的原文摘录在当前文档中没有唯一匹配。系统已忽略 CRLF/LF 换行差异并进行全文查找，但没有找到唯一且可验证的位置，因此没有自动修改关联。若摘录本身已被修改或在文档中重复出现，需要人工处理。"
                         : "全文索引尚未到达该位置。请稍后等待索引完成，再重新尝试定位。";
                     await ShowMessageAsync("无法准确定位原文", reason);
                     return;
