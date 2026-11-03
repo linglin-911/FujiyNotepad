@@ -386,7 +386,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新代码提交
 
-`4816cf5ea12b0d7a32b8734744e0903a562607b2`（章节筛选与新建弹窗改用轻量字符串/显式 ComboBoxItem，移除 DisplayMemberPath 反射绑定；待 Windows x64 构建和 UI 验收）
+`2fd6637b2e189867185fcb0db99e583fd6a3a842`（章节筛选与新建弹窗改用轻量字符串/显式 ComboBoxItem，移除 DisplayMemberPath 反射绑定，并修正选择结果取 ID；待 Windows x64 构建和 UI 验收）
 
 此前提交 `1e39210a23369eb38b16323006c85431a014bb1e` 已加入小批注锚点安全自动修复及文档编辑后旧位置锚点版本同步；本次一并纳入拉取。
 
@@ -396,7 +396,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 | 日期 | 变更 |
 |---|---|
-| 2026-11-03 | 用户实测章节批注：右侧“新建”和阅读器右键两种入口均报 WinUI “Value does not fall within the expected range”；章节/分类筛选框显示空白；删除章节标题和换行后小批注定位失败。章节筛选改用轻量字符串列表并通过索引映射 ID，分类筛选与编辑弹窗改用显式 ComboBoxItem 内容和 Tag，避免 DisplayMemberPath 反射绑定；新增 BUG-013 至 BUG-016。另已加入小批注摘录在旧位置附近唯一匹配时的安全锚点修复，待用户构建和回归验证。最新代码提交 `4816cf5ea12b0d7a32b8734744e0903a562607b2`。 |\n
+| 2026-11-03 | 用户实测章节批注：右侧“新建”和阅读器右键两种入口均报 WinUI “Value does not fall within the expected range”；章节/分类筛选框显示空白；删除章节标题和换行后小批注定位失败。章节筛选改用轻量字符串列表并通过索引映射 ID，分类筛选与编辑弹窗改用显式 ComboBoxItem 内容和 Tag，避免 DisplayMemberPath 反射绑定；修正章节选择结果的 ID 读取；新增 BUG-013 至 BUG-016。另已加入小批注摘录在旧位置附近唯一匹配时的安全锚点修复，待用户构建和回归验证。最新代码提交 `2fd6637b2e189867185fcb0db99e583fd6a3a842`。 |\n
 | 2026-11-02 | 建立项目级需求文档；汇总三种独立批注、原文锚点、章节批注、大批注、工作区、外部编辑保护和项目列表主界面等需求。 |
 | 2026-11-02 | 根据用户实测新增 BUG-001 至 BUG-006；明确空分类空状态、创建窗口原文展开、列表点击跳转与原文预览、阅读器虚线标记和点击显示批注为当前小批注阶段必做。 |
 | 2026-11-02 | 记录 Windows x64 构建必须显式使用 `-p:Platform=x64`；解决方案默认仍选择 ARM64，不将平台配置顺序调整视为已解决。 |
