@@ -109,3 +109,17 @@ The document and SQLite cannot participate in one native filesystem/database tra
 - Large edits may affect many later absolute offsets. The database index narrows the work to the affected suffix; it cannot make every affected offset update constant-time.
 
 
+
+
+## Proportional-font reader layout
+
+The reader is moving from the inherited fixed-cell layout to a font-aware layout contract while preserving the existing streaming document pipeline.
+
+- File-byte offsets remain an implementation detail of the positional byte source and line index.
+- Document-wide UTF-16 offsets remain the durable coordinate for chapters and annotation anchors; DocumentTextOffsetMap remains their line/column adapter.
+- Layout-local UTF-16 indexes are relative to one original decoded source line. They must map back to the exact source line even if the rendering backend expands tabs or shapes multi-code-unit characters.
+- Screen/DIP geometry is temporary and must never be stored in SQLite or used as an annotation anchor.
+- The Presentation layer defines ITextLayoutProvider and ITextLayoutResult without WinUI/Win2D dependencies. The WinUI layer will implement the provider using the existing Win2D/DirectWrite stack.
+- The current LineColumns, LineWrapper and TextLayoutEngine remain the legacy monospace path until the proportional backend has equivalent scrolling, hit-testing, selection, search and annotation-marker behaviour.
+
+Phase 1 adds the layout contract and headless contract tests only. It does not change the visible renderer, annotation stores, DocumentTextOffsetMap or large-file read/cache limits. See reader-text-layout-architecture.md for the complete migration plan.
