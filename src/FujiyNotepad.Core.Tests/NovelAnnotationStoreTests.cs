@@ -499,4 +499,129 @@ public sealed class NovelAnnotationStoreTests
                 if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
+
+    [Fact]
+    public async Task InitializeAsync_AddsChapterRelativeAnchorMetadataColumnsToLegacyDatabase()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using (var legacy = new SqliteConnection($"Data Source={path}"))
+            {
+                await legacy.OpenAsync();
+                await using var create = legacy.CreateCommand();
+                create.CommandText = """
+                    CREATE TABLE AnnotationAnchors (
+                        Id TEXT PRIMARY KEY NOT NULL,
+                        AnnotationId TEXT NOT NULL,
+                        ChapterId TEXT NULL,
+                        StartOffset INTEGER NOT NULL,
+                        EndOffset INTEGER NOT NULL,
+                        Quote TEXT NOT NULL,
+                        IsOrphaned INTEGER NOT NULL DEFAULT 0,
+                        DocumentRevision INTEGER NOT NULL DEFAULT 1
+                    );
+                    """;
+                await create.ExecuteNonQueryAsync();
+            }
+
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            await using var connection = new SqliteConnection($"Data Source={path}");
+            await connection.OpenAsync();
+            await using var schema = connection.CreateCommand();
+            schema.CommandText = "PRAGMA table_info(AnnotationAnchors);";
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await schema.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                columns.Add(reader.GetString(1));
+
+            Assert.Contains("RelativeStartOffset", columns);
+            Assert.Contains("RelativeEndOffset", columns);
+            Assert.Contains("ChapterBodyStartRelativeOffset", columns);
+            Assert.Contains("ChapterBodySha256", columns);
+            Assert.Contains("PrefixContext", columns);
+            Assert.Contains("SuffixContext", columns);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAnnotationWithAnchor_PersistsChapterRelativeMetadataAndValidatesChapterBoundary()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            var lines = new TestLineSource(
+                ["第1章", "前文", "目标摘录", "后文", "第2章"],
+                [LineEnding.Lf, LineEnding.Lf, LineEnding.Lf, LineEnding.Lf, LineEnding.None]);
+            var map = new DocumentTextOffsetMap(lines);
+            long chapterEnd = map.GetLineStartOffset(4);
+            var chapter = new NovelChapter(Guid.NewGuid(), "第1章", 0, chapterEnd, 1, 1, true,
+                map.GetLineStartOffset(1), "BODY-HASH");
+            await store.UpsertChapterAsync(chapter);
+
+            long start = map.GetLineStartOffset(2);
+            long end = map.GetOffset(2, "目标摘录".Length);
+            AnnotationAnchorMetadata metadata = AnnotationAnchorMetadataBuilder.Create(
+                chapter, lines, map, start, end);
+            Guid annotationId = await store.CreateAnnotationWithAnchorAsync(
+                "本章记录", start, end, "目标摘录",
+                chapterId: chapter.Id, documentRevision: 1, anchorMetadata: metadata);
+
+            AnnotationAnchor saved = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
+            Assert.Equal(metadata.RelativeStartOffset, saved.RelativeStartOffset);
+            Assert.Equal(metadata.RelativeEndOffset, saved.RelativeEndOffset);
+            Assert.Equal(metadata.ChapterBodyStartRelativeOffset, saved.ChapterBodyStartRelativeOffset);
+            Assert.Equal("BODY-HASH", saved.ChapterBodySha256);
+            Assert.Equal(metadata.PrefixContext, saved.PrefixContext);
+            Assert.Equal(metadata.SuffixContext, saved.SuffixContext);
+
+            Guid secondChapterId = Guid.NewGuid();
+            var secondChapter = new NovelChapter(
+                secondChapterId, "第2章", chapterEnd, chapterEnd + 3, 2, 1);
+            await store.UpsertChapterAsync(secondChapter);
+            AnnotationAnchorMetadata secondMetadata = AnnotationAnchorMetadataBuilder.Create(
+                secondChapter, lines, map, chapterEnd, chapterEnd + 3);
+            await store.AddAnchorAsync(
+                annotationId, chapterEnd, chapterEnd + 3, "第2章",
+                chapterId: secondChapter.Id, documentRevision: 1, anchorMetadata: secondMetadata);
+
+            IReadOnlyList<AnnotationAnchor> multiChapterAnchors =
+                await store.GetAnchorsForAnnotationAsync(annotationId);
+            Assert.Equal(2, multiChapterAnchors.Count);
+            Assert.Contains(multiChapterAnchors, anchor => anchor.ChapterId == chapter.Id);
+            Assert.Contains(multiChapterAnchors, anchor => anchor.ChapterId == secondChapter.Id);
+
+            var invalidMetadata = new AnnotationAnchorMetadata(1, 5, 0, "", "", "");
+            await Assert.ThrowsAsync<ArgumentException>(() => store.AddAnchorAsync(
+                annotationId, chapterEnd - 2, chapterEnd + 2, "跨章摘录",
+                chapterId: chapter.Id, documentRevision: 1, anchorMetadata: invalidMetadata));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    private sealed class TestLineSource(string[] values, LineEnding[] endings)
+        : ILineSource, ILineEndingSource
+    {
+        public int LineCount => values.Length;
+        public string GetLine(int lineIndex) => values[lineIndex];
+        public string GetLineUncached(int lineIndex) => values[lineIndex];
+        public LineEnding GetLineEnding(int lineIndex) => endings[lineIndex];
+    }
+
 }

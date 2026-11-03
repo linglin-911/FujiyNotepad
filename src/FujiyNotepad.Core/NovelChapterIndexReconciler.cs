@@ -45,28 +45,72 @@ public static class NovelChapterIndexReconciler
         var renamed = new List<NovelChapterTitleChange>();
         var contentChanged = new List<NovelChapterContentChange>();
 
+        void MatchChapter(NovelChapter previous, NovelChapter detectedChapter)
+        {
+            NovelChapter current = detectedChapter with { Id = previous.Id, IsActive = true };
+            matchedOld.Add(previous.Id);
+            matchedNew[detectedChapter.Id] = current;
+
+            if (!string.Equals(previous.Title, current.Title, StringComparison.Ordinal))
+                renamed.Add(new NovelChapterTitleChange(previous, current));
+
+            // Empty means a legacy index is establishing its first fingerprint baseline.
+            if (!string.IsNullOrEmpty(previous.BodySha256)
+                && !string.Equals(previous.BodySha256, current.BodySha256, StringComparison.Ordinal))
+            {
+                contentChanged.Add(new NovelChapterContentChange(previous, current));
+            }
+        }
+
         foreach ((string key, List<NovelChapter> oldGroup) in oldGroups)
         {
             if (!newGroups.TryGetValue(key, out List<NovelChapter>? newGroup))
                 continue;
 
-            int count = Math.Min(oldGroup.Count, newGroup.Count);
-            for (int index = 0; index < count; index++)
+            // Some novels contain repeated headings such as multiple "番外" chapters. Matching
+            // those groups by order silently transfers a deleted chapter's ID to a different one.
+            // Prefer unique body fingerprints, then unique exact titles. If identity remains
+            // ambiguous, archive the unmatched old rows and treat detected rows as new.
+            foreach (NovelChapter previous in oldGroup)
             {
-                NovelChapter previous = oldGroup[index];
-                NovelChapter detectedChapter = newGroup[index];
-                NovelChapter current = detectedChapter with { Id = previous.Id, IsActive = true };
-                matchedOld.Add(previous.Id);
-                matchedNew[detectedChapter.Id] = current;
+                if (matchedOld.Contains(previous.Id) || string.IsNullOrEmpty(previous.BodySha256))
+                    continue;
 
-                if (!string.Equals(previous.Title, current.Title, StringComparison.Ordinal))
-                    renamed.Add(new NovelChapterTitleChange(previous, current));
-
-                // Empty means a legacy index is establishing its first fingerprint baseline.
-                if (!string.IsNullOrEmpty(previous.BodySha256)
-                    && !string.Equals(previous.BodySha256, current.BodySha256, StringComparison.Ordinal))
-                    contentChanged.Add(new NovelChapterContentChange(previous, current));
+                NovelChapter[] oldFingerprintMatches = oldGroup
+                    .Where(candidate => !matchedOld.Contains(candidate.Id)
+                        && string.Equals(candidate.BodySha256, previous.BodySha256, StringComparison.Ordinal))
+                    .ToArray();
+                NovelChapter[] newFingerprintMatches = newGroup
+                    .Where(candidate => !matchedNew.ContainsKey(candidate.Id)
+                        && string.Equals(candidate.BodySha256, previous.BodySha256, StringComparison.Ordinal))
+                    .ToArray();
+                if (oldFingerprintMatches.Length == 1 && newFingerprintMatches.Length == 1)
+                    MatchChapter(oldFingerprintMatches[0], newFingerprintMatches[0]);
             }
+
+            foreach (NovelChapter previous in oldGroup)
+            {
+                if (matchedOld.Contains(previous.Id))
+                    continue;
+
+                NovelChapter[] oldTitleMatches = oldGroup
+                    .Where(candidate => !matchedOld.Contains(candidate.Id)
+                        && string.Equals(candidate.Title, previous.Title, StringComparison.Ordinal))
+                    .ToArray();
+                NovelChapter[] newTitleMatches = newGroup
+                    .Where(candidate => !matchedNew.ContainsKey(candidate.Id)
+                        && string.Equals(candidate.Title, previous.Title, StringComparison.Ordinal))
+                    .ToArray();
+                if (oldTitleMatches.Length == 1 && newTitleMatches.Length == 1)
+                    MatchChapter(oldTitleMatches[0], newTitleMatches[0]);
+            }
+
+            NovelChapter[] remainingOld = oldGroup
+                .Where(candidate => !matchedOld.Contains(candidate.Id)).ToArray();
+            NovelChapter[] remainingNew = newGroup
+                .Where(candidate => !matchedNew.ContainsKey(candidate.Id)).ToArray();
+            if (remainingOld.Length == 1 && remainingNew.Length == 1)
+                MatchChapter(remainingOld[0], remainingNew[0]);
         }
 
         var result = new List<NovelChapter>(newChapters.Length);

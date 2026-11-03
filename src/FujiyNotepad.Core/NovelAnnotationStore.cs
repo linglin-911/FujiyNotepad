@@ -99,6 +99,12 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                 Quote TEXT NOT NULL,
                 IsOrphaned INTEGER NOT NULL DEFAULT 0,
                 DocumentRevision INTEGER NOT NULL DEFAULT 1,
+                RelativeStartOffset INTEGER NULL,
+                RelativeEndOffset INTEGER NULL,
+                ChapterBodyStartRelativeOffset INTEGER NULL,
+                ChapterBodySha256 TEXT NULL,
+                PrefixContext TEXT NOT NULL DEFAULT '',
+                SuffixContext TEXT NOT NULL DEFAULT '',
                 CHECK (StartOffset >= 0 AND EndOffset >= StartOffset)
             );
             CREATE INDEX IF NOT EXISTS IX_AnnotationAnchors_AnnotationId ON AnnotationAnchors(AnnotationId);
@@ -139,6 +145,54 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             await using var migrate = connection.CreateCommand();
             migrate.CommandText = "ALTER TABLE Chapters ADD COLUMN BodySha256 TEXT NOT NULL DEFAULT '';";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Anchor metadata is additive: older projects keep their original absolute offsets and
+        // are upgraded lazily when a saved quote is next verified against the current chapter.
+        var anchorColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = "PRAGMA table_info(AnnotationAnchors);";
+            await using var reader = await schema.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                anchorColumns.Add(reader.GetString(1));
+        }
+
+        if (!anchorColumns.Contains("RelativeStartOffset"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN RelativeStartOffset INTEGER NULL;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!anchorColumns.Contains("RelativeEndOffset"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN RelativeEndOffset INTEGER NULL;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!anchorColumns.Contains("ChapterBodyStartRelativeOffset"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN ChapterBodyStartRelativeOffset INTEGER NULL;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!anchorColumns.Contains("ChapterBodySha256"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN ChapterBodySha256 TEXT NULL;";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!anchorColumns.Contains("PrefixContext"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN PrefixContext TEXT NOT NULL DEFAULT '';";
+            await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        if (!anchorColumns.Contains("SuffixContext"))
+        {
+            await using var migrate = connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE AnnotationAnchors ADD COLUMN SuffixContext TEXT NOT NULL DEFAULT '';";
             await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -389,7 +443,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     public async Task<Guid> CreateAnnotationWithAnchorAsync(
         string content, long startOffset, long endOffset, string quote,
         Guid? categoryId = null, string? title = null, Guid? chapterId = null,
-        long documentRevision = 1, CancellationToken cancellationToken = default)
+        long documentRevision = 1, CancellationToken cancellationToken = default,
+        AnnotationAnchorMetadata? anchorMetadata = null)
     {
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(content);
@@ -403,6 +458,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await ValidateAnchorMetadataAsync(
+            connection, (SqliteTransaction)transaction, chapterId,
+            startOffset, endOffset, anchorMetadata, cancellationToken).ConfigureAwait(false);
         await using (var note = connection.CreateCommand())
         {
             note.Transaction = (SqliteTransaction)transaction;
@@ -424,8 +482,11 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             anchor.Transaction = (SqliteTransaction)transaction;
             anchor.CommandText = """
                 INSERT INTO AnnotationAnchors
-                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision)
-                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision);
+                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision,
+                     RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                     ChapterBodySha256, PrefixContext, SuffixContext)
+                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision,
+                        $relativeStart, $relativeEnd, $bodyStartRelative, $bodyHash, $prefix, $suffix);
                 """;
             anchor.Parameters.AddWithValue("$id", anchorId.ToString("D"));
             anchor.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
@@ -434,6 +495,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             anchor.Parameters.AddWithValue("$end", endOffset);
             anchor.Parameters.AddWithValue("$quote", quote);
             anchor.Parameters.AddWithValue("$revision", documentRevision);
+            AddAnchorMetadataParameters(anchor, anchorMetadata);
             await anchor.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -837,8 +899,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             }
         }
 
-        // Re-associate current-version small-note anchors with the newly indexed active chapter ranges.
-        // Stale or orphaned anchors are deliberately left untouched.
+        // Backfill only legacy anchors that have no ChapterId. An existing chapter identity is
+        // never silently moved to another chapter when a heading is deleted, merged, or split.
         await using (var anchors = connection.CreateCommand())
         {
             anchors.Transaction = (SqliteTransaction)transaction;
@@ -853,7 +915,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                     ORDER BY c.StartOffset DESC
                     LIMIT 1
                 )
-                WHERE IsOrphaned = 0 AND DocumentRevision = $revision;
+                WHERE ChapterId IS NULL AND IsOrphaned = 0 AND DocumentRevision = $revision;
                 """;
             anchors.Parameters.AddWithValue("$revision", documentRevision);
             await anchors.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -1149,7 +1211,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
     }
 
     public async Task<Guid> AddAnchorAsync(Guid annotationId, long startOffset, long endOffset, string quote,
-        Guid? chapterId = null, long documentRevision = 1, CancellationToken cancellationToken = default)
+        Guid? chapterId = null, long documentRevision = 1, CancellationToken cancellationToken = default,
+        AnnotationAnchorMetadata? anchorMetadata = null)
     {
         EnsureInitialized();
         if (startOffset < 0 || endOffset <= startOffset)
@@ -1159,13 +1222,19 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         Guid id = Guid.NewGuid();
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await ValidateAnchorMetadataAsync(
+            connection, (SqliteTransaction)transaction, chapterId,
+            startOffset, endOffset, anchorMetadata, cancellationToken).ConfigureAwait(false);
         await using (var command = connection.CreateCommand())
         {
             command.Transaction = (SqliteTransaction)transaction;
             command.CommandText = """
                 INSERT INTO AnnotationAnchors
-                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision)
-                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision);
+                    (Id, AnnotationId, ChapterId, StartOffset, EndOffset, Quote, IsOrphaned, DocumentRevision,
+                     RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                     ChapterBodySha256, PrefixContext, SuffixContext)
+                VALUES ($id, $annotation, $chapter, $start, $end, $quote, 0, $revision,
+                        $relativeStart, $relativeEnd, $bodyStartRelative, $bodyHash, $prefix, $suffix);
                 """;
             command.Parameters.AddWithValue("$id", id.ToString("D"));
             command.Parameters.AddWithValue("$annotation", annotationId.ToString("D"));
@@ -1174,6 +1243,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             command.Parameters.AddWithValue("$end", endOffset);
             command.Parameters.AddWithValue("$quote", quote);
             command.Parameters.AddWithValue("$revision", documentRevision);
+            AddAnchorMetadataParameters(command, anchorMetadata);
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -1235,9 +1305,15 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
             FROM AnnotationAnchors
             WHERE IsOrphaned = 0 AND StartOffset < $end AND EndOffset > $start
+              AND (ChapterId IS NULL OR EXISTS (
+                  SELECT 1 FROM Chapters c
+                  WHERE c.Id = AnnotationAnchors.ChapterId AND c.IsActive = 1
+              ))
             ORDER BY StartOffset, EndOffset;
             """;
         command.Parameters.AddWithValue("$start", startOffset);
@@ -1264,6 +1340,10 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             FROM Annotations n
             INNER JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
             WHERE a.IsOrphaned = 0 AND a.StartOffset < $end AND a.EndOffset > $start
+              AND (a.ChapterId IS NULL OR EXISTS (
+                  SELECT 1 FROM Chapters c
+                  WHERE c.Id = a.ChapterId AND c.IsActive = 1
+              ))
             ORDER BY n.UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$start", startOffset);
@@ -1291,7 +1371,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
             FROM AnnotationAnchors
             ORDER BY StartOffset, EndOffset, Id;
             """;
@@ -1309,7 +1391,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
             FROM AnnotationAnchors WHERE AnnotationId = $id ORDER BY StartOffset, EndOffset;
             """;
         command.Parameters.AddWithValue("$id", annotationId.ToString("D"));
@@ -1344,7 +1428,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             await using var command = connection.CreateCommand();
             string[] parameterNames = batch.Select((_, index) => "$id" + index).ToArray();
             command.CommandText = $"""
-                SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+                SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
                 FROM AnnotationAnchors
                 WHERE AnnotationId IN ({string.Join(", ", parameterNames)})
                 ORDER BY AnnotationId, StartOffset, EndOffset;
@@ -1376,7 +1462,8 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         long newEndOffset,
         Guid? chapterId,
         long documentRevision,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AnnotationAnchorMetadata? anchorMetadata = null)
     {
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(expectedAnchor);
@@ -1388,12 +1475,22 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await ValidateAnchorMetadataAsync(
+            connection, (SqliteTransaction)transaction, chapterId,
+            newStartOffset, newEndOffset, anchorMetadata, cancellationToken).ConfigureAwait(false);
+
         await using var update = connection.CreateCommand();
         update.Transaction = (SqliteTransaction)transaction;
         update.CommandText = """
             UPDATE AnnotationAnchors
             SET StartOffset = $newStart, EndOffset = $newEnd, ChapterId = $chapter,
-                DocumentRevision = $revision, IsOrphaned = 0
+                DocumentRevision = $revision, IsOrphaned = 0,
+                RelativeStartOffset = CASE WHEN $hasMetadata = 1 THEN $relativeStart ELSE RelativeStartOffset END,
+                RelativeEndOffset = CASE WHEN $hasMetadata = 1 THEN $relativeEnd ELSE RelativeEndOffset END,
+                ChapterBodyStartRelativeOffset = CASE WHEN $hasMetadata = 1 THEN $bodyStartRelative ELSE ChapterBodyStartRelativeOffset END,
+                ChapterBodySha256 = CASE WHEN $hasMetadata = 1 THEN $bodyHash ELSE ChapterBodySha256 END,
+                PrefixContext = CASE WHEN $hasMetadata = 1 THEN $prefix ELSE PrefixContext END,
+                SuffixContext = CASE WHEN $hasMetadata = 1 THEN $suffix ELSE SuffixContext END
             WHERE Id = $id AND AnnotationId = $annotation
               AND StartOffset = $oldStart AND EndOffset = $oldEnd
               AND Quote = $quote AND DocumentRevision = $oldRevision
@@ -1409,6 +1506,13 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         update.Parameters.AddWithValue("$oldEnd", expectedAnchor.EndOffset);
         update.Parameters.AddWithValue("$quote", expectedAnchor.Quote);
         update.Parameters.AddWithValue("$oldRevision", expectedAnchor.DocumentRevision);
+        update.Parameters.AddWithValue("$hasMetadata", anchorMetadata is null ? 0 : 1);
+        update.Parameters.AddWithValue("$relativeStart", (object?)anchorMetadata?.RelativeStartOffset ?? DBNull.Value);
+        update.Parameters.AddWithValue("$relativeEnd", (object?)anchorMetadata?.RelativeEndOffset ?? DBNull.Value);
+        update.Parameters.AddWithValue("$bodyStartRelative", (object?)anchorMetadata?.ChapterBodyStartRelativeOffset ?? DBNull.Value);
+        update.Parameters.AddWithValue("$bodyHash", (object?)anchorMetadata?.ChapterBodySha256 ?? DBNull.Value);
+        update.Parameters.AddWithValue("$prefix", anchorMetadata?.PrefixContext ?? "");
+        update.Parameters.AddWithValue("$suffix", anchorMetadata?.SuffixContext ?? "");
 
         bool repaired = await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
         if (repaired)
@@ -1432,9 +1536,15 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+            SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
             FROM AnnotationAnchors
             WHERE IsOrphaned = 0 AND StartOffset <= $offset AND EndOffset > $offset
+              AND (ChapterId IS NULL OR EXISTS (
+                  SELECT 1 FROM Chapters c
+                  WHERE c.Id = AnnotationAnchors.ChapterId AND c.IsActive = 1
+              ))
             ORDER BY StartOffset, EndOffset;
             """;
         command.Parameters.AddWithValue("$offset", offset);
@@ -1467,7 +1577,9 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         {
             select.Transaction = (SqliteTransaction)transaction;
             select.CommandText = """
-                SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision
+                SELECT Id, AnnotationId, StartOffset, EndOffset, Quote, ChapterId, IsOrphaned, DocumentRevision,
+                   RelativeStartOffset, RelativeEndOffset, ChapterBodyStartRelativeOffset,
+                   ChapterBodySha256, PrefixContext, SuffixContext
                 FROM AnnotationAnchors
                 WHERE (EndOffset > $start OR StartOffset >= $start)
                   AND DocumentRevision = $previousRevision;
@@ -1613,6 +1725,85 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private static void AddAnchorMetadataParameters(SqliteCommand command, AnnotationAnchorMetadata? metadata)
+    {
+        command.Parameters.AddWithValue("$relativeStart", (object?)metadata?.RelativeStartOffset ?? DBNull.Value);
+        command.Parameters.AddWithValue("$relativeEnd", (object?)metadata?.RelativeEndOffset ?? DBNull.Value);
+        command.Parameters.AddWithValue("$bodyStartRelative", (object?)metadata?.ChapterBodyStartRelativeOffset ?? DBNull.Value);
+        command.Parameters.AddWithValue("$bodyHash", (object?)metadata?.ChapterBodySha256 ?? DBNull.Value);
+        command.Parameters.AddWithValue("$prefix", metadata?.PrefixContext ?? "");
+        command.Parameters.AddWithValue("$suffix", metadata?.SuffixContext ?? "");
+    }
+
+    private static async Task ValidateAnchorMetadataAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid? chapterId,
+        long startOffset,
+        long endOffset,
+        AnnotationAnchorMetadata? metadata,
+        CancellationToken cancellationToken)
+    {
+        if (metadata is null)
+            return;
+        if (chapterId is not Guid expectedChapterId)
+            throw new ArgumentException("Chapter-relative anchor metadata requires a ChapterId.", nameof(chapterId));
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT Id, StartOffset, EndOffset, BodyStartOffset, BodySha256
+            FROM Chapters
+            WHERE IsActive = 1 AND StartOffset <= $start AND EndOffset >= $end
+              AND EndOffset > StartOffset
+            ORDER BY StartOffset;
+            """;
+        command.Parameters.AddWithValue("$start", startOffset);
+        command.Parameters.AddWithValue("$end", endOffset);
+
+        string? matchedId = null;
+        long chapterStart = 0;
+        long chapterEnd = 0;
+        string chapterBodyHash = "";
+        int matchCount = 0;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                matchCount++;
+                if (matchCount > 1)
+                    break;
+                matchedId = reader.GetString(0);
+                chapterStart = reader.GetInt64(1);
+                chapterEnd = reader.GetInt64(2);
+                chapterBodyHash = reader.GetString(4);
+            }
+        }
+
+        if (matchCount != 1 || !Guid.TryParse(matchedId, out Guid actualChapterId)
+            || actualChapterId != expectedChapterId)
+        {
+            throw new ArgumentException(
+                "The selected text must be fully contained in exactly one active chapter, and its ChapterId must match that chapter.",
+                nameof(chapterId));
+        }
+
+        long chapterLength = chapterEnd - chapterStart;
+        if (metadata.RelativeStartOffset < 0
+            || metadata.RelativeEndOffset <= metadata.RelativeStartOffset
+            || metadata.RelativeEndOffset > chapterLength
+            || metadata.ChapterBodyStartRelativeOffset < 0
+            || metadata.ChapterBodyStartRelativeOffset > chapterLength
+            || metadata.PrefixContext.Length > 256
+            || metadata.SuffixContext.Length > 256
+            || !string.Equals(metadata.ChapterBodySha256, chapterBodyHash, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The saved chapter-relative anchor metadata does not match the current chapter index.",
+                nameof(metadata));
+        }
+    }
+
     private static string EscapeLike(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
              .Replace("%", "\\%", StringComparison.Ordinal)
@@ -1626,7 +1817,13 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         reader.GetString(4),
         reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
         reader.GetInt32(6) != 0,
-        reader.GetInt64(7));
+        reader.GetInt64(7),
+        reader.IsDBNull(8) ? null : reader.GetInt64(8),
+        reader.IsDBNull(9) ? null : reader.GetInt64(9),
+        reader.IsDBNull(10) ? null : reader.GetInt64(10),
+        reader.IsDBNull(11) ? null : reader.GetString(11),
+        reader.GetString(12),
+        reader.GetString(13));
 
     private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

@@ -73,4 +73,44 @@ public sealed class NovelChapterIndexReconcilerTests
         Assert.Empty(result.Added);
         Assert.Empty(result.Renamed);
     }
+
+    [Fact]
+    public void Reconcile_RepeatedSpecialHeadingsUseUniqueBodyFingerprintsInsteadOfListOrder()
+    {
+        var deleted = new NovelChapter(Guid.NewGuid(), "番外", 0, 100, 1, 1, true, 10, "BODY-A");
+        var second = new NovelChapter(Guid.NewGuid(), "番外", 100, 200, 2, 1, true, 110, "BODY-B");
+        var third = new NovelChapter(Guid.NewGuid(), "番外", 200, 300, 3, 1, true, 210, "BODY-C");
+        NovelChapter[] detected =
+        [
+            new NovelChapter(Guid.NewGuid(), "番外", 0, 120, 1, 2, true, 10, "BODY-B"),
+            new NovelChapter(Guid.NewGuid(), "番外", 120, 240, 2, 2, true, 130, "BODY-C"),
+        ];
+
+        NovelChapterIndexReconciliation result =
+            NovelChapterIndexReconciler.Reconcile([deleted, second, third], detected);
+
+        Assert.Equal(second.Id, result.Chapters[0].Id);
+        Assert.Equal(third.Id, result.Chapters[1].Id);
+        Assert.Equal(deleted.Id, Assert.Single(result.Removed).Id);
+        Assert.Empty(result.Added);
+    }
+
+    [Fact]
+    public void Reconcile_AmbiguousRepeatedHeadingsAreNotSilentlyMatched()
+    {
+        var first = new NovelChapter(Guid.NewGuid(), "番外", 0, 100, 1, 1);
+        var second = new NovelChapter(Guid.NewGuid(), "番外", 100, 200, 2, 1);
+        NovelChapter[] detected =
+        [
+            new NovelChapter(Guid.NewGuid(), "番外", 0, 200, 1, 2, true, 5, "NEW-BODY"),
+        ];
+
+        NovelChapterIndexReconciliation result =
+            NovelChapterIndexReconciler.Reconcile([first, second], detected);
+
+        Assert.Single(result.Added);
+        Assert.Equal(2, result.Removed.Count);
+        Assert.DoesNotContain(result.Chapters, chapter => chapter.Id == first.Id || chapter.Id == second.Id);
+    }
+
 }

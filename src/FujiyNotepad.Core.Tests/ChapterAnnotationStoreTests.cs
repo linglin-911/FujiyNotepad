@@ -426,7 +426,8 @@ public sealed class ChapterAnnotationStoreTests
                 summary => summary.Annotation.Id == noteId && !summary.Chapter.IsActive);
 
             AnnotationAnchor reassigned = Assert.Single(await store.GetAnchorsForAnnotationAsync(smallNoteId));
-            Assert.Equal(first.Id, reassigned.ChapterId);
+            Assert.Equal(removed.Id, reassigned.ChapterId);
+            Assert.Empty(await store.GetAnchorsIntersectingRangeAsync(150, 160));
 
             NovelChapterIndexState state = Assert.IsType<NovelChapterIndexState>(
                 await store.GetChapterIndexStateAsync());

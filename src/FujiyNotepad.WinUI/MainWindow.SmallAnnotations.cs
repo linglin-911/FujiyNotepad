@@ -399,13 +399,35 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
-                // A non-orphaned anchor from an older revision may still be recoverable when the
-                // saved quote survives and moved only because nearby text was inserted/deleted.
-                AnnotationAnchor? first = anchors.FirstOrDefault(anchor => !anchor.IsOrphaned);
+                AnnotationAnchor? first = null;
+                AnnotationAnchor? legacyFallback = null;
+                foreach (AnnotationAnchor candidate in anchors.Where(anchor => !anchor.IsOrphaned))
+                {
+                    if (candidate.ChapterId is not Guid chapterId)
+                    {
+                        legacyFallback ??= candidate;
+                        continue;
+                    }
+
+                    NovelChapter? chapter = await store.GetChapterByIdAsync(chapterId);
+                    if (!ReferenceEquals(store, activeAnnotationStore)
+                        || !ReferenceEquals(project, activeNovelProject))
+                    {
+                        return;
+                    }
+                    if (chapter is { IsActive: true })
+                    {
+                        first = candidate;
+                        break;
+                    }
+                }
+                first ??= legacyFallback;
 
                 if (first is null)
                 {
-                    await ShowMessageAsync("无法定位原文", "这条小批注目前没有可用的原文关联位置。");
+                    await ShowMessageAsync(
+                        "无法定位原文",
+                        "这条小批注目前没有可用的原文关联位置。若关联的原章节已经删除，系统会保留批注，但不会自动迁移到其他章节。");
                     return;
                 }
 
@@ -416,7 +438,6 @@ namespace FujiyNotepad.WinUI
                 await ShowMessageAsync("无法定位原文", ex.Message);
             }
         }
-
 
         private async Task RefreshVisibleSmallAnnotationMarkersAsync(bool force = false)
         {
@@ -759,7 +780,43 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
+                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
                 NovelChapter? chapter = await store.GetChapterAtOffsetAsync(selected.Value.StartOffset);
+                if (chapter is null || !chapter.IsActive
+                    || chapter.DocumentRevision != project.Metadata.DocumentRevision
+                    || indexState is null
+                    || indexState.DocumentRevision != project.Metadata.DocumentRevision
+                    || indexState.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion
+                    || selected.Value.EndOffset > chapter.EndOffset)
+                {
+                    throw new InvalidOperationException(
+                        "当前章节索引尚未就绪，或所选原文没有完整落在一个有效章节内。请等待章节索引完成，并确保选区不跨越章节。");
+                }
+
+                var selectionCheck = new AnnotationAnchor(
+                    Guid.Empty, Guid.Empty,
+                    selected.Value.StartOffset, selected.Value.EndOffset,
+                    selected.Value.Quote, chapter.Id,
+                    DocumentRevision: project.Metadata.DocumentRevision);
+                if (!TryResolveSmallAnnotationAnchor(selectionCheck, out _))
+                    throw new InvalidOperationException("打开批注窗口期间，原文选区发生了变化。请重新选择原文后再创建批注。");
+
+                NovelChapter chapterForMetadata = chapter;
+                long anchorStartOffset = selected.Value.StartOffset;
+                long anchorEndOffset = selected.Value.EndOffset;
+                LineProvider linesForMetadata = provider!;
+                DocumentTextOffsetMap mapForMetadata = annotationOffsetMap!;
+                AnnotationAnchorMetadata metadata = await Task.Run(() =>
+                    AnnotationAnchorMetadataBuilder.Create(
+                        chapterForMetadata, linesForMetadata, mapForMetadata,
+                        anchorStartOffset, anchorEndOffset));
+
+                if (!ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
+                {
+                    return;
+                }
+
                 Guid annotationId = await store.CreateAnnotationWithAnchorAsync(
                     values.Content,
                     selected.Value.StartOffset,
@@ -767,8 +824,9 @@ namespace FujiyNotepad.WinUI
                     selected.Value.Quote,
                     categoryId: values.CategoryId,
                     title: values.Title,
-                    chapterId: chapter?.Id,
-                    documentRevision: project.Metadata.DocumentRevision);
+                    chapterId: chapter.Id,
+                    documentRevision: project.Metadata.DocumentRevision,
+                    anchorMetadata: metadata);
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
@@ -809,14 +867,51 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
+                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
                 NovelChapter? chapter = await store.GetChapterAtOffsetAsync(selected.Value.StartOffset);
+                if (chapter is null || !chapter.IsActive
+                    || chapter.DocumentRevision != project.Metadata.DocumentRevision
+                    || indexState is null
+                    || indexState.DocumentRevision != project.Metadata.DocumentRevision
+                    || indexState.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion
+                    || selected.Value.EndOffset > chapter.EndOffset)
+                {
+                    throw new InvalidOperationException(
+                        "当前章节索引尚未就绪，或所选原文没有完整落在一个有效章节内。请等待章节索引完成，并确保选区不跨越章节。");
+                }
+
+                var selectionCheck = new AnnotationAnchor(
+                    Guid.Empty, target.Annotation.Id,
+                    selected.Value.StartOffset, selected.Value.EndOffset,
+                    selected.Value.Quote, chapter.Id,
+                    DocumentRevision: project.Metadata.DocumentRevision);
+                if (!TryResolveSmallAnnotationAnchor(selectionCheck, out _))
+                    throw new InvalidOperationException("打开批注选择窗口期间，原文选区发生了变化。请重新选择原文后再试。");
+
+                NovelChapter chapterForMetadata = chapter;
+                long anchorStartOffset = selected.Value.StartOffset;
+                long anchorEndOffset = selected.Value.EndOffset;
+                LineProvider linesForMetadata = provider!;
+                DocumentTextOffsetMap mapForMetadata = annotationOffsetMap!;
+                AnnotationAnchorMetadata metadata = await Task.Run(() =>
+                    AnnotationAnchorMetadataBuilder.Create(
+                        chapterForMetadata, linesForMetadata, mapForMetadata,
+                        anchorStartOffset, anchorEndOffset));
+
+                if (!ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(project, activeNovelProject))
+                {
+                    return;
+                }
+
                 await store.AddAnchorAsync(
                     target.Annotation.Id,
                     selected.Value.StartOffset,
                     selected.Value.EndOffset,
                     selected.Value.Quote,
-                    chapterId: chapter?.Id,
-                    documentRevision: project.Metadata.DocumentRevision);
+                    chapterId: chapter.Id,
+                    documentRevision: project.Metadata.DocumentRevision,
+                    anchorMetadata: metadata);
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
@@ -1192,12 +1287,8 @@ namespace FujiyNotepad.WinUI
             if (filteredSource is not null)
                 ExitFilterToFullView();
 
-            bool refreshAnnotationUi = false;
-            bool anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out TextPosition position);
-            if (!anchorResolved && !LineIndexer.IsCompleted)
+            if (!LineIndexer.IsCompleted)
             {
-                // A project reopened from disk may not have indexed the saved anchor yet. Resume a stopped
-                // indexer if necessary, then wait asynchronously rather than resolving to the current frontier.
                 if (StartIndexingItem.IsEnabled)
                 {
                     indexRefreshTimer.Start();
@@ -1208,57 +1299,148 @@ namespace FujiyNotepad.WinUI
                 if (!ReferenceEquals(project, activeNovelProject)
                     || !ReferenceEquals(store, activeAnnotationStore)
                     || provider is null || annotationOffsetMap is null)
+                {
                     return;
+                }
 
                 View.UpdateTotalLines(provider.LineCount);
                 SyncScrollBars();
-                anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out position);
             }
 
-            // A document edit can leave an anchor's quote at exactly the same offset. In that case
-            // the range is already verified; advance only its revision instead of leaving it stale
-            // (which would hide its marker and disable its source button indefinitely).
-            if (anchorResolved && anchor.DocumentRevision != project.Metadata.DocumentRevision)
+            if (!LineIndexer.IsCompleted)
             {
-                Guid? chapterId = null;
-                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
-                if (indexState is { } currentIndex
-                    && currentIndex.DocumentRevision == project.Metadata.DocumentRevision
-                    && currentIndex.ParserVersion == NovelChapterIndexBuilder.CurrentParserVersion)
-                {
-                    chapterId = (await store.GetChapterAtOffsetAsync(anchor.StartOffset))?.Id;
-                }
+                await ShowMessageAsync("暂时无法定位原文", "全文索引尚未完成，请稍后再试。");
+                return;
+            }
 
-                bool revisionUpdated = await store.TryRepairAnchorAsync(
-                    anchor,
-                    anchor.StartOffset,
-                    anchor.EndOffset,
-                    chapterId,
-                    project.Metadata.DocumentRevision);
-                if (!revisionUpdated
-                    || !ReferenceEquals(project, activeNovelProject)
-                    || !ReferenceEquals(store, activeAnnotationStore))
+            await EnsureChapterIndexAsync();
+            if (!ReferenceEquals(project, activeNovelProject)
+                || !ReferenceEquals(store, activeAnnotationStore)
+                || provider is null || annotationOffsetMap is null)
+            {
+                return;
+            }
+
+            NovelChapter? boundChapter = null;
+            if (anchor.ChapterId is Guid savedChapterId)
+            {
+                boundChapter = await store.GetChapterByIdAsync(savedChapterId, includeInactive: true);
+                if (boundChapter is null || !boundChapter.IsActive)
                 {
                     await ShowMessageAsync(
-                        "批注位置需要刷新",
-                        "原文位置已核对，但批注记录在此期间发生变化。请刷新批注列表后重新尝试。");
+                        "原章节已删除",
+                        "这条小批注仍然保留，但它绑定的原章节已经被删除或归档。为避免跳到其他章节中相同的文字，系统不会自动把它迁移到其他章节。原关联会保留，后续再人工重新关联。");
                     return;
                 }
 
-                anchor = anchor with
+                NovelChapterIndexState? savedIndex = await store.GetChapterIndexStateAsync();
+                if (boundChapter.DocumentRevision != project.Metadata.DocumentRevision
+                    || savedIndex is null
+                    || savedIndex.DocumentRevision != project.Metadata.DocumentRevision
+                    || savedIndex.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion)
                 {
-                    ChapterId = chapterId,
-                    DocumentRevision = project.Metadata.DocumentRevision,
-                };
-                refreshAnnotationUi = true;
-                LblStatus.Text = "已核对原文位置，并同步小批注的文档版本。";
+                    await ShowMessageAsync(
+                        "章节索引尚未就绪",
+                        "当前章节索引与原文版本不一致。请稍后等待章节索引更新，再重新定位这条批注。");
+                    return;
+                }
+            }
+
+            bool refreshAnnotationUi = false;
+            bool anchorResolved = TryResolveSmallAnnotationAnchor(anchor, out TextPosition position);
+            if (anchorResolved && boundChapter is not null
+                && (anchor.StartOffset < boundChapter.StartOffset
+                    || anchor.EndOffset > boundChapter.EndOffset))
+            {
+                anchorResolved = false;
+            }
+
+            if (anchorResolved)
+            {
+                NovelChapter? currentChapter = boundChapter;
+                if (currentChapter is null)
+                {
+                    NovelChapterIndexState? currentIndex = await store.GetChapterIndexStateAsync();
+                    if (currentIndex is { } state
+                        && state.DocumentRevision == project.Metadata.DocumentRevision
+                        && state.ParserVersion == NovelChapterIndexBuilder.CurrentParserVersion)
+                    {
+                        currentChapter = await store.GetChapterAtOffsetAsync(anchor.StartOffset);
+                        if (currentChapter is not null && anchor.EndOffset > currentChapter.EndOffset)
+                            currentChapter = null;
+                    }
+                }
+
+                bool hasCurrentFingerprint = currentChapter is not null
+                    && !string.IsNullOrWhiteSpace(currentChapter.BodySha256);
+                bool metadataNeedsRefresh = anchor.DocumentRevision != project.Metadata.DocumentRevision
+                    || (currentChapter is not null && !anchor.HasChapterRelativePosition)
+                    || (hasCurrentFingerprint
+                        && !string.Equals(anchor.ChapterBodySha256, currentChapter!.BodySha256, StringComparison.Ordinal));
+
+                if (metadataNeedsRefresh)
+                {
+                    AnnotationAnchorMetadata? metadata = null;
+                    if (currentChapter is not null
+                        && (hasCurrentFingerprint || !anchor.HasChapterRelativePosition))
+                    {
+                        NovelChapter chapterForMetadata = currentChapter;
+                        LineProvider linesForMetadata = provider!;
+                        DocumentTextOffsetMap mapForMetadata = annotationOffsetMap!;
+                        metadata = await Task.Run(() =>
+                            AnnotationAnchorMetadataBuilder.Create(
+                                chapterForMetadata, linesForMetadata, mapForMetadata,
+                                anchor.StartOffset, anchor.EndOffset));
+                    }
+
+                    Guid? chapterId = currentChapter?.Id ?? anchor.ChapterId;
+                    bool updated;
+                    try
+                    {
+                        updated = await store.TryRepairAnchorAsync(
+                            anchor,
+                            anchor.StartOffset,
+                            anchor.EndOffset,
+                            chapterId,
+                            project.Metadata.DocumentRevision,
+                            anchorMetadata: metadata);
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        diagnostics.LogSwallowed("Refresh small annotation anchor metadata", ex);
+                        await ShowMessageAsync("批注位置刷新失败", ex.Message);
+                        return;
+                    }
+                    if (!updated
+                        || !ReferenceEquals(project, activeNovelProject)
+                        || !ReferenceEquals(store, activeAnnotationStore))
+                    {
+                        await ShowMessageAsync(
+                            "批注位置需要刷新",
+                            "原文位置已核对，但批注记录在此期间发生变化。请刷新批注列表后重新尝试。");
+                        return;
+                    }
+
+                    anchor = anchor with
+                    {
+                        ChapterId = chapterId,
+                        DocumentRevision = project.Metadata.DocumentRevision,
+                        RelativeStartOffset = metadata?.RelativeStartOffset ?? anchor.RelativeStartOffset,
+                        RelativeEndOffset = metadata?.RelativeEndOffset ?? anchor.RelativeEndOffset,
+                        ChapterBodyStartRelativeOffset = metadata?.ChapterBodyStartRelativeOffset ?? anchor.ChapterBodyStartRelativeOffset,
+                        ChapterBodySha256 = metadata?.ChapterBodySha256 ?? anchor.ChapterBodySha256,
+                        PrefixContext = metadata?.PrefixContext ?? anchor.PrefixContext,
+                        SuffixContext = metadata?.SuffixContext ?? anchor.SuffixContext,
+                    };
+                    refreshAnnotationUi = true;
+                    LblStatus.Text = metadata is null
+                        ? "已核对原文位置，并同步小批注的文档版本。"
+                        : "已核对原文位置，并更新章节锚点信息。";
+                }
             }
 
             if (!anchorResolved)
             {
-                // A small edit before the quote changes its absolute offset. External editors may
-                // also normalize mixed/LF line endings to CRLF, shifting every later offset. Auto-repair
-                // only when the normalized saved excerpt occurs exactly once in the complete document.
                 AnnotationAnchor? repaired = await TryRepairSmallAnnotationAnchorAsync(anchor, project, store);
                 if (repaired is not null
                     && ReferenceEquals(project, activeNovelProject)
@@ -1267,23 +1449,19 @@ namespace FujiyNotepad.WinUI
                 {
                     anchor = repaired;
                     refreshAnnotationUi = true;
-                    LblStatus.Text = "已根据唯一匹配的原文摘录修复一处小批注位置。";
+                    LblStatus.Text = "已根据章节相对位置或原文上下文修复一处小批注位置。";
                 }
                 else
                 {
-                    LblStatus.Text = "原文摘录没有找到唯一匹配，未自动修改批注关联。";
-                    string reason = !LineIndexer.IsCompleted
-                        ? "全文索引尚未到达该位置。请稍后等待索引完成，再重新尝试定位。"
-                        : anchor.ChapterId is not null
-                            ? "这条小批注已经绑定具体章节，但该章节索引可能已过期/归档，或原文摘录在本章内存在多个匹配。为避免跳到其他章节中相同的文字，系统不会跨章节猜测位置。请先重新识别章节；如果本章内摘录重复，还需要通过上下文确认。"
-                            : "这条旧版小批注没有章节关联。系统已忽略 CRLF/LF 换行差异并进行全文查找，但没有找到唯一且可验证的位置，因此没有自动修改关联。若摘录本身已被改写或在全文中重复出现，需要人工处理。";
+                    LblStatus.Text = "原文摘录没有找到可靠匹配，未自动修改批注关联。";
+                    string reason = anchor.ChapterId is not null
+                        ? "系统只在这条批注所属的原章节内查找原文。若章节正文未变化，会优先按章节内相对位置恢复；若正文发生变化，则结合摘录前后文和原位置判断。当前没有找到唯一且明显占优的匹配，因此没有跳转，也没有修改批注。"
+                        : "这是一条旧版、尚未绑定章节的小批注。系统只在全文唯一匹配时才会自动迁移；如果摘录重复或已经被改写，需要人工处理。";
                     await ShowMessageAsync("无法准确定位原文", reason);
                     return;
                 }
             }
 
-            // Navigate as soon as the anchor is verified. Rebuilding the full annotation list
-            // and refreshing visible markers are secondary UI work and must not delay the jump.
             View.GoToLineColumn(position.Line, position.Column);
             View.CenterCaretVertically();
             SyncScrollBars();
@@ -1311,34 +1489,54 @@ namespace FujiyNotepad.WinUI
 
             try
             {
-                AnnotationAnchorQuoteMatch? match;
+                AnnotationAnchorQuoteMatch? match = null;
+                NovelChapter? matchedChapter = null;
                 Guid? repairedChapterId = anchor.ChapterId;
+                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
+                if (indexState is null
+                    || indexState.DocumentRevision != project.Metadata.DocumentRevision
+                    || indexState.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion)
+                {
+                    return null;
+                }
+
                 if (anchor.ChapterId is Guid savedChapterId)
                 {
-                    // A chapter-bound anchor must never be relocated by matching text in another chapter.
-                    // Use its saved chapter range only when that range has been updated to the current revision.
-                    NovelChapter? chapter = await store.GetChapterByIdAsync(savedChapterId);
-                    NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
-                    if (chapter is null || !chapter.IsActive
-                        || chapter.DocumentRevision != project.Metadata.DocumentRevision
-                        || (indexState is { } savedIndex
-                            && savedIndex.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
+                    // A chapter-bound anchor must never be relocated into a different chapter.
+                    matchedChapter = await store.GetChapterByIdAsync(savedChapterId, includeInactive: true);
+                    if (matchedChapter is null || !matchedChapter.IsActive
+                        || matchedChapter.DocumentRevision != project.Metadata.DocumentRevision)
                     {
                         return null;
                     }
 
-                    LblStatus.Text = "正在对应章节内查找原文摘录...";
-                    match = await Task.Run(() =>
-                        AnnotationAnchorQuoteLocator.FindUniqueMatchInRange(
-                            lines, anchor.Quote, map, chapter.StartOffset, chapter.EndOffset));
+                    if (AnnotationAnchorMetadataBuilder.TryRestoreUnchangedChapterAnchor(
+                        anchor, matchedChapter, lines, map, out AnnotationAnchorQuoteMatch restored))
+                    {
+                        var restoredAnchor = anchor with
+                        {
+                            StartOffset = restored.StartOffset,
+                            EndOffset = restored.EndOffset,
+                        };
+                        if (TryResolveSmallAnnotationAnchor(restoredAnchor, out _))
+                            match = restored;
+                    }
+
+                    if (match is null)
+                    {
+                        LblStatus.Text = "正在对应章节内查找原文，并比对前后文...";
+                        NovelChapter chapterForSearch = matchedChapter;
+                        match = await Task.Run(() =>
+                            AnnotationAnchorContextMatcher.FindBestMatchInRange(
+                                lines, map, anchor, chapterForSearch));
+                    }
                 }
                 else
                 {
-                    // Legacy anchors without a chapter association need one full-document lookup.
-                    // Once matched, they are assigned to a chapter so later repairs stay chapter-scoped.
+                    // Legacy anchors without a ChapterId get one full-document unique-match migration.
                     LblStatus.Text = "正在全文查找旧版小批注摘录...";
-                    match = await Task.Run(
-                        () => AnnotationAnchorQuoteLocator.FindUniqueMatch(lines, anchor.Quote));
+                    match = await Task.Run(() =>
+                        AnnotationAnchorQuoteLocator.FindUniqueMatch(lines, anchor.Quote));
                 }
 
                 if (match is null
@@ -1368,16 +1566,35 @@ namespace FujiyNotepad.WinUI
 
                 if (repairedChapterId is null)
                 {
-                    NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
-                    if (indexState is { ParserVersion: NovelChapterIndexBuilder.CurrentParserVersion })
+                    NovelChapter? legacyChapter = await store.GetChapterAtOffsetAsync(repairedStart);
+                    if (legacyChapter is not null
+                        && legacyChapter.DocumentRevision == project.Metadata.DocumentRevision
+                        && repairedEnd <= legacyChapter.EndOffset)
                     {
-                        NovelChapter? matchedChapter = await store.GetChapterAtOffsetAsync(repairedStart);
-                        if (matchedChapter is { } currentChapter
-                            && currentChapter.DocumentRevision == project.Metadata.DocumentRevision)
-                        {
-                            repairedChapterId = currentChapter.Id;
-                        }
+                        matchedChapter = legacyChapter;
+                        repairedChapterId = legacyChapter.Id;
                     }
+                }
+                else if (matchedChapter is null)
+                {
+                    matchedChapter = await store.GetChapterByIdAsync(repairedChapterId.Value);
+                }
+
+                if (matchedChapter is not null
+                    && (!matchedChapter.IsActive
+                        || matchedChapter.DocumentRevision != project.Metadata.DocumentRevision
+                        || repairedStart < matchedChapter.StartOffset
+                        || repairedEnd > matchedChapter.EndOffset))
+                {
+                    return null;
+                }
+
+                AnnotationAnchorMetadata? metadata = null;
+                if (matchedChapter is not null)
+                {
+                    NovelChapter chapterForMetadata = matchedChapter;
+                    metadata = await Task.Run(() => AnnotationAnchorMetadataBuilder.Create(
+                        chapterForMetadata, lines, map, repairedStart, repairedEnd));
                 }
 
                 bool updated = await store.TryRepairAnchorAsync(
@@ -1385,7 +1602,8 @@ namespace FujiyNotepad.WinUI
                     repairedStart,
                     repairedEnd,
                     repairedChapterId,
-                    project.Metadata.DocumentRevision);
+                    project.Metadata.DocumentRevision,
+                    anchorMetadata: metadata);
                 if (!updated)
                     return null;
 
@@ -1396,6 +1614,12 @@ namespace FujiyNotepad.WinUI
                     ChapterId = repairedChapterId,
                     DocumentRevision = project.Metadata.DocumentRevision,
                     IsOrphaned = false,
+                    RelativeStartOffset = metadata?.RelativeStartOffset ?? anchor.RelativeStartOffset,
+                    RelativeEndOffset = metadata?.RelativeEndOffset ?? anchor.RelativeEndOffset,
+                    ChapterBodyStartRelativeOffset = metadata?.ChapterBodyStartRelativeOffset ?? anchor.ChapterBodyStartRelativeOffset,
+                    ChapterBodySha256 = metadata?.ChapterBodySha256 ?? anchor.ChapterBodySha256,
+                    PrefixContext = metadata?.PrefixContext ?? anchor.PrefixContext,
+                    SuffixContext = metadata?.SuffixContext ?? anchor.SuffixContext,
                 };
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)

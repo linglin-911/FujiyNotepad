@@ -3,6 +3,11 @@ namespace FujiyNotepad.Core;
 /// <summary>A unique occurrence of a saved annotation quote in the current document.</summary>
 public readonly record struct AnnotationAnchorQuoteMatch(long StartOffset, long EndOffset);
 
+/// <summary>A bounded chapter-scoped quote search; IsTruncated is true when more matches exist than were returned.</summary>
+public sealed record AnnotationAnchorQuoteSearchResult(
+    IReadOnlyList<AnnotationAnchorQuoteMatch> Matches,
+    bool IsTruncated);
+
 /// <summary>
 /// Finds a saved quote in the current line source without loading the complete document into memory.
 /// CRLF and LF are treated as the same logical line break, while returned offsets retain the current
@@ -111,15 +116,38 @@ public static class AnnotationAnchorQuoteLocator
         long rangeEndOffset,
         CancellationToken cancellationToken = default)
     {
+        AnnotationAnchorQuoteSearchResult result = FindMatchesInRange(
+            lines, quote, offsetMap, rangeStartOffset, rangeEndOffset,
+            maximumMatches: 2, cancellationToken: cancellationToken);
+        return !result.IsTruncated && result.Matches.Count == 1
+            ? result.Matches[0]
+            : null;
+    }
+
+    /// <summary>
+    /// Finds a bounded set of exact quote occurrences inside one chapter range. The result reports
+    /// truncation so callers never mistake a capped candidate list for a complete search.
+    /// </summary>
+    public static AnnotationAnchorQuoteSearchResult FindMatchesInRange(
+        ILineSource lines,
+        string quote,
+        DocumentTextOffsetMap offsetMap,
+        long rangeStartOffset,
+        long rangeEndOffset,
+        int maximumMatches = 64,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(quote);
         ArgumentNullException.ThrowIfNull(offsetMap);
+        if (maximumMatches < 1)
+            throw new ArgumentOutOfRangeException(nameof(maximumMatches));
         if (rangeStartOffset < 0 || rangeEndOffset <= rangeStartOffset || lines.LineCount == 0)
-            return null;
+            return new AnnotationAnchorQuoteSearchResult(Array.Empty<AnnotationAnchorQuoteMatch>(), false);
 
         string pattern = NormalizeLineEndings(quote);
         if (pattern.Length == 0 || pattern.Length > MaximumQuoteLength)
-            return null;
+            return new AnnotationAnchorQuoteSearchResult(Array.Empty<AnnotationAnchorQuoteMatch>(), false);
 
         (int startLine, int startColumn) = offsetMap.GetPosition(rangeStartOffset);
         (int endLine, int endColumn) = offsetMap.GetPosition(rangeEndOffset);
@@ -127,19 +155,19 @@ public static class AnnotationAnchorQuoteLocator
             || offsetMap.GetOffset(startLine, startColumn) != rangeStartOffset
             || offsetMap.GetOffset(endLine, endColumn) != rangeEndOffset)
         {
-            return null;
+            return new AnnotationAnchorQuoteSearchResult(Array.Empty<AnnotationAnchorQuoteMatch>(), false);
         }
 
         int[] prefix = BuildPrefixTable(pattern);
         var matchStarts = new long[pattern.Length];
         var matchEnds = new long[pattern.Length];
+        var matches = new List<AnnotationAnchorQuoteMatch>(Math.Min(maximumMatches, 8));
         ILineEndingSource? lineEndings = lines as ILineEndingSource;
 
         long normalizedOffset = 0;
         long documentOffset = rangeStartOffset;
         int matchedLength = 0;
-        AnnotationAnchorQuoteMatch? uniqueMatch = null;
-        bool ambiguous = false;
+        bool truncated = false;
 
         void Consume(char value, long rawStart, long rawEnd)
         {
@@ -160,30 +188,30 @@ public static class AnnotationAnchorQuoteLocator
             long startIndex = normalizedOffset - pattern.Length;
             long startOffset = matchStarts[(int)(startIndex % pattern.Length)];
             long endOffset = matchEnds[(int)((normalizedOffset - 1) % pattern.Length)];
-            if (uniqueMatch is null)
-                uniqueMatch = new AnnotationAnchorQuoteMatch(startOffset, endOffset);
+            if (matches.Count < maximumMatches)
+                matches.Add(new AnnotationAnchorQuoteMatch(startOffset, endOffset));
             else
-                ambiguous = true;
+                truncated = true;
 
             matchedLength = prefix[matchedLength - 1];
         }
 
-        for (int lineIndex = startLine; lineIndex <= endLine && !ambiguous; lineIndex++)
+        for (int lineIndex = startLine; lineIndex <= endLine && !truncated; lineIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             string line = lines.GetLineUncached(lineIndex);
             int from = lineIndex == startLine ? startColumn : 0;
             int to = lineIndex == endLine ? endColumn : line.Length;
             if (from < 0 || to < from || to > line.Length)
-                return null;
+                return new AnnotationAnchorQuoteSearchResult(Array.Empty<AnnotationAnchorQuoteMatch>(), false);
 
-            for (int column = from; column < to && !ambiguous; column++)
+            for (int column = from; column < to && !truncated; column++)
             {
                 Consume(line[column], documentOffset, documentOffset + 1);
                 documentOffset++;
             }
 
-            if (lineIndex < endLine && !ambiguous)
+            if (lineIndex < endLine && !truncated)
             {
                 int terminatorLength = lineEndings is null
                     ? 1
@@ -203,7 +231,7 @@ public static class AnnotationAnchorQuoteLocator
             }
         }
 
-        return ambiguous ? null : uniqueMatch;
+        return new AnnotationAnchorQuoteSearchResult(matches, truncated);
     }
 
     /// <summary>Normalizes CRLF, CR and LF into a single logical LF character.</summary>

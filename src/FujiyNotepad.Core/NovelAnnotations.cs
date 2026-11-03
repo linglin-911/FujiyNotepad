@@ -40,9 +40,21 @@ public sealed record AnnotationAnchor(
     string Quote,
     Guid? ChapterId = null,
     bool IsOrphaned = false,
-    long DocumentRevision = 1)
+    long DocumentRevision = 1,
+    long? RelativeStartOffset = null,
+    long? RelativeEndOffset = null,
+    long? ChapterBodyStartRelativeOffset = null,
+    string? ChapterBodySha256 = null,
+    string PrefixContext = "",
+    string SuffixContext = "")
 {
     public long Length => Math.Max(0, EndOffset - StartOffset);
+
+    public bool HasChapterRelativePosition =>
+        ChapterId is not null
+        && RelativeStartOffset is not null
+        && RelativeEndOffset is not null
+        && ChapterBodyStartRelativeOffset is not null;
 }
 
 /// <summary>A chapter detected in the current project document.</summary>
