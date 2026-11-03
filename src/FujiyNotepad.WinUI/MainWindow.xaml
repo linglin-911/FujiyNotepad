@@ -645,12 +645,10 @@
                                     Spacing="20" VerticalAlignment="Center">
                             <ToggleSwitch x:Name="BigAnnotationSmallVisibilityToggle"
                                           Header="小批" IsOn="True"
-                                          OnContent="显示" OffContent="隐藏"
-                                          Toggled="BigAnnotationSmallVisibility_Toggled" />
+                                          OnContent="显示" OffContent="隐藏" />
                             <ToggleSwitch x:Name="BigAnnotationChapterVisibilityToggle"
                                           Header="章批" IsOn="True"
-                                          OnContent="显示" OffContent="隐藏"
-                                          Toggled="BigAnnotationChapterVisibility_Toggled" />
+                                          OnContent="显示" OffContent="隐藏" />
                         </StackPanel>
                         <Grid Grid.Row="3" ColumnSpacing="6">
                             <Grid.ColumnDefinitions>

@@ -124,6 +124,13 @@ namespace FujiyNotepad.WinUI
         public MainWindow()
         {
             this.InitializeComponent();
+
+            // Wire these handlers only after InitializeComponent has created every named control.
+            // Setting ToggleSwitch.IsOn during XAML loading can raise Toggled before the category
+            // ComboBoxes below the switches have been constructed, causing startup XamlParseException.
+            BigAnnotationSmallVisibilityToggle.Toggled += BigAnnotationSmallVisibility_Toggled;
+            BigAnnotationChapterVisibilityToggle.Toggled += BigAnnotationChapterVisibility_Toggled;
+
             UpdateNovelProjectMenu();
 
             string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "FujiyNotepad.ico");

@@ -432,7 +432,9 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新代码提交
 
-`7b91f365cdf0809ad22c0cf30e6e47ddd3a472f8`（根据工作区实测优化参考资料区：增加默认开启的“小批”“章批”独立显示开关；分类筛选随开关联动；仅显示当前过滤后仍有批注的章节；章节和批注内容默认展开并用箭头折叠；改为树形缩进；去掉未命名占位、重复分类和原文前缀章节标题；原文摘录灰色显示。待用户 Windows x64 构建与冒烟测试。）
+`7b91f365cdf0809ad22c0cf30e6e47ddd3a472f8`（根据工作区实测优化参考资料区：增加默认开启的“小批”“章批”独立显示开关；分类筛选随开关联动；仅显示当前过滤后仍有批注的章节；章节和批注内容默认展开并用箭头折叠；改为树形缩进；去掉未命名占位、重复分类和原文前缀章节标题；原文摘录灰色显示。）
+
+`本次修复提交`（修复工作区显示开关导致的启动崩溃：移除 ToggleSwitch 在 XAML 中的 Toggled 事件声明，改为在 MainWindow.InitializeComponent 完成、所有命名控件创建后再订阅事件，避免初始化 IsOn 时访问尚未创建的分类 ComboBox。）
 
 本轮大批注相关提交：
 - `1ee345788bc54cc7b203b5c4618830553a5367ea`：独立数据模型、SQLite 表、CRUD、连续章节校验、参考资料查询和数据层测试。
@@ -490,4 +492,5 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 | 2026-11-03 | 大批注列表加载优化提交 `91109b92f3e1a6490d8352fb95ee4eec5a3ec9fd`：移除管理列表加载时不使用的章节元数据查询，减少一次数据库往返。 |
 | 2026-11-03 | 修复大批注编译错误提交 `7332db6bd399a5b2fa6147d34498b302253d9bba`：`PopulateCategoryCombo` 中循环局部变量 `id` 与后续模式匹配变量 `id` 重名，统一改为 `categoryIdValue` / `selectedCategoryId`。`TextCanvas` 的 WMC0001 暂按 C# 编译失败引发本地程序集解析失败处理，待修复后重建确认；WMC1509 警告暂未更改构建配置。 |
 | 2026-11-03 | 修复大批注工作区背景透明问题提交 `e8e2ab42b04a88a4439c0cfdfaf3f3e49ed6b2b3`：根 Grid 的 `LayerFillColorDefaultBrush` 为半透明层级画刷，改为不透明且支持主题切换的 `SolidBackgroundFillColorBaseBrush`，确保底层阅读器文字不再透出。待用户 Windows 实测。 |
-| 2026-11-03 | 根据大批注工作区实测反馈实现参考资料区优化：新增默认开启的“小批”“章批”独立显示开关，开关与分类筛选及参考资料查询联动；章节仅在当前可见类型/分类/搜索过滤后仍有批注时显示；章节与批注条目默认展开并可用箭头折叠；改为树形缩进布局；小批注无标题时不再显示“未命名”，分类不重复展示，原文摘录单独使用灰色字体且不拼接章节标题；章节统计简写为“小批 x / 章批 y”。待 Windows x64 构建与冒烟测试。 |
+| 2026-11-03 | 根据大批注工作区实测反馈实现参考资料区优化：新增默认开启的“小批”“章批”独立显示开关，开关与分类筛选及参考资料查询联动；章节仅在当前可见类型/分类/搜索过滤后仍有批注时显示；章节与批注条目默认展开并可用箭头折叠；改为树形缩进布局；小批注无标题时不再显示“未命名”，分类不重复展示，原文摘录单独使用灰色字体且不拼接章节标题；章节统计简写为“小批 x / 章批 y”。 |
+| 2026-11-03 | 修复大批注工作区启动崩溃：`ToggleSwitch.IsOn` 在 XAML 加载期间触发 `Toggled`，事件处理程序访问尚未创建的分类 ComboBox，导致 `InitializeComponent()` 抛出 `XamlParseException`。改为在 `MainWindow.InitializeComponent()` 完成后订阅两个开关事件。 |
