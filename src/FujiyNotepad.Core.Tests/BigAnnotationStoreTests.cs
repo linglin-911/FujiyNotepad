@@ -117,8 +117,11 @@ public sealed class BigAnnotationStoreTests
             Assert.Contains(chapterReferences, item => item.Chapter.Id == chapters[0].Id);
             Assert.Contains(chapterReferences, item => item.Chapter.Id == chapters[2].Id);
 
-            Assert.Single(await store.GetBigAnnotationSmallReferencesAsync(
-                chapters.Select(chapter => chapter.Id).ToArray(), categoryId: smallCategory, searchText: "性格"));
+            BigAnnotationSmallReference filteredMulti = Assert.Single(
+                await store.GetBigAnnotationSmallReferencesAsync(
+                    chapters.Select(chapter => chapter.Id).ToArray(),
+                    categoryId: smallCategory, searchText: "性格"));
+            Assert.Equal(2, filteredMulti.Anchors.Count);
             Assert.Single(await store.GetBigAnnotationChapterReferencesAsync(
                 chapters.Select(chapter => chapter.Id).ToArray(), categoryId: chapterCategory, searchText: "势力"));
         }

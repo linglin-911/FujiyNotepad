@@ -94,6 +94,23 @@ public sealed partial class MainWindow
         bigAnnotationCategories = Array.Empty<BigAnnotationCategory>();
         selectedBigAnnotationCategoryId = null;
         resumeBigAnnotationId = null;
+        refreshingBigAnnotationUi = true;
+        try
+        {
+            BigAnnotationSearchBox.Text = "";
+            BigAnnotationReferenceSearchBox.Text = "";
+            BigAnnotationCategoryFilter.Items.Clear();
+            BigAnnotationCategoryFilter.SelectedIndex = -1;
+            BigAnnotationEditorCategoryFilter.Items.Clear();
+            BigAnnotationSmallCategoryFilter.Items.Clear();
+            BigAnnotationChapterCategoryFilter.Items.Clear();
+            BigAnnotationEditorTitleBox.Text = "";
+            BigAnnotationEditorContentBox.Text = "";
+        }
+        finally
+        {
+            refreshingBigAnnotationUi = false;
+        }
         ResetBigAnnotationEditorState();
         BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
         BigAnnotationsItem.IsChecked = false;
@@ -102,6 +119,8 @@ public sealed partial class MainWindow
         BigAnnotationList.Items.Clear();
         BigAnnotationReferenceGroups.Children.Clear();
         BigAnnotationCount.Text = "0 条大批注";
+        BigAnnotationReferenceCount.Text = "";
+        BigAnnotationEditorStatus.Text = "";
         BigAnnotationEmptyState.Text = "";
         BigAnnotationEmptyState.Visibility = Visibility.Collapsed;
     }
@@ -175,6 +194,8 @@ public sealed partial class MainWindow
 
     private async void BigAnnotationSearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (refreshingBigAnnotationUi)
+            return;
         await RefreshBigAnnotationListAsync();
     }
 
