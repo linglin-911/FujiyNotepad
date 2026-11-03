@@ -159,6 +159,47 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task InitializeAsync_AddsChapterFingerprintColumnsToAnExistingProjectDatabase()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using (var legacy = new SqliteConnection($"Data Source={path}"))
+            {
+                await legacy.OpenAsync();
+                await using var create = legacy.CreateCommand();
+                create.CommandText = """
+                    CREATE TABLE Chapters (
+                        Id TEXT PRIMARY KEY NOT NULL,
+                        Title TEXT NOT NULL,
+                        StartOffset INTEGER NOT NULL,
+                        EndOffset INTEGER NOT NULL,
+                        ChapterNumber INTEGER NOT NULL,
+                        DocumentRevision INTEGER NOT NULL DEFAULT 1
+                    );
+                    INSERT INTO Chapters (Id, Title, StartOffset, EndOffset, ChapterNumber, DocumentRevision)
+                    VALUES ('00000000-0000-0000-0000-000000000001', '第1章', 100, 500, 1, 1);
+                    """;
+                await create.ExecuteNonQueryAsync();
+            }
+
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            NovelChapter chapter = Assert.Single(await store.GetChaptersAsync());
+            Assert.Equal(100L, chapter.BodyStartOffset);
+            Assert.Equal("", chapter.BodySha256);
+            Assert.True(chapter.IsActive);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task ChapterStore_PersistsBodyStartOffsetAndFingerprint()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
