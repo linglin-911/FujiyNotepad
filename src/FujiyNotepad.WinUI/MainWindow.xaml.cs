@@ -353,11 +353,21 @@ namespace FujiyNotepad.WinUI
                 await OpenFile(project.DocumentPath);
                 if (currentFilePath is null || !PathsEqual(currentFilePath, project.DocumentPath))
                 {
+                    if (activeNovelProject is not null || activeAnnotationStore is not null)
+                    {
+                        await store.DisposeAsync();
+                        return;
+                    }
+
                     throw new IOException(
                         "The project document could not be opened, so the novel project workspace was not activated.");
                 }
 
-                await CloseActiveNovelProjectAsync();
+                if (!await CloseActiveNovelProjectAsync())
+                {
+                    await store.DisposeAsync();
+                    return;
+                }
                 activeNovelProject = project;
                 activeAnnotationStore = store;
                 annotationOffsetMap = provider is null ? null : new DocumentTextOffsetMap(provider);
@@ -510,7 +520,8 @@ namespace FujiyNotepad.WinUI
 
         private async void CloseNovelProject_Click(object sender, RoutedEventArgs e)
         {
-            await CloseActiveNovelProjectAsync();
+            if (!await CloseActiveNovelProjectAsync())
+                return;
             if (currentFilePath is { } path)
             {
                 Title = LocalizedStrings.Format("WindowTitleWithFile", Path.GetFileName(path));
@@ -522,8 +533,15 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        private async Task CloseActiveNovelProjectAsync()
+        private async Task<bool> CloseActiveNovelProjectAsync()
         {
+            if (BigAnnotationWorkspace.Visibility == Visibility.Visible
+                && BigAnnotationEditorView.Visibility == Visibility.Visible
+                && !await TryLeaveBigAnnotationEditorAsync())
+            {
+                return false;
+            }
+
             bool hadActiveProject = activeNovelProject is not null || activeAnnotationStore is not null;
             ResetBigAnnotationWorkspaceForProjectClose();
             NovelAnnotationStore? store = activeAnnotationStore;
@@ -566,6 +584,7 @@ namespace FujiyNotepad.WinUI
             }
 
             UpdateNovelProjectMenu();
+            return true;
         }
 
         private void RememberActiveNovelProjectSession(NovelProject project)
@@ -795,7 +814,8 @@ namespace FujiyNotepad.WinUI
             // project's own document (reload/encoding change) keeps the project and its annotation store.
             if (activeNovelProject is { } openProject && !PathsEqual(path, openProject.DocumentPath))
             {
-                await CloseActiveNovelProjectAsync();
+                if (!await CloseActiveNovelProjectAsync())
+                    return;
             }
 
             // For a Reload, remember where the view was so it can be restored over the rebuilt index.
@@ -893,7 +913,8 @@ namespace FujiyNotepad.WinUI
                 return; // nothing open
             }
 
-            await CloseActiveNovelProjectAsync();
+            if (!await CloseActiveNovelProjectAsync())
+                return;
             await StopIndexingAsync();
             indexRefreshTimer.Stop();
             SetStatusProgress(false); // indexing was cancelled (never marked complete), so hide the bar here
