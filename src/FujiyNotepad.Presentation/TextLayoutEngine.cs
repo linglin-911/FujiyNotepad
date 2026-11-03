@@ -166,14 +166,11 @@ namespace FujiyNotepad.Presentation
     }
 
     /// <summary>
-    /// The framework-independent model and layout math behind the WinUI text canvas: it tracks the scroll
-    /// position (in whole-line units), the caret and character-level selection, performs hit-testing, and
-    /// computes the per-line render model (<see cref="GetVisibleLines"/>). It has no Win2D/WinUI/WinRT
-    /// dependency, so it unit-tests on a normal .NET test host. Monospace metrics are injected via
-    /// <see cref="SetMetrics"/> (the host measures the font with Win2D and pushes the result here). The host
-    /// feeds the live viewport size and forwards the engine's <see cref="ViewChanged"/> /
-    /// <see cref="CaretChanged"/> / <see cref="RedrawRequested"/> / <see cref="CaretBlinkResetRequested"/>
-    /// signals to the UI.
+    /// The current framework-independent legacy engine behind the WinUI text canvas. It tracks scrolling,
+    /// caret/selection, hit-testing and the per-line render model, but its layout calculations still assume
+    /// fixed monospace cells injected through <see cref="SetMetrics"/>. It remains active during the staged
+    /// proportional-font migration; the new <see cref="ITextLayoutProvider"/> contract is not wired into this
+    /// engine yet. The class has no Win2D/WinUI/WinRT dependency and remains headlessly unit-testable.
     /// </summary>
     public sealed class TextLayoutEngine
     {
