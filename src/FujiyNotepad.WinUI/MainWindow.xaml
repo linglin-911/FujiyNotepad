@@ -527,7 +527,7 @@
 
 
         <Grid x:Name="BigAnnotationWorkspace" Grid.Row="3" Visibility="Collapsed"
-              Background="{ThemeResource LayerFillColorDefaultBrush}">
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
             <Grid x:Name="BigAnnotationListView" Padding="16" RowSpacing="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
