@@ -432,7 +432,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新代码提交
 
-`7332db6bd399a5b2fa6147d34498b302253d9bba`（修复大批注分类下拉框通用填充方法中的 CS0136：重命名循环内分类 ID 和模式匹配 ID，避免同一方法作用域变量冲突。XAML 的 TextCanvas 类型错误预计为 C# 编译失败后本地程序集类型解析失败的连带错误，需用户重新构建确认；WMC1509 仍需观察。）
+`e8e2ab42b04a88a4439c0cfdfaf3f3e49ed6b2b3`（大批注工作区根 Grid 改用 `SolidBackgroundFillColorBaseBrush`，替代半透明的 `LayerFillColorDefaultBrush`，使工作区背景不再透出阅读器正文，并随系统浅色/深色主题切换。用户已确认上一个提交修复编译问题且新建大批注基本正常；本次背景修复待 Windows 实测。）
 
 本轮大批注相关提交：
 - `1ee345788bc54cc7b203b5c4618830553a5367ea`：独立数据模型、SQLite 表、CRUD、连续章节校验、参考资料查询和数据层测试。
@@ -489,3 +489,4 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 | 2026-11-03 | 大批注 UI 状态清理提交 `a8c558b790d326c221503c4e533047c416668fc7`：切换项目时清空上一项目的大批注搜索词、分类选项和编辑框内容，避免新项目继承旧筛选条件；增加搜索框重置防护，并强化跨章节小批注搜索后仍返回全部关联位置的测试。 |
 | 2026-11-03 | 大批注列表加载优化提交 `91109b92f3e1a6490d8352fb95ee4eec5a3ec9fd`：移除管理列表加载时不使用的章节元数据查询，减少一次数据库往返。 |
 | 2026-11-03 | 修复大批注编译错误提交 `7332db6bd399a5b2fa6147d34498b302253d9bba`：`PopulateCategoryCombo` 中循环局部变量 `id` 与后续模式匹配变量 `id` 重名，统一改为 `categoryIdValue` / `selectedCategoryId`。`TextCanvas` 的 WMC0001 暂按 C# 编译失败引发本地程序集解析失败处理，待修复后重建确认；WMC1509 警告暂未更改构建配置。 |
+| 2026-11-03 | 修复大批注工作区背景透明问题提交 `e8e2ab42b04a88a4439c0cfdfaf3f3e49ed6b2b3`：根 Grid 的 `LayerFillColorDefaultBrush` 为半透明层级画刷，改为不透明且支持主题切换的 `SolidBackgroundFillColorBaseBrush`，确保底层阅读器文字不再透出。待用户 Windows 实测。 |
