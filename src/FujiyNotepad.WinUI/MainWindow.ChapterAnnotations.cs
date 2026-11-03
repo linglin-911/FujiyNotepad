@@ -683,9 +683,13 @@ public sealed partial class MainWindow
             return false;
         }
 
-        if (state is not null
+        bool staleIndexState = state is not null
             && (state.DocumentRevision != project.Metadata.DocumentRevision
-                || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
+                || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion);
+        bool staleChapterRows = state is null
+            && chapterAnnotationChapters.Any(chapter =>
+                chapter.DocumentRevision != project.Metadata.DocumentRevision);
+        if (staleIndexState || staleChapterRows)
         {
             await ShowNovelProjectMessageAsync(
                 "章节索引已过期",
