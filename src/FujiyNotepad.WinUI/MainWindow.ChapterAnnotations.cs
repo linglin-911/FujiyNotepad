@@ -576,16 +576,21 @@ public sealed partial class MainWindow
                 details.Add("");
             }
 
-            if (requireConfirmation)
+            bool chapterStructureChanged = comparison.Added.Count > 0
+                || comparison.Removed.Count > 0 || comparison.Renamed.Count > 0;
+            bool needsConfirmation = requireConfirmation || chapterStructureChanged;
+            if (needsConfirmation)
             {
                 details.Add("安全说明：被删除章节的已有章节批注不会被删除，会保留为“原章节已删除”记录；");
                 details.Add("正文指纹变化只代表对应章节需要重新校验小批注锚点；其他章节的锚点不应被连带扫描。");
                 details.Add("已有章节批注继续绑定稳定 ChapterId；被删除章节的批注保留在归档章节中。");
-                details.Add("确认后才会更新数据库；取消则完全保留当前索引。");
+                details.Add(requireConfirmation
+                    ? "确认后才会更新数据库；取消则完全保留当前索引。"
+                    : "检测到章节新增、删除或标题变化。为避免章节批注被错误归属，请检查后确认更新；取消则保留旧索引。");
 
                 var dialog = new ContentDialog
                 {
-                    Title = "章节重新识别结果",
+                    Title = requireConfirmation ? "章节重新识别结果" : "检测到章节结构变化",
                     Content = new ScrollViewer
                     {
                         Content = new TextBlock
@@ -597,14 +602,18 @@ public sealed partial class MainWindow
                         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     },
                     PrimaryButtonText = "确认更新索引",
-                    CloseButtonText = "取消",
+                    CloseButtonText = requireConfirmation ? "取消" : "暂不更新",
                     DefaultButton = ContentDialogButton.Close,
                     XamlRoot = Content.XamlRoot,
                 };
 
                 if (await dialog.ShowAsync() != ContentDialogResult.Primary
                     || !IsCurrentChapterIndexRequest(generation, store, project, lines))
+                {
+                    if (!requireConfirmation && ReferenceEquals(store, activeAnnotationStore))
+                        LblStatus.Text = "已自动检测到章节结构变化，等待确认更新；当前索引暂未修改。";
                     return;
+                }
             }
 
             await store.ReplaceChapterIndexAsync(
