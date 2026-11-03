@@ -16,6 +16,7 @@ public sealed partial class MainWindow
     private bool showBigAnnotationChapterReferences = true;
     private Guid? editingBigAnnotationId;
     private Guid? resumeBigAnnotationId;
+    private bool resumeBigAnnotationEditorPending;
     private string initialBigAnnotationTitle = "";
     private string initialBigAnnotationContent = "";
     private Guid? initialBigAnnotationCategoryId;
@@ -67,16 +68,28 @@ public sealed partial class MainWindow
         BigAnnotationEditorView.Visibility = Visibility.Collapsed;
         await LoadBigAnnotationListAsync();
 
+        if (resumeBigAnnotationEditorPending && resumeBigAnnotationId is null)
+        {
+            // A brand-new empty draft has no database ID yet. Its editor controls and chapter
+            // range were kept in memory while the reader was shown, so restore that editor directly.
+            resumeBigAnnotationEditorPending = false;
+            BigAnnotationListView.Visibility = Visibility.Collapsed;
+            BigAnnotationEditorView.Visibility = Visibility.Visible;
+            await RefreshBigAnnotationReferencesAsync();
+            return;
+        }
+
         if (resumeBigAnnotationId is Guid resumeId)
         {
             resumeBigAnnotationId = null;
+            resumeBigAnnotationEditorPending = false;
             await OpenBigAnnotationEditorAsync(resumeId);
         }
     }
 
     private async void ReturnToBigAnnotationWorkspace_Click(object sender, RoutedEventArgs e)
     {
-        if (resumeBigAnnotationId is null
+        if (!resumeBigAnnotationEditorPending
             || activeAnnotationStore is null
             || activeNovelProject is null)
         {
@@ -100,6 +113,7 @@ public sealed partial class MainWindow
             return false;
 
         resumeBigAnnotationId = null;
+        resumeBigAnnotationEditorPending = false;
         ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
         ResetBigAnnotationEditorState();
         HideBigAnnotationWorkspace();
@@ -121,6 +135,7 @@ public sealed partial class MainWindow
         bigAnnotationCategories = Array.Empty<BigAnnotationCategory>();
         selectedBigAnnotationCategoryId = null;
         resumeBigAnnotationId = null;
+        resumeBigAnnotationEditorPending = false;
         ReturnToBigAnnotationButton.Visibility = Visibility.Collapsed;
         refreshingBigAnnotationUi = true;
         try
@@ -161,6 +176,7 @@ public sealed partial class MainWindow
 
     private void ResetBigAnnotationEditorState()
     {
+        resumeBigAnnotationEditorPending = false;
         editingBigAnnotationId = null;
         editingBigAnnotationChapters = Array.Empty<NovelChapter>();
         initialBigAnnotationTitle = "";
@@ -1216,9 +1232,9 @@ public sealed partial class MainWindow
             return;
 
         resumeBigAnnotationId = editingBigAnnotationId;
+        resumeBigAnnotationEditorPending = true;
         HideBigAnnotationWorkspace();
-        ReturnToBigAnnotationButton.Visibility = resumeBigAnnotationId is null
-            ? Visibility.Collapsed : Visibility.Visible;
+        ReturnToBigAnnotationButton.Visibility = Visibility.Visible;
         await NavigateToSmallAnnotationAnchorAsync(anchor);
     }
 
@@ -1236,9 +1252,9 @@ public sealed partial class MainWindow
             return;
 
         resumeBigAnnotationId = editingBigAnnotationId;
+        resumeBigAnnotationEditorPending = true;
         HideBigAnnotationWorkspace();
-        ReturnToBigAnnotationButton.Visibility = resumeBigAnnotationId is null
-            ? Visibility.Collapsed : Visibility.Visible;
+        ReturnToBigAnnotationButton.Visibility = Visibility.Visible;
         if (filteredSource is not null)
             ExitFilterToFullView();
         await NavigateToChapterAsync(chapter);
