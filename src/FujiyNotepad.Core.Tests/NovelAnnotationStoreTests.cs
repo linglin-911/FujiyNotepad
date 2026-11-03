@@ -243,8 +243,8 @@ public sealed class NovelAnnotationStoreTests
             Assert.Equal((247L, 257L, 2L), (anchors[1].StartOffset, anchors[1].EndOffset, anchors[1].DocumentRevision));
 
             var chapters = await store.GetChaptersAsync();
-            NovelChapter earlier = Assert.Single(chapters.Where(chapter => chapter.Id == earlierChapterId));
-            NovelChapter later = Assert.Single(chapters.Where(chapter => chapter.Id == laterChapterId));
+            NovelChapter earlier = Assert.Single(chapters, chapter => chapter.Id == earlierChapterId);
+            NovelChapter later = Assert.Single(chapters, chapter => chapter.Id == laterChapterId);
             Assert.Equal((0L, 100L, 2L), (earlier.StartOffset, earlier.EndOffset, earlier.DocumentRevision));
             Assert.Equal((200L, 397L, 2L), (later.StartOffset, later.EndOffset, later.DocumentRevision));
         }
