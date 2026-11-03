@@ -433,6 +433,7 @@
                     <ComboBox x:Name="ChapterAnnotationChapterFilter" Grid.Row="2"
                               HorizontalAlignment="Stretch"
                               PlaceholderText="全部章节"
+                              MaxDropDownHeight="420"
                               SelectionChanged="ChapterAnnotationChapterFilter_SelectionChanged"
                               DropDownClosed="ChapterAnnotationChapterFilter_DropDownClosed" />
                     <Grid Grid.Row="3" ColumnSpacing="6">
@@ -441,6 +442,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ComboBox x:Name="ChapterAnnotationCategoryFilter" HorizontalAlignment="Stretch"
+                                  PlaceholderText="全部分类" MaxDropDownHeight="420"
                                   SelectionChanged="ChapterAnnotationCategoryFilter_SelectionChanged" />
                         <Button Grid.Column="1" Content="分类管理..." Click="ManageChapterAnnotationCategories_Click"
                                 Padding="8,4" />
