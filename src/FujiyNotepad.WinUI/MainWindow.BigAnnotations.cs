@@ -8,7 +8,6 @@ namespace FujiyNotepad.WinUI;
 public sealed partial class MainWindow
 {
     private IReadOnlyList<BigAnnotationCategory> bigAnnotationCategories = Array.Empty<BigAnnotationCategory>();
-    private IReadOnlyList<NovelChapter> bigAnnotationActiveChapters = Array.Empty<NovelChapter>();
     private IReadOnlyList<NovelChapter> editingBigAnnotationChapters = Array.Empty<NovelChapter>();
     private Guid? selectedBigAnnotationCategoryId;
     private Guid? selectedBigAnnotationSmallReferenceCategoryId;
@@ -136,7 +135,6 @@ public sealed partial class MainWindow
                 return;
 
             bigAnnotationCategories = categories;
-            bigAnnotationActiveChapters = chapters;
             refreshingBigAnnotationUi = true;
             try
             {
@@ -251,12 +249,17 @@ public sealed partial class MainWindow
             ? summary.Annotation.Content[..160] + "…"
             : summary.Annotation.Content;
 
-        var panel = new StackPanel { Spacing = 4, Padding = new Thickness(8, 6, 8, 6) };
-        panel.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        var panel = new StackPanel { Spacing = 4 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
         panel.Children.Add(new TextBlock
         {
             Text = $"{range} · {category}",
-            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            FontSize = 12,
+            Opacity = 0.7,
             TextWrapping = TextWrapping.Wrap,
         });
         if (!string.IsNullOrWhiteSpace(excerpt))
@@ -269,9 +272,14 @@ public sealed partial class MainWindow
                 Opacity = 0.8,
             });
         }
+
         return new ListViewItem
         {
-            Content = panel,
+            Content = new Border
+            {
+                Padding = new Thickness(8, 6, 8, 6),
+                Child = panel,
+            },
             Tag = summary,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
@@ -303,7 +311,6 @@ public sealed partial class MainWindow
             return;
 
         IReadOnlyList<NovelChapter> chapters = await store.GetChaptersAsync();
-        bigAnnotationActiveChapters = chapters;
         if (chapters.Count < 2)
         {
             await ShowNovelProjectMessageAsync(
@@ -651,8 +658,9 @@ public sealed partial class MainWindow
         if (!await TryLeaveBigAnnotationEditorAsync())
             return;
 
+        Guid? preferredId = editingBigAnnotationId;
         ResetBigAnnotationEditorState();
-        await LoadBigAnnotationListAsync(editingBigAnnotationId);
+        await LoadBigAnnotationListAsync(preferredId);
     }
 
     private async void DeleteSelectedBigAnnotation_Click(object sender, RoutedEventArgs e)
@@ -875,10 +883,8 @@ public sealed partial class MainWindow
             Text = $"分类：{category}",
             Opacity = 0.65,
         });
-        int position = 0;
         foreach (BigAnnotationSmallAnchorReference anchorReference in reference.Anchors)
         {
-            position++;
             string label = $"{anchorReference.Chapter.Title} · {anchorReference.Anchor.Quote}";
             var button = new Button
             {
@@ -972,6 +978,14 @@ public sealed partial class MainWindow
 
     private async Task NavigateFromBigAnnotationChapterReferenceAsync(NovelChapter chapter)
     {
+        if (!chapter.IsActive)
+        {
+            await ShowNovelProjectMessageAsync(
+                "原章节已删除",
+                "这条章节批注仍然保留，但所属章节已经归档。为避免跳转到错误位置，系统不会自动定位。");
+            return;
+        }
+
         if (IsBigAnnotationEditorDirty() && !await SaveBigAnnotationAsync())
             return;
 
@@ -1162,11 +1176,7 @@ public sealed partial class MainWindow
         if (ReferenceEquals(store, activeAnnotationStore))
         {
             selectedBigAnnotationCategoryId = null;
-            await LoadBigAnnotationListAsync(editingBigAnnotationId);
-            if (BigAnnotationEditorView.Visibility == Visibility.Visible)
-                await StartBigAnnotationEditorAsync(
-                    await store.GetBigAnnotationAsync(editingBigAnnotationId ?? Guid.Empty),
-                    editingBigAnnotationChapters);
+            await LoadBigAnnotationListAsync();
         }
     }
 }
