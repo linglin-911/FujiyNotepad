@@ -732,13 +732,19 @@ public sealed partial class MainWindow
             return false;
         }
 
+        bool missingChapterFingerprints = chapterAnnotationChapters.Any(chapter =>
+            chapter.BodyStartOffset < chapter.StartOffset
+            || string.IsNullOrWhiteSpace(chapter.BodySha256));
         bool staleIndexState = !project.IsDocumentFingerprintCurrent
+            || missingChapterFingerprints
             || (state is not null
                 && (state.DocumentRevision != project.Metadata.DocumentRevision
                     || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion));
         bool staleChapterRows = state is null
             && chapterAnnotationChapters.Any(chapter =>
-                chapter.DocumentRevision != project.Metadata.DocumentRevision);
+                chapter.DocumentRevision != project.Metadata.DocumentRevision
+                || chapter.BodyStartOffset < chapter.StartOffset
+                || string.IsNullOrWhiteSpace(chapter.BodySha256));
         if (staleIndexState || staleChapterRows)
         {
             await ShowNovelProjectMessageAsync(

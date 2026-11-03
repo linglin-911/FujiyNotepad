@@ -201,6 +201,7 @@ public sealed class NovelAnnotationStoreTests
             NovelChapter chapter = Assert.Single(await store.GetChaptersAsync());
             AnnotationAnchor anchor = Assert.Single(await store.GetAnchorsForAnnotationAsync(annotationId));
             Assert.Equal((103L, 503L), (chapter.StartOffset, chapter.EndOffset));
+            Assert.Equal(103L, chapter.BodyStartOffset);
             Assert.Equal((153L, 183L), (anchor.StartOffset, anchor.EndOffset));
             Assert.Equal(2, chapter.DocumentRevision);
             Assert.Equal(2, anchor.DocumentRevision);
