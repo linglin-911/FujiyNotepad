@@ -10,7 +10,7 @@ public sealed class NovelChapterIndexReconcilerTests
         var first = new NovelChapter(Guid.NewGuid(), "第1章 开始", 0, 100, 1, 1);
         var second = new NovelChapter(Guid.NewGuid(), "第2章 旧标题", 100, 200, 2, 1);
         var third = new NovelChapter(Guid.NewGuid(), "第3章 结束", 200, 300, 3, 1);
-        var detected =
+        NovelChapter[] detected =
         [
             new NovelChapter(Guid.NewGuid(), "第1章 开始", 0, 110, 1, 2),
             new NovelChapter(Guid.NewGuid(), "第2章 新标题", 110, 220, 2, 2),
@@ -39,7 +39,7 @@ public sealed class NovelChapterIndexReconcilerTests
         var sixth = new NovelChapter(Guid.NewGuid(), "第六章", 0, 100, 1, 1);
         var seventh = new NovelChapter(Guid.NewGuid(), "第七章", 100, 200, 2, 1);
         var eighth = new NovelChapter(Guid.NewGuid(), "第八章", 200, 300, 3, 1);
-        var detected =
+        NovelChapter[] detected =
         [
             new NovelChapter(Guid.NewGuid(), "第六章", 0, 200, 1, 2),
             new NovelChapter(Guid.NewGuid(), "第八章", 200, 300, 2, 2),
