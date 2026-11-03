@@ -70,6 +70,7 @@
                 <MenuFlyoutItem x:Name="CreateProjectItem" Text="Import TXT as New Project..." Click="CreateNovelProject_Click" IsEnabled="True" />
                 <MenuFlyoutItem x:Name="OpenProjectItem" Text="Open Project Folder..." Click="OpenNovelProject_Click" />
                 <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Name="ChapterDirectoryItem" Text="章节目录" Click="ChapterDirectory_Click" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Name="SmallAnnotationsItem" Text="小批注面板" Click="SmallAnnotations_Click" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Name="ChapterAnnotationsItem" Text="章节批注面板" Click="ChapterAnnotations_Click" IsEnabled="False" />
                 <MenuFlyoutSeparator />
@@ -470,6 +471,56 @@
                     </StackPanel>
                 </Grid>
             </Border>
+
+            <Border x:Name="ChapterDirectoryPane" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2"
+                    Width="320" Visibility="Collapsed"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+                <Grid Padding="12" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="章节目录" FontSize="17" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="×" Click="CloseChapterDirectory_Click"
+                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭章节目录" />
+                    </Grid>
+                    <TextBox x:Name="ChapterDirectorySearchBox" Grid.Row="1"
+                             PlaceholderText="搜索章节标题..."
+                             TextChanged="ChapterDirectorySearchBox_TextChanged"
+                             KeyDown="ChapterDirectorySearchBox_KeyDown" />
+                    <Grid Grid.Row="2">
+                        <ListView x:Name="ChapterDirectoryList"
+                                  IsItemClickEnabled="True"
+                                  ItemClick="ChapterDirectoryList_ItemClick"
+                                  SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Title}"
+                                               TextWrapping="Wrap"
+                                               Padding="8,7" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="ChapterDirectoryEmptyState"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Opacity="0.65"
+                                   IsHitTestVisible="False"
+                                   Visibility="Collapsed" />
+                    </Grid>
+                </Grid>
+            </Border>
+
         </Grid>
 
         <Grid Grid.Row="4" Padding="8,3" Background="{ThemeResource LayerFillColorDefaultBrush}">

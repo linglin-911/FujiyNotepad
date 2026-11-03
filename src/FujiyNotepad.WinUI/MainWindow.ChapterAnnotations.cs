@@ -41,6 +41,8 @@ public sealed partial class MainWindow
             return;
         }
 
+        ChapterDirectoryItem.IsChecked = false;
+        ChapterDirectoryPane.Visibility = Visibility.Collapsed;
         SmallAnnotationsItem.IsChecked = false;
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
         await LoadChapterAnnotationsAsync();
@@ -167,6 +169,7 @@ public sealed partial class MainWindow
 
             chapterAnnotationChapters = chapters;
             chapterAnnotationCategories = categories;
+            RefreshChapterDirectoryList();
             refreshingChapterAnnotationUi = true;
             try
             {
@@ -413,6 +416,7 @@ public sealed partial class MainWindow
                 && state.DocumentRevision == project.Metadata.DocumentRevision)
             {
                 chapterAnnotationChapters = existing;
+                RefreshChapterDirectoryList();
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
@@ -424,6 +428,7 @@ public sealed partial class MainWindow
                 // already have current fingerprints and revision, persist the missing state record.
                 await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
                 chapterAnnotationChapters = existing;
+                RefreshChapterDirectoryList();
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
@@ -452,6 +457,7 @@ public sealed partial class MainWindow
                 return;
 
             chapterAnnotationChapters = await store.GetChaptersAsync();
+            RefreshChapterDirectoryList();
             LblStatus.Text = chapterAnnotationChapters.Count > 0
                 ? $"章节索引完成：识别到 {chapterAnnotationChapters.Count:N0} 章"
                 : "章节索引完成：未识别到符合格式的章节标题";
@@ -625,6 +631,7 @@ public sealed partial class MainWindow
                 return;
 
             chapterAnnotationChapters = await store.GetChaptersAsync();
+            RefreshChapterDirectoryList();
             if (selectedChapterAnnotationChapterId is Guid selected
                 && chapterAnnotationChapters.All(chapter => chapter.Id != selected))
             {
@@ -855,6 +862,8 @@ public sealed partial class MainWindow
         await store.CreateChapterAnnotationAsync(
             values.ChapterId, values.Content, values.CategoryId, values.Title);
         selectedChapterAnnotationChapterId = values.ChapterId;
+        ChapterDirectoryItem.IsChecked = false;
+        ChapterDirectoryPane.Visibility = Visibility.Collapsed;
         SmallAnnotationsItem.IsChecked = false;
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
         ChapterAnnotationsItem.IsChecked = true;

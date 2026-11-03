@@ -534,6 +534,12 @@ namespace FujiyNotepad.WinUI
             chapterAnnotationFilterDebounce = null;
             chapterAnnotationRefreshVersion++;
             chapterAnnotationChapters = Array.Empty<NovelChapter>();
+            ChapterDirectoryItem.IsChecked = false;
+            ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+            ChapterDirectorySearchBox.Text = "";
+            ChapterDirectoryList.ItemsSource = null;
+            ChapterDirectoryEmptyState.Text = "";
+            ChapterDirectoryEmptyState.Visibility = Visibility.Collapsed;
             selectedChapterAnnotationChapterId = null;
             selectedChapterAnnotationCategoryId = null;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
@@ -582,11 +588,14 @@ namespace FujiyNotepad.WinUI
             ExportMarkedCopyItem.IsEnabled = hasProject;
             ValidateEditedCopyItem.IsEnabled = hasProject;
             CloseProjectItem.IsEnabled = hasProject;
+            ChapterDirectoryItem.IsEnabled = hasProject;
             SmallAnnotationsItem.IsEnabled = hasProject;
             ChapterAnnotationsItem.IsEnabled = hasProject;
             View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
             if (!hasProject)
             {
+                ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+                ChapterDirectoryItem.IsChecked = false;
                 SmallAnnotationPane.Visibility = Visibility.Collapsed;
                 SmallAnnotationsItem.IsChecked = false;
                 ChapterAnnotationPane.Visibility = Visibility.Collapsed;

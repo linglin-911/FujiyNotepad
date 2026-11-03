@@ -33,6 +33,8 @@ namespace FujiyNotepad.WinUI
 
             if (show)
             {
+                ChapterDirectoryItem.IsChecked = false;
+                ChapterDirectoryPane.Visibility = Visibility.Collapsed;
                 ChapterAnnotationsItem.IsChecked = false;
                 ChapterAnnotationPane.Visibility = Visibility.Collapsed;
                 await ReloadSmallAnnotationCategoriesAsync();
