@@ -27,6 +27,7 @@ namespace FujiyNotepad.Presentation.Tests
                     RecentFilters = { "WARN" },
                     RestoreLastSession = false,
                     LastSessionFilePath = @"C:\logs\app.log",
+                    LastSessionProjectFolderPath = @"C:\Users\user\Documents\FujiyNotepad\NovelProjects\Novel.fujiyproject",
                     LastSessionFirstVisibleLine = 4200,
                     LastSessionCaretLine = 4321,
                     LastSessionCaretColumn = 7,
@@ -47,6 +48,8 @@ namespace FujiyNotepad.Presentation.Tests
                 Assert.Equal(new[] { "WARN" }, loaded.RecentFilters);
                 Assert.False(loaded.RestoreLastSession);
                 Assert.Equal(@"C:\logs\app.log", loaded.LastSessionFilePath);
+                Assert.Equal(@"C:\Users\user\Documents\FujiyNotepad\NovelProjects\Novel.fujiyproject",
+                    loaded.LastSessionProjectFolderPath);
                 Assert.Equal(4200, loaded.LastSessionFirstVisibleLine);
                 Assert.Equal(4321, loaded.LastSessionCaretLine);
                 Assert.Equal(7, loaded.LastSessionCaretColumn);
@@ -73,6 +76,7 @@ namespace FujiyNotepad.Presentation.Tests
             Assert.False(s.ReadingMode); // reading mode is off by default
             Assert.True(s.HighlightSelectionOccurrences); // selection-occurrence highlighting is on by default
             Assert.Equal("", s.LastSessionFilePath);
+            Assert.Equal("", s.LastSessionProjectFolderPath);
         }
 
         [Fact]
