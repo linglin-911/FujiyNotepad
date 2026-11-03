@@ -395,9 +395,9 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
-                AnnotationAnchor? first = anchors.FirstOrDefault(anchor =>
-                    !anchor.IsOrphaned
-                    && anchor.DocumentRevision == project.Metadata.DocumentRevision);
+                // A non-orphaned anchor from an older revision may still be recoverable when the
+                // saved quote survives and moved only because nearby text was inserted/deleted.
+                AnnotationAnchor? first = anchors.FirstOrDefault(anchor => !anchor.IsOrphaned);
 
                 if (first is null)
                 {
@@ -970,8 +970,8 @@ namespace FujiyNotepad.WinUI
                 foreach (AnnotationAnchor anchor in anchors)
                 {
                     occurrence++;
-                    bool eligible = !anchor.IsOrphaned
-                        && project is not null
+                    bool eligible = !anchor.IsOrphaned;
+                    bool versionMatches = project is not null
                         && anchor.DocumentRevision == project.Metadata.DocumentRevision;
                     var anchorButton = new Button
                     {
@@ -982,7 +982,7 @@ namespace FujiyNotepad.WinUI
                         Content = new TextBlock
                         {
                             Text = $"原文 {occurrence}：{CreateSmallAnnotationExcerpt(anchor.Quote, 220)}"
-                                + (eligible ? "" : "（已失效或版本不匹配）"),
+                                + (anchor.IsOrphaned ? "（已失效）" : versionMatches ? "" : "（位置待校验，点击尝试修复）"),
                             TextWrapping = TextWrapping.Wrap,
                             FontSize = 12,
                         },
@@ -1171,7 +1171,8 @@ namespace FujiyNotepad.WinUI
         private async Task NavigateToSmallAnnotationAnchorAsync(AnnotationAnchor anchor)
         {
             NovelProject? project = activeNovelProject;
-            if (project is null || activeAnnotationStore is null
+            NovelAnnotationStore? store = activeAnnotationStore;
+            if (project is null || store is null
                 || annotationOffsetMap is null || provider is null)
             {
                 await ShowMessageAsync("无法定位原文", "当前没有打开对应的小说项目。");
@@ -1181,14 +1182,6 @@ namespace FujiyNotepad.WinUI
             if (anchor.IsOrphaned)
             {
                 await ShowMessageAsync("无法定位原文", "这条原文关联已经失效，不能直接跳转。");
-                return;
-            }
-
-            if (anchor.DocumentRevision != project.Metadata.DocumentRevision)
-            {
-                await ShowMessageAsync(
-                    "无法定位原文",
-                    "这条关联属于其他文档版本。为避免跳转到错误位置，请先修复这条原文关联。");
                 return;
             }
 
@@ -1207,7 +1200,9 @@ namespace FujiyNotepad.WinUI
                 }
 
                 await indexingTask;
-                if (!ReferenceEquals(project, activeNovelProject) || provider is null || annotationOffsetMap is null)
+                if (!ReferenceEquals(project, activeNovelProject)
+                    || !ReferenceEquals(store, activeAnnotationStore)
+                    || provider is null || annotationOffsetMap is null)
                     return;
 
                 View.UpdateTotalLines(provider.LineCount);
@@ -1216,17 +1211,107 @@ namespace FujiyNotepad.WinUI
 
             if (!TryResolveSmallAnnotationAnchor(anchor, out position))
             {
-                string reason = LineIndexer.IsCompleted
-                    ? "当前文档中的原文与保存的摘录不一致，或者文档已经发生变化。为避免错误定位，系统没有执行跳转。"
-                    : "全文索引尚未到达该位置。请稍后等待索引完成，再重新尝试定位。";
-                await ShowMessageAsync("无法准确定位原文", reason);
-                return;
+                // A small edit before the quote (for example deleting a chapter heading) changes its
+                // absolute offset without changing the saved excerpt. Only auto-repair when that exact
+                // excerpt appears once in a bounded window around the old position.
+                AnnotationAnchor? repaired = await TryRepairSmallAnnotationAnchorAsync(anchor, project, store);
+                if (repaired is not null
+                    && ReferenceEquals(project, activeNovelProject)
+                    && ReferenceEquals(store, activeAnnotationStore))
+                {
+                    anchor = repaired;
+                    TryResolveSmallAnnotationAnchor(anchor, out position);
+                    await RefreshSmallAnnotationsAsync(anchor.AnnotationId);
+                    await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
+                    LblStatus.Text = "已根据唯一匹配的原文摘录修复一处小批注位置。";
+                }
+                else
+                {
+                    string reason = LineIndexer.IsCompleted
+                        ? "保存的原文摘录在原位置未找到，附近也没有唯一匹配。为避免跳错位置，系统没有自动修改关联。若原文内容确实未变，只是前面的文字被删除或插入，可以再次尝试；如果摘录重复或本身被修改，需要人工处理。"
+                        : "全文索引尚未到达该位置。请稍后等待索引完成，再重新尝试定位。";
+                    await ShowMessageAsync("无法准确定位原文", reason);
+                    return;
+                }
             }
 
             View.GoToLineColumn(position.Line, position.Column);
             View.CenterCaretVertically();
             SyncScrollBars();
             View.FocusCanvas();
+        }
+
+        private async Task<AnnotationAnchor?> TryRepairSmallAnnotationAnchorAsync(
+            AnnotationAnchor anchor,
+            NovelProject project,
+            NovelAnnotationStore store)
+        {
+            const long searchRadius = 4096;
+            DocumentTextOffsetMap? map = annotationOffsetMap;
+            LineProvider? lines = provider;
+            if (map is null || lines is null || lines.LineCount == 0
+                || string.IsNullOrEmpty(anchor.Quote) || anchor.IsOrphaned)
+            {
+                return null;
+            }
+
+            try
+            {
+                int lastLine = lines.LineCount - 1;
+                long documentEnd = map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
+                long roughStart = Math.Max(0, anchor.StartOffset - searchRadius);
+                long roughEnd = Math.Min(documentEnd, checked(anchor.EndOffset + searchRadius));
+                if (roughEnd <= roughStart)
+                    return null;
+
+                // Expand to complete line boundaries so CRLF/LF sequences are represented exactly.
+                (int roughStartLine, _) = map.GetPosition(roughStart);
+                long windowStart = map.GetLineStartOffset(roughStartLine);
+                (int roughEndLine, _) = map.GetPosition(roughEnd);
+                string endLineText = lines.GetLineUncached(roughEndLine);
+                long windowEnd = map.GetOffset(roughEndLine, endLineText.Length);
+                if (windowEnd <= windowStart || windowEnd - windowStart > 2_000_000)
+                    return null;
+
+                (int startLine, int startColumn) = map.GetPosition(windowStart);
+                (int endLine, int endColumn) = map.GetPosition(windowEnd);
+                string windowText = ExtractSmallAnnotationRange(
+                    lines,
+                    new TextPosition(startLine, startColumn),
+                    new TextPosition(endLine, endColumn));
+
+                int match = windowText.IndexOf(anchor.Quote, StringComparison.Ordinal);
+                if (match < 0)
+                    return null;
+                if (windowText.IndexOf(anchor.Quote, match + 1, StringComparison.Ordinal) >= 0)
+                    return null;
+
+                long repairedStart = checked(windowStart + match);
+                long repairedEnd = checked(repairedStart + anchor.Quote.Length);
+                NovelChapter? chapter = await store.GetChapterAtOffsetAsync(repairedStart);
+                bool updated = await store.TryRepairAnchorAsync(
+                    anchor,
+                    repairedStart,
+                    repairedEnd,
+                    chapter?.Id,
+                    project.Metadata.DocumentRevision);
+                if (!updated)
+                    return null;
+
+                return anchor with
+                {
+                    StartOffset = repairedStart,
+                    EndOffset = repairedEnd,
+                    ChapterId = chapter?.Id,
+                    DocumentRevision = project.Metadata.DocumentRevision,
+                    IsOrphaned = false,
+                };
+            }
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or OverflowException)
+            {
+                diagnostics.LogSwallowed("Repair small annotation anchor", ex);
+                return null;
+            }
         }
 
         private bool TryResolveSmallAnnotationAnchor(AnnotationAnchor anchor, out TextPosition position)
