@@ -440,34 +440,34 @@ public sealed partial class MainWindow
         combo.Items.Add(new ComboBoxItem { Content = allLabel });
         foreach (TCategory category in categories)
         {
-            Guid id;
+            Guid categoryIdValue;
             string name;
             switch (category)
             {
                 case BigAnnotationCategory big:
-                    id = big.Id;
+                    categoryIdValue = big.Id;
                     name = big.Name;
                     break;
                 case AnnotationCategory small:
-                    id = small.Id;
+                    categoryIdValue = small.Id;
                     name = small.Name;
                     break;
                 case ChapterAnnotationCategory chapter:
-                    id = chapter.Id;
+                    categoryIdValue = chapter.Id;
                     name = chapter.Name;
                     break;
                 default:
                     continue;
             }
-            combo.Items.Add(new ComboBoxItem { Content = name, Tag = id });
+            combo.Items.Add(new ComboBoxItem { Content = name, Tag = categoryIdValue });
         }
 
-        int selectedIndex = selectedId is Guid id
+        int selectedIndex = selectedId is Guid selectedCategoryId
             ? categories.ToList().FindIndex(category => category switch
             {
-                BigAnnotationCategory big => big.Id == id,
-                AnnotationCategory small => small.Id == id,
-                ChapterAnnotationCategory chapter => chapter.Id == id,
+                BigAnnotationCategory big => big.Id == selectedCategoryId,
+                AnnotationCategory small => small.Id == selectedCategoryId,
+                ChapterAnnotationCategory chapter => chapter.Id == selectedCategoryId,
                 _ => false,
             }) + 1
             : 0;
