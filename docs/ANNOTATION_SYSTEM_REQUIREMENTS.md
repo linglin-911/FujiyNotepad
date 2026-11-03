@@ -432,7 +432,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 最新代码提交
 
-`e8e2ab42b04a88a4439c0cfdfaf3f3e49ed6b2b3`（大批注工作区根 Grid 改用 `SolidBackgroundFillColorBaseBrush`，替代半透明的 `LayerFillColorDefaultBrush`，使工作区背景不再透出阅读器正文，并随系统浅色/深色主题切换。用户已确认上一个提交修复编译问题且新建大批注基本正常；本次背景修复待 Windows 实测。）
+`7b91f365cdf0809ad22c0cf30e6e47ddd3a472f8`（根据工作区实测优化参考资料区：增加默认开启的“小批”“章批”独立显示开关；分类筛选随开关联动；仅显示当前过滤后仍有批注的章节；章节和批注内容默认展开并用箭头折叠；改为树形缩进；去掉未命名占位、重复分类和原文前缀章节标题；原文摘录灰色显示。待用户 Windows x64 构建与冒烟测试。）
 
 本轮大批注相关提交：
 - `1ee345788bc54cc7b203b5c4618830553a5367ea`：独立数据模型、SQLite 表、CRUD、连续章节校验、参考资料查询和数据层测试。
