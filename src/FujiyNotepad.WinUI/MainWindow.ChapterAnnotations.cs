@@ -165,6 +165,14 @@ public sealed partial class MainWindow
             refreshingChapterAnnotationUi = true;
             try
             {
+                // Reset the old source and selection before replacing the collections. WinUI can
+                // otherwise retain a stale selected container after a re-identification refresh.
+                ChapterAnnotationChapterFilter.SelectedIndex = -1;
+                ChapterAnnotationChapterFilter.ItemsSource = null;
+                ChapterAnnotationCategoryFilter.SelectedIndex = -1;
+                ChapterAnnotationCategoryFilter.ItemsSource = null;
+                ChapterAnnotationCategoryFilter.Items.Clear();
+
                 // Use plain strings for the chapter selector. WinUI's DisplayMemberPath reflection
                 // binding can render an empty selected value for nested record types, especially with
                 // very large ItemsSource collections.
