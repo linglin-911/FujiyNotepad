@@ -366,6 +366,10 @@ namespace FujiyNotepad.WinUI
                 UpdateNovelProjectMenu();
                 LblStatus.Text = $"Novel project: {project.Metadata.Title}";
                 RememberActiveNovelProjectSession(project);
+                // Small files may finish indexing before the project store is attached. Trigger the
+                // chapter check here as well; large files will be checked by the index-completion tick.
+                if (LineIndexer.IsCompleted)
+                    _ = EnsureChapterIndexAsync();
             }
             catch
             {

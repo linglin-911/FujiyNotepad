@@ -388,59 +388,42 @@ public sealed partial class MainWindow
             if (!IsCurrentChapterIndexRequest(generation, store, project, lines))
                 return;
 
-            if (!project.IsDocumentFingerprintCurrent)
+            IReadOnlyList<NovelChapter> existing = await store.GetChaptersAsync();
+            bool documentChanged = !project.IsDocumentFingerprintCurrent;
+            bool stateStale = state is not null
+                && (state.DocumentRevision != project.Metadata.DocumentRevision
+                    || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion);
+            bool missingFingerprints = existing.Any(chapter =>
+                chapter.BodyStartOffset < chapter.StartOffset
+                || chapter.BodyStartOffset > chapter.EndOffset
+                || string.IsNullOrWhiteSpace(chapter.BodySha256));
+            bool staleChapterRows = existing.Any(chapter =>
+                chapter.DocumentRevision != project.Metadata.DocumentRevision);
+
+            if (documentChanged || stateStale || missingFingerprints || staleChapterRows)
             {
-                chapterAnnotationChapters = await store.GetChaptersAsync();
-                LblStatus.Text = "项目原文与上次保存的指纹不一致，请打开章节批注面板并点击“重新识别”检查变化。";
-                if (ChapterAnnotationPane.Visibility == Visibility.Visible)
-                    await LoadChapterAnnotationsAsync();
+                // Re-index automatically after an external edit, parser upgrade, or legacy database upgrade.
+                // The diff is shown after the safe index transaction; the user does not need to click
+                // "Re-identify chapters" to make the project current again.
+                await RebuildChapterIndexAsync(requireConfirmation: false, showAutomaticReport: documentChanged);
                 return;
             }
 
             if (state is { ParserVersion: NovelChapterIndexBuilder.CurrentParserVersion }
                 && state.DocumentRevision == project.Metadata.DocumentRevision)
             {
-                chapterAnnotationChapters = await store.GetChaptersAsync();
-                bool fingerprintsReady = chapterAnnotationChapters.All(chapter =>
-                    chapter.BodyStartOffset >= chapter.StartOffset
-                    && chapter.BodyStartOffset <= chapter.EndOffset
-                    && !string.IsNullOrWhiteSpace(chapter.BodySha256));
-                if (fingerprintsReady)
-                {
-                    if (ChapterAnnotationPane.Visibility == Visibility.Visible)
-                        await LoadChapterAnnotationsAsync();
-                    return;
-                }
-
-                LblStatus.Text = "当前章节索引缺少正文指纹，请点击“重新识别”升级章节索引。";
+                chapterAnnotationChapters = existing;
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
             }
 
-            IReadOnlyList<NovelChapter> existing = await store.GetChaptersAsync();
             if (existing.Count > 0)
             {
-                // Never replace chapter IDs automatically: chapter annotations depend on them.
-                // If this is a legacy index without state metadata, record it only when every row
-                // already belongs to the current document revision.
-                bool legacyFingerprintMissing = existing.Any(chapter =>
-                    chapter.BodyStartOffset < chapter.StartOffset || string.IsNullOrWhiteSpace(chapter.BodySha256));
-                if (state is null
-                    && !legacyFingerprintMissing
-                    && existing.All(chapter => chapter.DocumentRevision == project.Metadata.DocumentRevision))
-                {
-                    await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
-                }
+                // A legacy database can have chapter rows but no ChapterIndexState row. Once the rows
+                // already have current fingerprints and revision, persist the missing state record.
+                await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
                 chapterAnnotationChapters = existing;
-                if (legacyFingerprintMissing)
-                    LblStatus.Text = "旧章节索引缺少正文指纹，请点击“重新识别”完成升级。";
-                if (state is not null
-                    && (state.DocumentRevision != project.Metadata.DocumentRevision
-                        || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
-                {
-                    LblStatus.Text = "原文或章节识别规则已有变化，章节索引可能过期；请点击“重新识别”确认更新。";
-                }
                 if (ChapterAnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
@@ -501,6 +484,20 @@ public sealed partial class MainWindow
 
     private async void RebuildChapterIndex_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            await RebuildChapterIndexAsync(requireConfirmation: true, showAutomaticReport: false);
+        }
+        catch (Exception ex)
+        {
+            diagnostics.LogSwallowed("Re-identify chapter index", ex);
+            if (activeAnnotationStore is not null)
+                await ShowNovelProjectMessageAsync("重新识别章节失败", ex.Message);
+        }
+    }
+
+    private async Task RebuildChapterIndexAsync(bool requireConfirmation, bool showAutomaticReport)
+    {
         NovelAnnotationStore? store = activeAnnotationStore;
         NovelProject? project = activeNovelProject;
         LineProvider? lines = provider;
@@ -509,11 +506,13 @@ public sealed partial class MainWindow
 
         if (!LineIndexer.IsCompleted || filteredSource is not null)
         {
-            await ShowNovelProjectMessageAsync(
-                "暂时无法重新识别章节",
-                filteredSource is not null
-                    ? "请先退出筛选视图，再重新识别章节。"
-                    : "请等待全文行索引完成后，再重新识别章节。");
+            string message = filteredSource is not null
+                ? "请先退出筛选视图，再重新识别章节。"
+                : "请等待全文行索引完成后，再重新识别章节。";
+            if (requireConfirmation)
+                await ShowNovelProjectMessageAsync("暂时无法重新识别章节", message);
+            else
+                LblStatus.Text = message;
             return;
         }
 
@@ -523,7 +522,7 @@ public sealed partial class MainWindow
         chapterIndexBuildCancellation = cancellation;
         chapterIndexBuildRunningVersion = generation;
         RebuildChapterIndexButton.IsEnabled = false;
-        LblStatus.Text = "正在重新扫描章节标题...";
+        LblStatus.Text = requireConfirmation ? "正在重新扫描章节标题..." : "检测到项目变化，正在自动更新章节索引...";
 
         try
         {
@@ -571,38 +570,42 @@ public sealed partial class MainWindow
 
             if (!comparison.HasChanges)
             {
-                details.Add("没有发现章节标题的新增、删除、改名或正文变化。");
-                details.Add("确认后仍会更新章节范围和索引版本。");
+                details.Add(documentFingerprintChanged
+                    ? "原文文件发生了变化，但章节标题和正文内容指纹没有发现差异。"
+                    : "没有发现章节标题的新增、删除、改名或正文变化。");
+                details.Add("");
             }
 
-            details.Add("");
-            details.Add("安全说明：被删除章节的已有章节批注不会被删除，会保留为“原章节已删除”记录；");
-            details.Add("正文指纹变化只代表对应章节需要重新校验小批注锚点；其他章节的锚点不应被连带扫描。");
-            details.Add("已有章节批注继续绑定稳定 ChapterId；被删除章节的批注保留在归档章节中。");
-            details.Add("确认后才会更新数据库；取消则完全保留当前索引。");
-
-            var dialog = new ContentDialog
+            if (requireConfirmation)
             {
-                Title = "章节重新识别结果",
-                Content = new ScrollViewer
-                {
-                    Content = new TextBlock
-                    {
-                        Text = string.Join(Environment.NewLine, details),
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                    MaxHeight = 460,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                },
-                PrimaryButtonText = "确认更新索引",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close,
-                XamlRoot = Content.XamlRoot,
-            };
+                details.Add("安全说明：被删除章节的已有章节批注不会被删除，会保留为“原章节已删除”记录；");
+                details.Add("正文指纹变化只代表对应章节需要重新校验小批注锚点；其他章节的锚点不应被连带扫描。");
+                details.Add("已有章节批注继续绑定稳定 ChapterId；被删除章节的批注保留在归档章节中。");
+                details.Add("确认后才会更新数据库；取消则完全保留当前索引。");
 
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary
-                || !IsCurrentChapterIndexRequest(generation, store, project, lines))
-                return;
+                var dialog = new ContentDialog
+                {
+                    Title = "章节重新识别结果",
+                    Content = new ScrollViewer
+                    {
+                        Content = new TextBlock
+                        {
+                            Text = string.Join(Environment.NewLine, details),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                        MaxHeight = 460,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    },
+                    PrimaryButtonText = "确认更新索引",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = Content.XamlRoot,
+                };
+
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                    || !IsCurrentChapterIndexRequest(generation, store, project, lines))
+                    return;
+            }
 
             await store.ReplaceChapterIndexAsync(
                 comparison.Chapters, revision, NovelChapterIndexBuilder.CurrentParserVersion,
@@ -619,18 +622,32 @@ public sealed partial class MainWindow
                 selectedChapterAnnotationChapterId = null;
             }
 
-            await LoadChapterAnnotationsAsync();
-            LblStatus.Text = $"章节重新识别完成：当前索引 {chapterAnnotationChapters.Count:N0} 章；已保留被删除章节的历史批注。";
+            if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+                await LoadChapterAnnotationsAsync();
+
+            if (requireConfirmation)
+            {
+                LblStatus.Text = $"章节重新识别完成：当前索引 {chapterAnnotationChapters.Count:N0} 章；已保留被删除章节的历史批注。";
+            }
+            else if (documentFingerprintChanged)
+            {
+                LblStatus.Text = $"已自动检测并更新原文变化：新增 {comparison.Added.Count:N0} 章、删除 {comparison.Removed.Count:N0} 章、标题变化 {comparison.Renamed.Count:N0} 处、正文变化 {comparison.ContentChanged.Count:N0} 章。";
+                if (showAutomaticReport)
+                {
+                    string message = "重新打开项目时，软件检测到原文文件已被外部修改。章节索引已经自动更新，无需手动点击“重新识别”。"
+                        + Environment.NewLine + Environment.NewLine
+                        + string.Join(Environment.NewLine, details);
+                    await ShowNovelProjectMessageAsync("已自动检测并更新原文变化", message);
+                }
+            }
+            else
+            {
+                LblStatus.Text = $"章节索引已自动升级：当前索引 {chapterAnnotationChapters.Count:N0} 章。";
+            }
         }
         catch (OperationCanceledException)
         {
             // The project was closed or switched while the index was being rebuilt.
-        }
-        catch (Exception ex)
-        {
-            diagnostics.LogSwallowed("Re-identify chapter index", ex);
-            if (ReferenceEquals(store, activeAnnotationStore))
-                await ShowNovelProjectMessageAsync("重新识别章节失败", ex.Message);
         }
         finally
         {
