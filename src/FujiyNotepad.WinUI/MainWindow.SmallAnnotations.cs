@@ -1246,10 +1246,9 @@ namespace FujiyNotepad.WinUI
             NovelProject project,
             NovelAnnotationStore store)
         {
-            const long searchRadius = 4096;
-            DocumentTextOffsetMap? map = annotationOffsetMap;
             LineProvider? lines = provider;
-            if (map is null || lines is null || lines.LineCount == 0
+            DocumentTextOffsetMap? map = annotationOffsetMap;
+            if (lines is null || map is null || lines.LineCount == 0
                 || string.IsNullOrEmpty(anchor.Quote) || anchor.IsOrphaned)
             {
                 return null;
@@ -1257,43 +1256,54 @@ namespace FujiyNotepad.WinUI
 
             try
             {
-                int lastLine = lines.LineCount - 1;
-                long documentEnd = map.GetOffset(lastLine, lines.GetLineUncached(lastLine).Length);
-                long roughStart = Math.Max(0, anchor.StartOffset - searchRadius);
-                long roughEnd = Math.Min(documentEnd, checked(anchor.EndOffset + searchRadius));
-                if (roughEnd <= roughStart)
+                // Search the whole file as a streaming line scan. A text editor may normalize every
+                // mixed/LF line ending to CRLF when saving, so the offset drift can be much larger
+                // than the small heading deletion itself. The locator normalizes line endings for
+                // comparison but returns offsets using the current document's actual terminators.
+                LblStatus.Text = "正在全文查找原文摘录，尝试修复小批注位置...";
+                AnnotationAnchorQuoteMatch? match = await Task.Run(
+                    () => AnnotationAnchorQuoteLocator.FindUniqueMatch(lines, anchor.Quote));
+                if (match is null
+                    || !ReferenceEquals(project, activeNovelProject)
+                    || !ReferenceEquals(store, activeAnnotationStore)
+                    || !ReferenceEquals(lines, provider)
+                    || !ReferenceEquals(map, annotationOffsetMap))
+                {
                     return null;
+                }
 
-                // Expand to complete line boundaries so CRLF/LF sequences are represented exactly.
-                (int roughStartLine, _) = map.GetPosition(roughStart);
-                long windowStart = map.GetLineStartOffset(roughStartLine);
-                (int roughEndLine, _) = map.GetPosition(roughEnd);
-                string endLineText = lines.GetLineUncached(roughEndLine);
-                long windowEnd = map.GetOffset(roughEndLine, endLineText.Length);
-                if (windowEnd <= windowStart || windowEnd - windowStart > 2_000_000)
-                    return null;
-
-                (int startLine, int startColumn) = map.GetPosition(windowStart);
-                (int endLine, int endColumn) = map.GetPosition(windowEnd);
-                string windowText = ExtractSmallAnnotationRange(
+                long repairedStart = match.Value.StartOffset;
+                long repairedEnd = match.Value.EndOffset;
+                var (startLine, startColumn) = map.GetPosition(repairedStart);
+                var (endLine, endColumn) = map.GetPosition(repairedEnd);
+                string currentQuote = ExtractSmallAnnotationRange(
                     lines,
                     new TextPosition(startLine, startColumn),
                     new TextPosition(endLine, endColumn));
-
-                int match = windowText.IndexOf(anchor.Quote, StringComparison.Ordinal);
-                if (match < 0)
+                if (!string.Equals(
+                    AnnotationAnchorQuoteLocator.NormalizeLineEndings(currentQuote),
+                    AnnotationAnchorQuoteLocator.NormalizeLineEndings(anchor.Quote),
+                    StringComparison.Ordinal))
+                {
                     return null;
-                if (windowText.IndexOf(anchor.Quote, match + 1, StringComparison.Ordinal) >= 0)
-                    return null;
+                }
 
-                long repairedStart = checked(windowStart + match);
-                long repairedEnd = checked(repairedStart + anchor.Quote.Length);
-                NovelChapter? chapter = await store.GetChapterAtOffsetAsync(repairedStart);
+                // Do not attach the repaired anchor to a chapter unless that index is known to match
+                // the current document revision and parser.
+                Guid? chapterId = null;
+                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
+                if (indexState is { } currentIndex
+                    && currentIndex.DocumentRevision == project.Metadata.DocumentRevision
+                    && currentIndex.ParserVersion == NovelChapterIndexBuilder.CurrentParserVersion)
+                {
+                    chapterId = (await store.GetChapterAtOffsetAsync(repairedStart))?.Id;
+                }
+
                 bool updated = await store.TryRepairAnchorAsync(
                     anchor,
                     repairedStart,
                     repairedEnd,
-                    chapter?.Id,
+                    chapterId,
                     project.Metadata.DocumentRevision);
                 if (!updated)
                     return null;
@@ -1302,12 +1312,12 @@ namespace FujiyNotepad.WinUI
                 {
                     StartOffset = repairedStart,
                     EndOffset = repairedEnd,
-                    ChapterId = chapter?.Id,
+                    ChapterId = chapterId,
                     DocumentRevision = project.Metadata.DocumentRevision,
                     IsOrphaned = false,
                 };
             }
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or OverflowException)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 diagnostics.LogSwallowed("Repair small annotation anchor", ex);
                 return null;
@@ -1341,8 +1351,13 @@ namespace FujiyNotepad.WinUI
                 string currentQuote = ExtractSmallAnnotationRange(
                     currentProvider, new TextPosition(start.Line, start.Column),
                     new TextPosition(end.Line, end.Column));
-                if (!string.Equals(currentQuote, anchor.Quote, StringComparison.Ordinal))
+                if (!string.Equals(
+                    AnnotationAnchorQuoteLocator.NormalizeLineEndings(currentQuote),
+                    AnnotationAnchorQuoteLocator.NormalizeLineEndings(anchor.Quote),
+                    StringComparison.Ordinal))
+                {
                     return false;
+                }
 
                 position = new TextPosition(start.Line, start.Column);
                 return true;
