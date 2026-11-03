@@ -434,7 +434,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 `7b91f365cdf0809ad22c0cf30e6e47ddd3a472f8`（根据工作区实测优化参考资料区：增加默认开启的“小批”“章批”独立显示开关；分类筛选随开关联动；仅显示当前过滤后仍有批注的章节；章节和批注内容默认展开并用箭头折叠；改为树形缩进；去掉未命名占位、重复分类和原文前缀章节标题；原文摘录灰色显示。）
 
-`本次修复提交`（修复工作区显示开关导致的启动崩溃：移除 ToggleSwitch 在 XAML 中的 Toggled 事件声明，改为在 MainWindow.InitializeComponent 完成、所有命名控件创建后再订阅事件，避免初始化 IsOn 时访问尚未创建的分类 ComboBox。）
+`c47c7ff9c731e69ea9f0ab8b60c795060c37845b`（修复工作区显示开关导致的启动崩溃：移除 ToggleSwitch 在 XAML 中的 Toggled 事件声明，改为在 MainWindow.InitializeComponent 完成、所有命名控件创建后再订阅事件，避免初始化 IsOn 时访问尚未创建的分类 ComboBox。）
 
 本轮大批注相关提交：
 - `1ee345788bc54cc7b203b5c4618830553a5367ea`：独立数据模型、SQLite 表、CRUD、连续章节校验、参考资料查询和数据层测试。
