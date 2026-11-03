@@ -1314,8 +1314,11 @@ namespace FujiyNotepad.WinUI
                     // A chapter-bound anchor must never be relocated by matching text in another chapter.
                     // Use its saved chapter range only when that range has been updated to the current revision.
                     NovelChapter? chapter = await store.GetChapterByIdAsync(savedChapterId);
+                    NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
                     if (chapter is null || !chapter.IsActive
-                        || chapter.DocumentRevision != project.Metadata.DocumentRevision)
+                        || chapter.DocumentRevision != project.Metadata.DocumentRevision
+                        || (indexState is { } savedIndex
+                            && savedIndex.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion))
                     {
                         return null;
                     }
@@ -1361,11 +1364,15 @@ namespace FujiyNotepad.WinUI
 
                 if (repairedChapterId is null)
                 {
-                    NovelChapter? matchedChapter = await store.GetChapterAtOffsetAsync(repairedStart);
-                    if (matchedChapter is { } currentChapter
-                        && currentChapter.DocumentRevision == project.Metadata.DocumentRevision)
+                    NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
+                    if (indexState is { ParserVersion: NovelChapterIndexBuilder.CurrentParserVersion })
                     {
-                        repairedChapterId = currentChapter.Id;
+                        NovelChapter? matchedChapter = await store.GetChapterAtOffsetAsync(repairedStart);
+                        if (matchedChapter is { } currentChapter
+                            && currentChapter.DocumentRevision == project.Metadata.DocumentRevision)
+                        {
+                            repairedChapterId = currentChapter.Id;
+                        }
                     }
                 }
 
