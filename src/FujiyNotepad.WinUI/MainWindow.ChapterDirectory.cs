@@ -11,6 +11,16 @@ public sealed partial class MainWindow
 
     private async void ChapterDirectory_Click(object sender, RoutedEventArgs e)
     {
+        if (BigAnnotationWorkspace.Visibility == Visibility.Visible)
+        {
+            if (!await TryLeaveBigAnnotationEditorAsync())
+            {
+                ChapterDirectoryItem.IsChecked = false;
+                return;
+            }
+            HideBigAnnotationWorkspace();
+        }
+
         if (activeAnnotationStore is null || activeNovelProject is null)
         {
             ChapterDirectoryItem.IsChecked = false;

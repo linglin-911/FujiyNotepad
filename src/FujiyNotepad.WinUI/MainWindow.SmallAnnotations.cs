@@ -19,6 +19,16 @@ namespace FujiyNotepad.WinUI
 
         private async void SmallAnnotations_Click(object sender, RoutedEventArgs e)
         {
+            if (BigAnnotationWorkspace.Visibility == Visibility.Visible)
+            {
+                if (!await TryLeaveBigAnnotationEditorAsync())
+                {
+                    SmallAnnotationsItem.IsChecked = false;
+                    return;
+                }
+                HideBigAnnotationWorkspace();
+            }
+
             if (activeAnnotationStore is null || activeNovelProject is null)
             {
                 SmallAnnotationsItem.IsChecked = false;

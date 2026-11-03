@@ -525,6 +525,7 @@ namespace FujiyNotepad.WinUI
         private async Task CloseActiveNovelProjectAsync()
         {
             bool hadActiveProject = activeNovelProject is not null || activeAnnotationStore is not null;
+            ResetBigAnnotationWorkspaceForProjectClose();
             NovelAnnotationStore? store = activeAnnotationStore;
             activeAnnotationStore = null;
             activeNovelProject = null;
@@ -592,6 +593,7 @@ namespace FujiyNotepad.WinUI
             ChapterDirectoryItem.IsEnabled = hasProject;
             SmallAnnotationsItem.IsEnabled = hasProject;
             ChapterAnnotationsItem.IsEnabled = hasProject;
+            BigAnnotationsItem.IsEnabled = hasProject;
             View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
             if (!hasProject)
             {
@@ -601,6 +603,8 @@ namespace FujiyNotepad.WinUI
                 SmallAnnotationsItem.IsChecked = false;
                 ChapterAnnotationPane.Visibility = Visibility.Collapsed;
                 ChapterAnnotationsItem.IsChecked = false;
+                BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
+                BigAnnotationsItem.IsChecked = false;
             }
         }
 
