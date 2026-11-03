@@ -26,8 +26,13 @@ The project document is opened through the existing positional byte-source and l
 - `NovelAnnotation`: independent note content and optional single category.
 - `AnnotationAnchor`: one [start, end) UTF-16 range in the current project document.
 - `NovelChapter`: detected chapter range in the current project document.
+- `BigAnnotationCategory`: category namespace dedicated to big annotations.
+- `BigAnnotation`: independent long-form note with its own title, body, timestamps and optional category.
+- `BigAnnotationChapter`: ordered relation from a big annotation to a stable `ChapterId`.
 
 One annotation can have many anchors. Multiple annotations may have identical, nested, crossing or partially overlapping anchors. No range exclusion constraint is permitted.
+
+Big annotations are independent documents, not parents of small or chapter annotations. Their chapter links are stored in `BigAnnotationChapters`; the store validates that a newly created or changed range contains at least two active, adjacent chapters in chapter order. Existing archived chapter links remain preserved when only the big annotation body is edited. Reference data is queried live from the small-annotation and chapter-annotation tables; it is not copied into the big annotation or represented as a child relationship. A small annotation linked to several selected chapters is returned once with all of its selected source anchors.
 
 SQLite is the durable store. Anchor indexes cover annotation ID, start offset, end offset and chapter ID. An edit queries anchors whose ranges intersect or follow the edit point and updates them in one database transaction.
 
@@ -40,11 +45,12 @@ The main window exposes a `Novel Project` menu:
 - Project metadata and external-edit manifests use the source-generated `NovelProjectJsonContext`; reflection-based `System.Text.Json` serialization is disabled in the Native AOT application. Failed project imports remove partial metadata, copied documents, and newly created empty project directories.
 - `Export Marked Working Copy...` opens a save picker and calls `ExternalEditSession.CreateMarkedAsync`. The marked export is separate from the clean project document.
 - `Validate Edited Copy...` asks for the session's `session.json` and the third-party-edited text file, checks that the session belongs to the active project and that the project baseline has not changed, then displays intact and damaged marker counts.
+- `Big Annotations Workspace` opens the big-annotation management list. Creating or editing a note opens a two-pane workspace: the left pane queries small and chapter annotations for the linked chapter range; the right pane edits the independent big-annotation title, category and body.
 - `Close Novel Project` closes the annotation workspace but leaves the current document open in the ordinary read-only viewer.
 
 The active project folder is persisted alongside the last-session document path in user settings. On startup, the app restores the project workspace (including its SQLite annotation store) before restoring the saved scroll/caret position, rather than reopening only the document as a plain text file. Explicitly closing a project clears this project association while leaving the document open. Project activation failures are surfaced instead of silently leaving the menu in ordinary-file mode.
 
-This first UI slice deliberately does not apply an edited file. It only validates marker integrity. The annotation authoring panes, chapter detection/management UI, diff preview, marker stripping, and confirmed apply/recovery workflow remain future work. At present, if a project has no saved anchors or chapter ranges, a marked export contains no marker pairs and is effectively a plain text copy.
+The small-annotation panel, chapter-annotation panel, chapter directory and big-annotation management/workspace are implemented in the current feature branch. The big-annotation workspace is pending the user's Windows x64 build and core-path smoke test; it is not marked user-accepted yet. This first external-edit UI slice deliberately does not apply an edited file. It only validates marker integrity. Diff preview, marker stripping, and the confirmed apply/recovery workflow remain future work. At present, if a project has no saved anchors or chapter ranges, a marked export contains no marker pairs and is effectively a plain text copy.
 
 ## External editing workflow
 
