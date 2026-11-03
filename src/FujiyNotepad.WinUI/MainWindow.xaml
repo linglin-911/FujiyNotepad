@@ -503,9 +503,9 @@
                                   SelectionMode="None">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Title}"
-                                               TextWrapping="Wrap"
-                                               Padding="8,7" />
+                                    <Grid Padding="8,7">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                    </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
