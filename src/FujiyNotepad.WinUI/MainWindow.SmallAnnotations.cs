@@ -1217,10 +1217,10 @@ namespace FujiyNotepad.WinUI
                 AnnotationAnchor? repaired = await TryRepairSmallAnnotationAnchorAsync(anchor, project, store);
                 if (repaired is not null
                     && ReferenceEquals(project, activeNovelProject)
-                    && ReferenceEquals(store, activeAnnotationStore))
+                    && ReferenceEquals(store, activeAnnotationStore)
+                    && TryResolveSmallAnnotationAnchor(repaired, out position))
                 {
                     anchor = repaired;
-                    TryResolveSmallAnnotationAnchor(anchor, out position);
                     await RefreshSmallAnnotationsAsync(anchor.AnnotationId);
                     await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
                     LblStatus.Text = "已根据唯一匹配的原文摘录修复一处小批注位置。";
