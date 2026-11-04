@@ -861,7 +861,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 #### 13.9.4 开发分片与验收
 
-1. 4.1（代码已提交，待构建/测试）：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；现有字体/Zoom 快捷操作已以 ReaderSettings 为主数据，不改变可见 UI。
+1. 4.1（用户验收通过）：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；现有字体/Zoom 快捷操作已以 ReaderSettings 为主数据，不改变可见 UI。Release x64 build 成功，983/983 测试通过。
 2. 4.2（代码已提交，待新一轮构建/测试）：接通比例布局字体/字号/行距，新增独立 ReaderPalette，排版变化时恢复原文 UTF-16 视口锚点。
 3. 4.3：增加全宽阅读背景视口和居中最大宽度正文容器，保持标记刻度对齐。
 4. 4.4：增加统一阅读设置窗口，完成系统字体选择、控件、应用/取消和持久化。
@@ -869,6 +869,6 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 **禁止事项：** 不增加主界面字体/字号/背景设置；不让阅读主题驱动应用主题；不新增项目级阅读设置；不改 SQLite/锚点模型；不因修改设置而全文同步重排；Phase 4 不顺便重做主窗口整体视觉风格。
 
-4.1 验收结果：用户 Release x64 build 成功，983/983 测试通过（0 失败、0 跳过）；唯一警告为 `ProportionalTextLayoutEngineTests.cs(310,42)` 的 xUnit2031 建议，不影响构建和测试。4.2 已提交代码：ReaderPalette.cs、CanvasPalette.cs、TextCanvas.cs、TextLayoutEngine.cs、MainWindow.xaml.cs，以及 ReaderPaletteTests.cs 和 ProportionalTextLayoutEngineTests.cs。4.2 新增 13 项测试尚未由用户运行，不能标记为验收通过。
+4.1 验收结果：用户 Release x64 build 成功，983/983 测试通过（0 失败、0 跳过）；当时出现的 `ProportionalTextLayoutEngineTests.cs` xUnit2031 警告已在当前分支改用 predicate overload 修正，等待下一轮 build 确认。4.2 已提交代码：ReaderPalette.cs、CanvasPalette.cs、TextCanvas.cs、TextLayoutEngine.cs、MainWindow.xaml.cs，以及 ReaderPaletteTests.cs 和 ProportionalTextLayoutEngineTests.cs。4.2 新增 13 项测试尚未由用户运行，不能标记为验收通过。
 
 详细架构见 `docs/reader-text-layout-architecture.md` 的“Phase 4 — global reader settings architecture”。
