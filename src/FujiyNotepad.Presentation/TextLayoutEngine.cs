@@ -163,16 +163,29 @@ namespace FujiyNotepad.Presentation
         /// line number only on the first row). Always false in the non-wrap, one-row-per-line model.
         /// </summary>
         public bool IsWrapContinuation { get; init; }
+
+        /// <summary>True when geometry and source ranges come from the proportional layout provider.</summary>
+        public bool UsesProportionalLayout { get; init; }
+
+        /// <summary>Half-open source UTF-16 range represented by this visual row.</summary>
+        public int SourceStartIndex { get; init; }
+        public int SourceEndIndex { get; init; }
+
+        /// <summary>Top and height of this row inside its complete source-line layout.</summary>
+        public double LayoutRowTop { get; init; }
+        public double LayoutRowHeight { get; init; }
+
+        /// <summary>Absolute source-line UTF-16 caret index for the proportional renderer.</summary>
+        public int CaretSourceIndex { get; init; }
     }
 
     /// <summary>
-    /// The current framework-independent legacy engine behind the WinUI text canvas. It tracks scrolling,
+    /// The framework-independent reader engine behind the WinUI text canvas. It tracks scrolling,
     /// caret/selection, hit-testing and the per-line render model, but its layout calculations still assume
-    /// fixed monospace cells injected through <see cref="SetMetrics"/>. It remains active during the staged
-    /// proportional-font migration; the new <see cref="ITextLayoutProvider"/> contract is not wired into this
-    /// engine yet. The class has no Win2D/WinUI/WinRT dependency and remains headlessly unit-testable.
+    /// fixed monospace cells on its legacy path, while an optional <see cref="ITextLayoutProvider"/> supplies
+    /// proportional layout, source-index hit testing and visual-row geometry. The class has no Win2D/WinUI/WinRT dependency and remains headlessly unit-testable.
     /// </summary>
-    public sealed class TextLayoutEngine
+    public sealed partial class TextLayoutEngine
     {
         private const int MaxCopyChars = 25_000_000;
 
@@ -224,6 +237,7 @@ namespace FujiyNotepad.Presentation
         private TextPosition caret;
         private TextPosition anchor;
         private int desiredColumn = -1;
+            desiredProportionalX = -1;
 
         /// <summary>Raised when the scroll position or horizontal extent changes (host re-syncs scrollbars).</summary>
         public event Action? ViewChanged;
@@ -268,6 +282,7 @@ namespace FujiyNotepad.Presentation
                 }
                 tabSize = clamped;
                 columnsCache.Clear();
+                ClearProportionalLayoutCache();
                 RaiseViewChanged();
                 RaiseRedraw();
             }
@@ -321,6 +336,7 @@ namespace FujiyNotepad.Presentation
                     return;
                 }
                 wordWrap = value;
+                ClearProportionalLayoutCache();
                 firstVisibleRow = 0;
                 horizontalOffset = 0;
                 firstVisibleLine = Math.Clamp(firstVisibleLine, 0, MaxFirstLine);
@@ -629,6 +645,7 @@ namespace FujiyNotepad.Presentation
 
         public void SetProvider(ILineSource? newProvider)
         {
+            ClearProportionalLayoutCache();
             provider = newProvider;
             totalLines = newProvider?.LineCount ?? 0;
             firstVisibleLine = 0;
@@ -636,6 +653,7 @@ namespace FujiyNotepad.Presentation
             horizontalOffset = 0;
             caret = anchor = new TextPosition(0, 0);
             desiredColumn = -1;
+            desiredProportionalX = -1;
             columnsCache.Clear();
             bookmarks.Clear(); // bookmarks are line indices into the previous file
             RaiseViewChanged();
@@ -651,6 +669,7 @@ namespace FujiyNotepad.Presentation
             }
 
             totalLines = count;
+            ClearProportionalLayoutCache();
             if (firstVisibleLine > MaxFirstLine)
             {
                 firstVisibleLine = MaxFirstLine;
@@ -669,6 +688,7 @@ namespace FujiyNotepad.Presentation
             lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
             caret = anchor = new TextPosition(lineIndex, 0);
             desiredColumn = -1;
+            desiredProportionalX = -1;
             SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
             RaiseBlinkReset();
             RaiseCaretChanged();
@@ -739,6 +759,7 @@ namespace FujiyNotepad.Presentation
             int col = Math.Clamp(column, 0, lineLen);
             caret = anchor = new TextPosition(lineIndex, col);
             desiredColumn = -1;
+            desiredProportionalX = -1;
             SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
             EnsureCaretVisibleHorizontally();
             RaiseBlinkReset();
@@ -752,7 +773,14 @@ namespace FujiyNotepad.Presentation
             if (provider is null || totalLines == 0)
                 return;
 
-            if (wordWrap)
+            if (UsesProportionalLayout)
+            {
+                TryGetProportionalVisualPosition(caret, out int caretRow);
+                (int topLine, int topRow) = AdvanceDisplayRows(
+                    caret.Line, caretRow, -(VisibleRowCount / 2));
+                SetTopPosition(topLine, topRow);
+            }
+            else if (wordWrap)
             {
                 int wrapCols = WrapColumns;
                 IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(GetColumns(caret.Line), wrapCols);
@@ -781,6 +809,7 @@ namespace FujiyNotepad.Presentation
             anchor = new TextPosition(lineIndex, start);
             caret = new TextPosition(lineIndex, end);
             desiredColumn = -1;
+            desiredProportionalX = -1;
             if (wordWrap)
             {
                 // Make the match's wrapped row visible (the match may be deep in a long, wrapped line).
@@ -868,6 +897,7 @@ namespace FujiyNotepad.Presentation
             }
             caret = pos;
             desiredColumn = -1;
+            desiredProportionalX = -1;
             RaiseBlinkReset();
             RaiseCaretChanged();
             RaiseRedraw();
@@ -897,6 +927,7 @@ namespace FujiyNotepad.Presentation
             anchor = new TextPosition(pos.Line, start);
             caret = new TextPosition(pos.Line, end);
             desiredColumn = -1;
+            desiredProportionalX = -1;
             RaiseBlinkReset();
             RaiseCaretChanged();
             RaiseRedraw();
@@ -991,6 +1022,9 @@ namespace FujiyNotepad.Presentation
         /// <summary>Maps a viewport point to the nearest caret position. Metrics must be set first.</summary>
         public TextPosition HitTest(double x, double y)
         {
+            if (UsesProportionalLayout)
+                return HitTestProportional(x, y, returnCharacter: false);
+
             if (provider == null || totalLines == 0 || lineHeight <= 0)
             {
                 return new TextPosition(0, 0);
@@ -1036,16 +1070,16 @@ namespace FujiyNotepad.Presentation
                     MoveCaretByChar(+1, shift);
                     break;
                 case NavKey.Up:
-                    if (wordWrap) { MoveCaretByDisplayRow(-1, shift); } else { MoveCaretByLine(-1, shift); }
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(-1, shift); } else { MoveCaretByLine(-1, shift); }
                     break;
                 case NavKey.Down:
-                    if (wordWrap) { MoveCaretByDisplayRow(+1, shift); } else { MoveCaretByLine(+1, shift); }
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(+1, shift); } else { MoveCaretByLine(+1, shift); }
                     break;
                 case NavKey.PageUp:
-                    if (wordWrap) { MoveCaretByDisplayRow(-VisibleRowCount, shift); } else { MoveCaretByLine(-FullyVisibleLineCount, shift); }
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(-VisibleRowCount, shift); } else { MoveCaretByLine(-FullyVisibleLineCount, shift); }
                     break;
                 case NavKey.PageDown:
-                    if (wordWrap) { MoveCaretByDisplayRow(+VisibleRowCount, shift); } else { MoveCaretByLine(+FullyVisibleLineCount, shift); }
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(+VisibleRowCount, shift); } else { MoveCaretByLine(+FullyVisibleLineCount, shift); }
                     break;
                 case NavKey.LineStart:
                     MoveCaretTo(new TextPosition(caret.Line, 0), shift);
@@ -1083,6 +1117,38 @@ namespace FujiyNotepad.Presentation
 
         private void MoveCaretByChar(int delta, bool shift)
         {
+            if (UsesProportionalLayout)
+            {
+                int line = caret.Line;
+                int column = caret.Column;
+                if (delta < 0)
+                {
+                    if (column > 0)
+                        column = GetProportionalLayout(line).GetPreviousCaretIndex(column);
+                    else if (line > 0)
+                    {
+                        line--;
+                        column = LineLength(line);
+                    }
+                }
+                else
+                {
+                    if (column < LineLength(line))
+                        column = GetProportionalLayout(line).GetNextCaretIndex(column);
+                    else if (line < totalLines - 1)
+                    {
+                        line++;
+                        column = 0;
+                    }
+                }
+
+                desiredColumn = -1;
+            desiredProportionalX = -1;
+                desiredProportionalX = -1;
+                ApplyCaret(new TextPosition(line, column), shift);
+                return;
+            }
+
             int line = caret.Line;
             int col = caret.Column + delta;
 
@@ -1112,6 +1178,7 @@ namespace FujiyNotepad.Presentation
             }
 
             desiredColumn = -1;
+            desiredProportionalX = -1;
             ApplyCaret(new TextPosition(line, col), shift);
         }
 
@@ -1129,6 +1196,7 @@ namespace FujiyNotepad.Presentation
         private void MoveCaretTo(TextPosition pos, bool shift)
         {
             desiredColumn = -1;
+            desiredProportionalX = -1;
             int line = Math.Clamp(pos.Line, 0, totalLines - 1);
             ApplyCaret(new TextPosition(line, Math.Clamp(pos.Column, 0, LineLength(line))), shift);
         }
@@ -1143,6 +1211,7 @@ namespace FujiyNotepad.Presentation
             if (!keepDesired)
             {
                 desiredColumn = -1;
+            desiredProportionalX = -1;
             }
             if (wordWrap)
             {
@@ -1169,6 +1238,9 @@ namespace FujiyNotepad.Presentation
         // up), clamping at the document's first/last row.
         private (int line, int row) AdvanceDisplayRows(int line, int row, int delta)
         {
+            if (UsesProportionalLayout)
+                return AdvanceProportionalDisplayRows(line, row, delta);
+
             int wrapCols = WrapColumns;
             while (delta > 0)
             {
@@ -1232,6 +1304,12 @@ namespace FujiyNotepad.Presentation
         // the row-local display column here).
         private void MoveCaretByDisplayRow(int delta, bool shift)
         {
+            if (UsesProportionalLayout)
+            {
+                MoveCaretByProportionalDisplayRow(delta, shift);
+                return;
+            }
+
             int wrapCols = WrapColumns;
             LineColumns curCols = GetColumns(caret.Line);
             IReadOnlyList<LineWrapper.WrapRow> curRows = LineWrapper.Wrap(curCols, wrapCols);
@@ -1255,6 +1333,27 @@ namespace FujiyNotepad.Presentation
 
         private void EnsureCaretVisibleVerticallyWrapped()
         {
+            if (UsesProportionalLayout)
+            {
+                TryGetProportionalVisualPosition(caret, out int proportionalRow);
+                if (ComparePos(caret.Line, proportionalRow, firstVisibleLine, firstVisibleRow) < 0)
+                {
+                    SetTopPosition(caret.Line, proportionalRow);
+                    return;
+                }
+
+                int visibleRows = VisibleRowCount;
+                (int lastLine, int lastRow) =
+                    AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, visibleRows - 1);
+                if (ComparePos(caret.Line, proportionalRow, lastLine, lastRow) > 0)
+                {
+                    (int topLine, int topRow) =
+                        AdvanceDisplayRows(caret.Line, proportionalRow, -(visibleRows - 1));
+                    SetTopPosition(topLine, topRow);
+                }
+                return;
+            }
+
             int wrapCols = WrapColumns;
             int caretRow = LineWrapper.RowOfCharIndex(LineWrapper.Wrap(GetColumns(caret.Line), wrapCols), caret.Column);
 
@@ -1296,6 +1395,7 @@ namespace FujiyNotepad.Presentation
             int last = totalLines - 1;
             caret = new TextPosition(last, LineLength(last));
             desiredColumn = -1;
+            desiredProportionalX = -1;
             RaiseRedraw();
             RaiseCaretChanged(); // refresh the status bar (selection stats + timestamp delta)
         }
@@ -1314,6 +1414,19 @@ namespace FujiyNotepad.Presentation
 
         private void EnsureCaretVisibleHorizontally()
         {
+            if (UsesProportionalLayout)
+            {
+                ITextLayoutResult layout = GetProportionalLayout(caret.Line);
+                double caretX = layout.GetCaretGeometry(caret.Column).X;
+                double rightInset = Math.Max(1, charWidth) + TextPadding * 2;
+                double textViewport = ViewportWidth - GutterWidthPx;
+                if (caretX < horizontalOffset)
+                    SetHorizontalOffset(caretX);
+                else if (caretX > horizontalOffset + textViewport - rightInset)
+                    SetHorizontalOffset(caretX - textViewport + rightInset);
+                return;
+            }
+
             if (charWidth <= 0)
             {
                 return;
@@ -1423,6 +1536,9 @@ namespace FujiyNotepad.Presentation
         /// </summary>
         public IReadOnlyList<VisibleLine> GetVisibleLines(bool hasFocus, bool caretVisible)
         {
+            if (UsesProportionalLayout)
+                return GetVisibleLinesProportional(hasFocus, caretVisible);
+
             var lines = new List<VisibleLine>();
             if (provider == null || totalLines == 0 || lineHeight <= 0)
             {
