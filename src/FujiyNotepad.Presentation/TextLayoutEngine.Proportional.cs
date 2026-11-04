@@ -165,6 +165,12 @@ public sealed partial class TextLayoutEngine
             return lines;
         }
 
+        if (wordWrap)
+        {
+            int firstRowCount = GetProportionalRowCount(firstVisibleLine);
+            firstVisibleRow = Math.Clamp(firstVisibleRow, 0, firstRowCount - 1);
+        }
+
         (TextPosition selectionStart, TextPosition selectionEnd) = NormalizedSelection();
         bool hasSelection = selectionStart != selectionEnd;
         double y = 0;
@@ -386,7 +392,7 @@ public sealed partial class TextLayoutEngine
             return (0, 0);
 
         line = Math.Clamp(line, 0, totalLines - 1);
-        row = Math.Max(0, row);
+        row = Math.Clamp(row, 0, GetProportionalRowCount(line) - 1);
 
         while (delta > 0)
         {
