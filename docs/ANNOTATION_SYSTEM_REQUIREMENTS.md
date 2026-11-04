@@ -613,7 +613,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | Phase 1 | 布局接口、UTF-16 坐标约定、契约测试、旧路径标记 | 用户验收通过：Release x64 编译成功，501/501 测试通过 |
-| Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 代码已实现，待本地编译及运行时验证；尚未接入阅读器 |
+| Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 用户验收通过：Release x64 编译成功，Presentation.Tests 508/508 通过；后续已接入 Phase 3 |
 | Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；用户本地 975/975 测试通过，但启动后阅读区域空白并在约十余秒后退出，真实运行验收未通过；新增启动/索引/绘制诊断日志，待复测 |
 | Phase 4 | 阅读字体、字号、行距、正文宽度和主题设置 | 未开始 |
 | Phase 5 | 有界缓存、长行性能验证和旧代码清理 | 未开始 |
