@@ -376,7 +376,7 @@ namespace FujiyNotepad.Presentation
             }
 
             int line = Math.Clamp(caret.Line, 0, totalLines - 1);
-            return GetColumns(line).Source;
+            return GetSourceLine(line);
         }
 
         /// <summary>
@@ -490,7 +490,7 @@ namespace FujiyNotepad.Presentation
             long characters = 0;
             for (int line = start.Line; line <= end.Line; line++)
             {
-                int lineLength = GetColumns(line).Source.Length;
+                int lineLength = GetSourceLine(line).Length;
                 if (line == start.Line)
                 {
                     characters += Math.Max(0, lineLength - start.Column);
@@ -531,7 +531,7 @@ namespace FujiyNotepad.Presentation
                 return null;
             }
 
-            string source = GetColumns(start.Line).Source;
+            string source = GetSourceLine(start.Line);
             int from = Math.Clamp(start.Column, 0, source.Length);
             int to = Math.Clamp(end.Column, 0, source.Length);
             if (to <= from)
@@ -556,7 +556,7 @@ namespace FujiyNotepad.Presentation
 
             for (int lineIndex = start.Line; lineIndex <= end.Line; lineIndex++)
             {
-                string line = GetColumns(lineIndex).Source;
+                string line = GetSourceLine(lineIndex);
                 int from = lineIndex == start.Line ? Math.Clamp(start.Column, 0, line.Length) : 0;
                 int to = lineIndex == end.Line ? Math.Clamp(end.Column, from, line.Length) : line.Length;
                 builder.Append(line.AsSpan(from, to - from));
@@ -597,8 +597,8 @@ namespace FujiyNotepad.Presentation
                 return null;
             }
 
-            if (TimestampParser.TryParseLeading(GetColumns(start.Line).Source, out DateTimeOffset first) &&
-                TimestampParser.TryParseLeading(GetColumns(end.Line).Source, out DateTimeOffset last))
+            if (TimestampParser.TryParseLeading(GetSourceLine(start.Line), out DateTimeOffset first) &&
+                TimestampParser.TryParseLeading(GetSourceLine(end.Line), out DateTimeOffset last))
             {
                 return last - first;
             }
@@ -755,7 +755,7 @@ namespace FujiyNotepad.Presentation
             }
 
             lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
-            int lineLen = GetColumns(lineIndex).Source.Length;
+            int lineLen = LineLength(lineIndex);
             int col = Math.Clamp(column, 0, lineLen);
             caret = anchor = new TextPosition(lineIndex, col);
             desiredColumn = -1;
@@ -925,7 +925,7 @@ namespace FujiyNotepad.Presentation
             }
 
             pos = ClampPosition(pos);
-            string line = GetColumns(pos.Line).Source;
+            string line = GetSourceLine(pos.Line);
             (int start, int end) = WordBoundaries(line, pos.Column);
             anchor = new TextPosition(pos.Line, start);
             caret = new TextPosition(pos.Line, end);
@@ -1110,7 +1110,9 @@ namespace FujiyNotepad.Presentation
             return new KeyResult(true, copyText);
         }
 
-        private int LineLength(int line) => GetColumns(line).Source.Length;
+        private string GetSourceLine(int line) => provider!.GetLine(line);
+
+        private int LineLength(int line) => GetSourceLine(line).Length;
 
         private TextPosition ClampPosition(TextPosition pos)
         {
@@ -1476,22 +1478,22 @@ namespace FujiyNotepad.Presentation
             var sb = new StringBuilder();
             if (start.Line == end.Line)
             {
-                string line = GetColumns(start.Line).Source;
+                string line = GetSourceLine(start.Line);
                 sb.Append(Slice(line, start.Column, end.Column));
             }
             else
             {
-                string firstLine = GetColumns(start.Line).Source;
+                string firstLine = GetSourceLine(start.Line);
                 sb.Append(Slice(firstLine, start.Column, firstLine.Length)).Append("\r\n");
 
                 for (int l = start.Line + 1; l < end.Line && sb.Length < MaxCopyChars; l++)
                 {
-                    sb.Append(GetColumns(l).Source).Append("\r\n");
+                    sb.Append(GetSourceLine(l)).Append("\r\n");
                 }
 
                 if (sb.Length < MaxCopyChars)
                 {
-                    string lastLine = GetColumns(end.Line).Source;
+                    string lastLine = GetSourceLine(end.Line);
                     sb.Append(Slice(lastLine, 0, end.Column));
                 }
             }
@@ -1528,7 +1530,7 @@ namespace FujiyNotepad.Presentation
             var lines = new List<string>(lastLine - firstLine + 1);
             for (int l = firstLine; l <= lastLine; l++)
             {
-                lines.Add(GetColumns(l).Source);
+                lines.Add(GetSourceLine(l));
             }
             return LineNumberedCopy.Format(firstLine + 1, lines);
         }
