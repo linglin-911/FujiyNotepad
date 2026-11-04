@@ -224,6 +224,21 @@ namespace FujiyNotepad.Presentation.Tests
             Assert.Equal(0, raised);
         }
 
+        [Fact]
+        public async Task RefreshSourceContent_RaisesViewChangedAndRedraw()
+        {
+            TextLayoutEngine e = await NewEngineAsync(TestData.ManyLines(10));
+            int viewChanged = 0;
+            int redrawRequested = 0;
+            e.ViewChanged += () => viewChanged++;
+            e.RedrawRequested += () => redrawRequested++;
+
+            e.RefreshSourceContent();
+
+            Assert.Equal(1, viewChanged);
+            Assert.Equal(1, redrawRequested);
+        }
+
         // ----- Hit-testing -----
 
         [Fact]
