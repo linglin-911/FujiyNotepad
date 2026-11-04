@@ -1338,7 +1338,7 @@ namespace FujiyNotepad.WinUI
                 if (p >= 100 || p >= lastLoggedProgress + 10)
                 {
                     lastLoggedProgress = p;
-                    LogDiagnostic($"Indexing: progress={p}%; indexedLines={provider?.LineCount ?? 0:N0}");
+                    LogDiagnostic($"Indexing: progress={p}%; indexedLines={(provider?.LineCount ?? 0):N0}");
                 }
             });
             LogDiagnostic($"Indexing: task starting; file={Path.GetFileName(currentFilePath ?? string.Empty)}");
@@ -1347,7 +1347,7 @@ namespace FujiyNotepad.WinUI
                 try
                 {
                     await LineIndexer.StartTaskToIndexLines(token, progress);
-                    LogDiagnostic($"Indexing: task completed; indexedLines={provider?.LineCount ?? 0:N0}");
+                    LogDiagnostic($"Indexing: task completed; indexedLines={(provider?.LineCount ?? 0):N0}");
                 }
                 catch (OperationCanceledException)
                 {
