@@ -139,7 +139,12 @@ public interface ITextLayoutResult : IDisposable
 {
     string SourceText { get; }
     double LayoutWidth { get; }
+    /// <summary>Full vertical extent from the layout origin through its bottom edge, in renderer logical units.</summary>
     double LayoutHeight { get; }
+    /// <summary>
+    /// Visual rows in source order. Their combined vertical coverage must reach LayoutHeight; the final row
+    /// may include trailing layout space below its baseline interval.
+    /// </summary>
     IReadOnlyList<TextLayoutVisualLine> VisualLines { get; }
 
     /// <summary>

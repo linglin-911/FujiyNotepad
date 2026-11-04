@@ -509,11 +509,22 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         }
 
         TextLayoutVisualLine last = rows[^1];
-        double totalHeight = last.Top + last.Height;
+        double mappedHeight = last.Top + last.Height;
+        double totalHeight = Math.Max(mappedHeight, GetPositiveLayoutHeight(layout));
+
+        // Caret baseline intervals do not always cover the complete native text-layout bounds. This can happen
+        // when fallback glyph metrics or trailing layout bounds extend below the final baseline interval.
+        // Extend only the final visual row so row traversal, hit-testing and the next source line all reserve
+        // the same full vertical extent as DirectWrite.
+        if (totalHeight > mappedHeight)
+        {
+            rows[^1] = last with { Height = totalHeight - last.Top };
+        }
+
         return (
             rows.ToArray(),
             trailingCounts.ToArray(),
-            Math.Max(totalHeight, GetPositiveLayoutHeight(layout)));
+            totalHeight);
     }
 
     private static float GetCharacterRowTop(CanvasTextLayout layout, int sourceIndex)
@@ -592,8 +603,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 
     private static double GetPositiveLayoutHeight(CanvasTextLayout layout)
     {
-        double height = layout.LayoutBoundsIncludingTrailingWhitespace.Height;
-        return double.IsFinite(height) && height > 0 ? height : 0;
+        Rect bounds = layout.LayoutBoundsIncludingTrailingWhitespace;
+        double bottom = bounds.Y + bounds.Height;
+        return double.IsFinite(bottom) && bottom > 0 ? bottom : 0;
     }
 
     private static int CountTrailingWhitespace(string sourceText)
