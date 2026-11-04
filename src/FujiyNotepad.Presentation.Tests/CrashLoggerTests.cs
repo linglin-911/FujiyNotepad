@@ -92,6 +92,25 @@ namespace FujiyNotepad.Presentation.Tests
         }
 
         [Fact]
+        public void Trace_WritesDiagnosticMessage()
+        {
+            string dir = TempDir();
+            string path = Path.Combine(dir, "crash.log");
+            try
+            {
+                Assert.True(new CrashLogger(path).Trace("MainWindow loaded"));
+
+                string text = File.ReadAllText(path);
+                Assert.Contains("Diagnostic", text);
+                Assert.Contains("MainWindow loaded", text);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        [Fact]
         public void Write_NoStackTrace_StillWritesTypeAndMessage()
         {
             string dir = TempDir();
