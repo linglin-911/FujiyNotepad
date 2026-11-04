@@ -51,6 +51,14 @@ public sealed partial class TextLayoutEngine
     /// Returns the cached native-backed layout for a source line. The result is owned by the engine and remains
     /// valid until it leaves the active viewport cache or layout settings/provider are changed.
     /// </summary>
+    /// <summary>Returns the original line terminator for whitespace visualization.</summary>
+    public LineEnding GetLineEnding(int lineIndex)
+    {
+        if (provider is null || lineIndex < 0 || lineIndex >= totalLines)
+            return LineEnding.None;
+        return LineEndingOf(lineIndex);
+    }
+
     public ITextLayoutResult? GetLayoutForLine(int lineIndex)
     {
         if (proportionalLayoutProvider is null || provider is null ||
@@ -223,9 +231,7 @@ public sealed partial class TextLayoutEngine
                             : ComputeProportionalRuleHighlights(
                                 highlightRules, source, row.SourceStartIndex, row.SourceEndIndex),
                         IsBookmarked = rowIndex == 0 && bookmarks.Count > 0 && bookmarks.Contains(sourceLine),
-                        Whitespace = showWhitespace
-                            ? WhitespaceMarkers.Compute(GetColumns(sourceLine), LineEndingOf(sourceLine))
-                            : NoWhitespace,
+                        Whitespace = NoWhitespace,
                         IsWrapContinuation = rowIndex > 0,
                         UsesProportionalLayout = true,
                         SourceStartIndex = row.SourceStartIndex,
