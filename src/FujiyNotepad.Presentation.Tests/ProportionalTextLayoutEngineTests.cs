@@ -308,7 +308,7 @@ public sealed class ProportionalTextLayoutEngineTests
         IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
 
         VisibleLine lastRowOfFirstLine = Assert.Single(
-            rows.Where(row => row.LineIndex == 0 && row.SourceEndIndex == 6));
+            rows, row => row.LineIndex == 0 && row.SourceEndIndex == 6);
         VisibleLine firstRowOfNextLine = rows.First(row => row.LineIndex == 1);
 
         Assert.Equal(28d, lastRowOfFirstLine.LayoutRowHeight);
