@@ -891,7 +891,7 @@ namespace FujiyNotepad.Presentation
                 return;
             }
             firstVisibleLine = value;
-            firstVisibleRow = 0; // a source-line scroll (scrollbar/Go To) lands at the top of that line
+            firstVisibleRow = 0; // a source-line jump lands at the top of that line
             RaiseViewChanged();
             RaiseRedraw();
         }
