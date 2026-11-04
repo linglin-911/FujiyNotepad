@@ -522,6 +522,99 @@ public sealed partial class TextLayoutEngine
         return new TextPosition(hitRow.LineIndex, sourceIndex);
     }
 
+    /// <summary>
+    /// Tests a pointer against the rectangular layout geometry of small-annotation source ranges.
+    /// Unlike glyph hit-testing, this intentionally accepts any point inside the range's selection-like
+    /// rectangle, including whitespace around the glyph ink.
+    /// </summary>
+    public bool TryHitTestAnnotationMarkers(
+        int lineIndex,
+        IReadOnlyList<TextAnnotationMarker> markers,
+        double x,
+        double y,
+        out TextPosition position)
+    {
+        position = default;
+        if (!UsesProportionalLayout || markers.Count == 0
+            || !double.IsFinite(x) || !double.IsFinite(y))
+        {
+            return false;
+        }
+
+        IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(
+            hasFocus: false, caretVisible: false);
+        VisibleLine? hitRow = null;
+        foreach (VisibleLine candidate in visible)
+        {
+            if (candidate.LineIndex == lineIndex
+                && y >= candidate.Y
+                && y < candidate.Y + candidate.LayoutRowHeight)
+            {
+                hitRow = candidate;
+                break;
+            }
+        }
+
+        if (hitRow is null)
+            return false;
+
+        ITextLayoutResult layout = GetProportionalLayout(lineIndex);
+        double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
+        double localX = x - hitRow.TextX;
+        double localY = y - layoutTop;
+        TextLayoutHitTestResult pointerHit = layout.HitTest(localX, localY);
+        int nearestCaret = Math.Clamp(pointerHit.CaretIndex, 0, layout.SourceText.Length);
+
+        int fallbackColumn = -1;
+        int fallbackDistance = int.MaxValue;
+        foreach (TextAnnotationMarker marker in markers)
+        {
+            int start = Math.Max(
+                hitRow.SourceStartIndex,
+                Math.Clamp(marker.StartColumn, 0, layout.SourceText.Length));
+            int end = Math.Min(
+                hitRow.SourceEndIndex,
+                Math.Clamp(marker.EndColumn, 0, layout.SourceText.Length));
+            if (end <= start)
+                continue;
+
+            foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(start, end - start))
+            {
+                double top = Math.Max(hitRow.LayoutRowTop, rectangle.Y);
+                double bottom = Math.Min(
+                    hitRow.LayoutRowTop + hitRow.LayoutRowHeight,
+                    rectangle.Y + rectangle.Height);
+                if (rectangle.Width <= 0 || bottom <= top
+                    || localX < rectangle.X || localX > rectangle.X + rectangle.Width
+                    || localY < top || localY > bottom)
+                {
+                    continue;
+                }
+
+                int lastCaret = Math.Max(start, layout.GetPreviousCaretIndex(end));
+                int candidateColumn = Math.Clamp(nearestCaret, start, lastCaret);
+                if (nearestCaret >= start && nearestCaret < end)
+                {
+                    position = new TextPosition(lineIndex, nearestCaret);
+                    return true;
+                }
+
+                int distance = Math.Abs(candidateColumn - nearestCaret);
+                if (distance < fallbackDistance)
+                {
+                    fallbackDistance = distance;
+                    fallbackColumn = candidateColumn;
+                }
+            }
+        }
+
+        if (fallbackColumn < 0)
+            return false;
+
+        position = new TextPosition(lineIndex, fallbackColumn);
+        return true;
+    }
+
     private static IReadOnlyList<HighlightRect> ClipProportionalHighlights(
         IReadOnlyList<(int Start, int Length)> spans,
         int clipStart,
