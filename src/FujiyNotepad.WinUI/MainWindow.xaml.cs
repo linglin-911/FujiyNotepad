@@ -10,7 +10,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.Windows.Storage.Pickers;
 using Windows.Graphics;
@@ -81,8 +80,6 @@ namespace FujiyNotepad.WinUI
         private string? stdinTempPath;
         private CancellationTokenSource? stdinCts;
         private Task indexingTask = Task.CompletedTask;
-        private bool syncingScroll;
-        private bool isUpdatingTotalLinesFromIndexRefresh;
 
         private readonly SettingsStore settingsStore = SettingsStore.Default();
         private AppSettings settings = new();
@@ -961,7 +958,6 @@ namespace FujiyNotepad.WinUI
             LogDiagnostic("OpenFile: index refresh timer started");
             StartIndexing();
             LogDiagnostic("OpenFile: StartIndexing returned");
-            SyncScrollBars();
             View.FocusCanvas();
             LogDiagnostic("OpenFile: reader focused; open sequence completed");
         }
@@ -1406,15 +1402,7 @@ namespace FujiyNotepad.WinUI
                 if (logFirstTick)
                     LogDiagnostic("IndexRefreshTimer: before View.UpdateTotalLines");
 
-                isUpdatingTotalLinesFromIndexRefresh = logFirstTick;
-                try
-                {
-                    View.UpdateTotalLines(provider.LineCount);
-                }
-                finally
-                {
-                    isUpdatingTotalLinesFromIndexRefresh = false;
-                }
+                View.UpdateTotalLines(provider.LineCount);
 
                 if (logFirstTick)
                     LogDiagnostic($"IndexRefreshTimer: after View.UpdateTotalLines; viewLines={View.TotalLines:N0}");
@@ -1506,108 +1494,25 @@ namespace FujiyNotepad.WinUI
 
         private void OnReaderViewChanged()
         {
-            bool logStages = isUpdatingTotalLinesFromIndexRefresh;
-            if (logStages)
-                LogDiagnostic("OnReaderViewChanged: entered during first index-refresh line-count update");
-
-            if (logStages)
-                LogDiagnostic("OnReaderViewChanged: before SyncScrollBars");
-            SyncScrollBars(logStages);
-            if (logStages)
-                LogDiagnostic("OnReaderViewChanged: after SyncScrollBars");
-
             if (activeAnnotationStore is null || activeNovelProject is null || filteredSource is not null)
             {
-                if (logStages)
-                    LogDiagnostic(
-                        $"OnReaderViewChanged: no active annotation workspace or filtered; " +
-                        $"storePresent={activeAnnotationStore is not null}; projectPresent={activeNovelProject is not null}; " +
-                        $"filtered={filteredSource is not null}");
-
                 annotationMarkerRefreshTimer.Stop();
                 annotationMarkerRefreshCancellation?.Cancel();
                 annotationMarkerRefreshCancellation = null;
                 if (activeAnnotationStore is null || filteredSource is not null)
-                {
-                    if (logStages)
-                        LogDiagnostic("OnReaderViewChanged: before clearing annotation markers");
                     View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
-                    if (logStages)
-                        LogDiagnostic("OnReaderViewChanged: annotation markers cleared");
-                }
                 return;
             }
 
-            if (logStages)
-                LogDiagnostic("OnReaderViewChanged: before starting annotation-marker refresh timer");
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshTimer.Start();
-            if (logStages)
-                LogDiagnostic("OnReaderViewChanged: annotation-marker refresh timer started");
         }
 
-        private void SyncScrollBars(bool logStages = false)
-        {
-            if (syncingScroll)
-            {
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: skipped because a scrollbar sync is already active");
-                return;
-            }
-
-            syncingScroll = true;
-            try
-            {
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: before View.FullyVisibleLineCount");
-                int viewportLines = View.FullyVisibleLineCount;
-                if (logStages)
-                    LogDiagnostic($"SyncScrollBars: after View.FullyVisibleLineCount; value={viewportLines}");
-
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: before reading View.MaxFirstLine");
-                int maxFirstLine = View.MaxFirstLine;
-                if (logStages)
-                    LogDiagnostic($"SyncScrollBars: before VScroll.Maximum assignment; value={maxFirstLine}");
-                VScroll.Maximum = maxFirstLine;
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: after VScroll.Maximum assignment");
-
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: before VScroll viewport/change/value assignments");
-                VScroll.ViewportSize = viewportLines;
-                VScroll.LargeChange = viewportLines;
-                VScroll.SmallChange = 1;
-                VScroll.Value = View.FirstVisibleLine;
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: after VScroll assignments");
-
-                double viewportWidth = View.ViewportWidthPx;
-                if (logStages)
-                    LogDiagnostic($"SyncScrollBars: before HScroll assignments; viewportWidth={viewportWidth:F1}");
-                HScroll.Maximum = Math.Max(0, View.HorizontalExtentPx - viewportWidth);
-                HScroll.ViewportSize = viewportWidth;
-                HScroll.SmallChange = View.CharWidthPx > 0 ? View.CharWidthPx : 8;
-                HScroll.LargeChange = viewportWidth;
-                HScroll.Value = View.HorizontalOffset;
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: after HScroll assignments");
-            }
-            finally
-            {
-                syncingScroll = false;
-                if (logStages)
-                    LogDiagnostic("SyncScrollBars: finished and syncingScroll reset");
-            }
-        }
-
-        // Word wrap removes horizontal overflow. Reading mode also hides the vertical scrollbar and its
-        // overview-ruler strip; mouse-wheel and keyboard scrolling continue to work on the canvas.
-        private void UpdateScrollBarVisibility()
+        // The reader has no visible scrollbar controls. Keep the independent overview ruler out of
+        // reading mode, while mouse-wheel scrolling and programmatic navigation remain available.
+        private void UpdateMarkerMarginVisibility()
         {
             bool readingMode = settings.ReadingMode && View.WordWrap;
-            HScroll.Visibility = View.WordWrap ? Visibility.Collapsed : Visibility.Visible;
-            VScroll.Visibility = readingMode ? Visibility.Collapsed : Visibility.Visible;
             MarkerMargin.Visibility = readingMode ? Visibility.Collapsed : Visibility.Visible;
         }
 
@@ -1646,24 +1551,6 @@ namespace FujiyNotepad.WinUI
             selectionHighlightTerm = term;
             View.SetSelectionHighlighter(
                 term is null ? null : new LiteralLineHighlighter(term, ignoreCase: false, wholeWord: false));
-        }
-
-        private void VScroll_Scroll(object sender, ScrollEventArgs e)
-        {
-            if (syncingScroll)
-            {
-                return;
-            }
-            View.FirstVisibleLine = (int)Math.Round(e.NewValue);
-        }
-
-        private void HScroll_Scroll(object sender, ScrollEventArgs e)
-        {
-            if (syncingScroll)
-            {
-                return;
-            }
-            View.HorizontalOffset = e.NewValue;
         }
 
         private async void GoTo_Click(object sender, RoutedEventArgs e)
@@ -3406,8 +3293,7 @@ namespace FujiyNotepad.WinUI
             }
 
             settingsStore.Save(settings);
-            UpdateScrollBarVisibility();
-            SyncScrollBars();
+            UpdateMarkerMarginVisibility();
             View.FocusCanvas();
         }
 
@@ -3424,8 +3310,7 @@ namespace FujiyNotepad.WinUI
             View.WordWrap = enabled;
             settings.WordWrap = enabled;
             settingsStore.Save(settings);
-            UpdateScrollBarVisibility();
-            SyncScrollBars();
+            UpdateMarkerMarginVisibility();
             View.FocusCanvas();
         }
 
@@ -3705,7 +3590,7 @@ namespace FujiyNotepad.WinUI
             ReadingModeToggle.IsChecked = settings.ReadingMode;
             WordWrapToggle.IsChecked = settings.WordWrap;
             View.WordWrap = settings.WordWrap;
-            UpdateScrollBarVisibility();
+            UpdateMarkerMarginVisibility();
 
             HighlightSelectionToggle.IsChecked = settings.HighlightSelectionOccurrences;
 
