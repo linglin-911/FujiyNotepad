@@ -761,7 +761,10 @@ namespace FujiyNotepad.Presentation
             desiredColumn = -1;
             desiredProportionalX = -1;
             SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
-            EnsureCaretVisibleHorizontally();
+            if (wordWrap)
+                EnsureCaretVisibleVerticallyWrapped();
+            else
+                EnsureCaretVisibleHorizontally();
             RaiseBlinkReset();
             RaiseCaretChanged();
             RaiseRedraw();
