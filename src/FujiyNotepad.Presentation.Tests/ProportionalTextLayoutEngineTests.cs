@@ -33,6 +33,55 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PointerDragAcrossSoftWrappedRows_PreservesOriginalSourceSelection()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        TextPosition start = engine.HitTest(15, 5);
+        TextPosition end = engine.HitTest(15, 25);
+        engine.PointerPress(start, shift: false);
+        engine.PointerDrag(end);
+
+        Assert.Equal(new TextPosition(0, 2), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 4), engine.SelectionEnd);
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+        Assert.Equal(0, rows[0].SelectionLength);
+        Assert.Equal(2, rows[1].SelectionStartIndex);
+        Assert.Equal(2, rows[1].SelectionLength);
+    }
+
+    [Fact]
+    public void PointerDragAcrossLogicalLines_IncludesTheSourceLineBreakInSelection()
+    {
+        var engine = NewEngine(new FakeLines("ab", "cd"), viewportWidth: 100, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        TextPosition start = engine.HitTest(25, 5);
+        TextPosition end = engine.HitTest(5, 25);
+        engine.PointerPress(start, shift: false);
+        engine.PointerDrag(end);
+
+        Assert.Equal(new TextPosition(0, 2), engine.SelectionStart);
+        Assert.Equal(new TextPosition(1, 0), engine.SelectionEnd);
+        Assert.Equal(new SelectionStats(1, 2), engine.GetSelectionStats());
+    }
+
+    [Fact]
+    public void DoubleClickWordSelection_UsesProportionalHitTestSourcePosition()
+    {
+        var engine = NewEngine(new FakeLines("hello world"), viewportWidth: 240, viewportHeight: 40);
+        engine.WordWrap = true;
+
+        TextPosition clicked = engine.HitTest(40, 5);
+        engine.SelectWordAt(clicked);
+
+        Assert.Equal(new TextPosition(0, 0), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 5), engine.SelectionEnd);
+    }
+
+    [Fact]
     public void HorizontalNavigation_UsesUnicodeTextElementBoundaries()
     {
         var engine = NewEngine(new FakeLines("A😀B"));
