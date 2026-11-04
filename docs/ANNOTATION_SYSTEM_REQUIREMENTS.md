@@ -629,4 +629,4 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 该日志不能证明 Win2D 是故障根因；当前重点是用新增的一次性日志区分 DispatcherQueue 首次索引刷新与 CanvasControl 首次绘制/比例布局阶段。
 - 最新代码已增加：TextCanvas 首次 Draw（包括 engine 行数为 0 时）记录；首次内容绘制在 EnsureMetrics、SyncViewport、GetVisibleLines 前后的阶段记录；IndexRefreshTimer 首次 Tick 在 View.UpdateTotalLines、RefreshMarkerMargin、待处理导航前后的阶段记录。
 - 若新日志仍无异常且没有 ProcessExit，按 `docs/reader-crash-diagnostics.md` 配置 Windows Error Reporting LocalDumps，获取 `FujiyNotepad.WinUI.exe` 的完整用户态 dump，并结合 Application Error / Windows Error Reporting 事件定位原生崩溃。
-- 最新诊断改动已推送到 `feature/reader-proportional-font-layout`，提交 `be9f8a1b19c1048e0376a95345a17670bd991930`；尚未经过用户本地 Release x64 编译和复测。
+- 最新诊断代码已推送到 `feature/reader-proportional-font-layout`：TextCanvas 绘制阶段日志提交 `51e7c70f62df6b2afb28210a3bd98c5557e88d82`，索引刷新阶段日志提交 `83539912b8917f68b0a055523d953369f24d7450`，诊断尺寸修正提交 `10b8f8a3073b4f7659ecb2ab59756172de92a0d8`；WER 诊断说明提交 `0d13f0750cc8c85818b1ab04647407284892e30b`，架构文档提交 `be9f8a1b19c1048e0376a95345a17670bd991930`。本需求文档的最新记录提交为 `d15d9f9ebae733145a31d64c570616238c0d2a91`。以上新增诊断代码尚未经过用户本地 Release x64 编译和复测。
