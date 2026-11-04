@@ -1106,6 +1106,214 @@ namespace FujiyNotepad.WinUI.Controls
             }
         }
 
+        private void DrawSourceTextRangeHighlight(
+            CanvasDrawingSession ds,
+            ITextLayoutResult layout,
+            VisibleLine line,
+            int sourceStart,
+            int sourceLength,
+            Color color,
+            float layoutTop,
+            double dpiScale)
+        {
+            if (sourceLength <= 0)
+                return;
+
+            double rowStart = line.LayoutRowTop;
+            double rowEnd = rowStart + line.LayoutRowHeight;
+            foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
+            {
+                double top = Math.Max(rowStart, rectangle.Y);
+                double bottom = Math.Min(rowEnd, rectangle.Y + rectangle.Height);
+                if (bottom <= top || rectangle.Width <= 0)
+                    continue;
+
+                float y = (float)PixelSnap.SnapToDevicePixels(layoutTop + top, dpiScale);
+                ds.FillRectangle(
+                    (float)(line.TextX + rectangle.X),
+                    y,
+                    (float)rectangle.Width,
+                    (float)(bottom - top),
+                    color);
+            }
+        }
+
+        private void DrawSourceSelectionContinuation(
+            CanvasDrawingSession ds,
+            ITextLayoutResult layout,
+            VisibleLine line,
+            Color color,
+            float layoutTop,
+            double dpiScale)
+        {
+            if (line.SourceEndIndex <= line.SourceStartIndex)
+                return;
+
+            int lastCharacter = layout.GetPreviousCaretIndex(line.SourceEndIndex);
+            TextCaretGeometry leading = layout.GetCaretGeometry(lastCharacter);
+            TextCaretGeometry trailing = layout.GetCaretGeometry(lastCharacter, trailingSideOfCharacter: true);
+            double advance = Math.Abs(trailing.X - leading.X);
+            if (!double.IsFinite(advance) || advance <= 0)
+                advance = Math.Max(1, textFormat.FontSize * 0.25);
+
+            float y = (float)PixelSnap.SnapToDevicePixels(
+                layoutTop + line.LayoutRowTop, dpiScale);
+            ds.FillRectangle(
+                (float)(line.TextX + trailing.X),
+                y,
+                (float)advance,
+                (float)line.LayoutRowHeight,
+                color);
+        }
+
+        private void DrawProportionalAnnotationMarkers(
+            CanvasDrawingSession ds,
+            ITextLayoutResult layout,
+            VisibleLine line,
+            float layoutTop,
+            double dpiScale)
+        {
+            if (!annotationMarkersByLine.TryGetValue(line.LineIndex, out List<TextAnnotationMarker>? markers))
+                return;
+
+            double rowStart = line.LayoutRowTop;
+            double rowEnd = rowStart + line.LayoutRowHeight;
+            foreach (TextAnnotationMarker marker in markers)
+            {
+                int start = Math.Clamp(marker.StartColumn, 0, layout.SourceText.Length);
+                int end = Math.Clamp(marker.EndColumn, start, layout.SourceText.Length);
+                if (end <= start)
+                    continue;
+
+                foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(start, end - start))
+                {
+                    double top = Math.Max(rowStart, rectangle.Y);
+                    double bottom = Math.Min(rowEnd, rectangle.Y + rectangle.Height);
+                    if (bottom <= top || rectangle.Width <= 0)
+                        continue;
+
+                    float left = (float)(line.TextX + rectangle.X);
+                    float right = left + (float)rectangle.Width;
+                    float y = (float)PixelSnap.SnapToDevicePixels(
+                        layoutTop + bottom - 1.5, dpiScale);
+                    const float dashLength = 3.5f;
+                    const float dashGap = 2.5f;
+                    for (float x = left; x < right; x += dashLength + dashGap)
+                    {
+                        ds.DrawLine(x, y, Math.Min(x + dashLength, right), y, annotationMarkerColor, 1.25f);
+                    }
+                }
+            }
+        }
+
+        private void DrawProportionalWhitespaceMarkers(
+            CanvasDrawingSession ds,
+            ITextLayoutResult layout,
+            VisibleLine line,
+            float layoutTop,
+            double dpiScale)
+        {
+            string source = layout.SourceText;
+            int lastSignificant = -1;
+            for (int index = 0; index < source.Length; index++)
+            {
+                char value = source[index];
+                if (value != ' ' && value != '\\t')
+                    lastSignificant = index;
+            }
+
+            int start = Math.Clamp(line.SourceStartIndex, 0, source.Length);
+            int end = Math.Clamp(line.SourceEndIndex, start, source.Length);
+            double rowStart = line.LayoutRowTop;
+            double rowEnd = rowStart + line.LayoutRowHeight;
+
+            for (int index = start; index < end; index++)
+            {
+                char value = source[index];
+                WhitespaceKind? kind = value switch
+                {
+                    ' ' => WhitespaceKind.Space,
+                    '\\t' => WhitespaceKind.Tab,
+                    _ when char.IsControl(value) => WhitespaceKind.Control,
+                    _ => null,
+                };
+                if (kind is null)
+                    continue;
+
+                IReadOnlyList<TextLayoutRect> geometry = layout.GetRangeGeometry(index, 1);
+                if (geometry.Count == 0)
+                {
+                    TextCaretGeometry leading = layout.GetCaretGeometry(index);
+                    TextCaretGeometry trailing = layout.GetCaretGeometry(index, trailingSideOfCharacter: true);
+                    geometry = new[]
+                    {
+                        new TextLayoutRect(
+                            Math.Min(leading.X, trailing.X),
+                            rowStart,
+                            Math.Abs(trailing.X - leading.X),
+                            line.LayoutRowHeight),
+                    };
+                }
+
+                bool isTrailing = (kind == WhitespaceKind.Space || kind == WhitespaceKind.Tab)
+                                  && index > lastSignificant;
+                Color color = isTrailing ? trailingWhitespaceColor : whitespaceColor;
+
+                foreach (TextLayoutRect rectangle in geometry)
+                {
+                    double top = Math.Max(rowStart, rectangle.Y);
+                    double bottom = Math.Min(rowEnd, rectangle.Y + rectangle.Height);
+                    if (bottom <= top || rectangle.Width <= 0)
+                        continue;
+
+                    float x = (float)(line.TextX + rectangle.X);
+                    float y = (float)PixelSnap.SnapToDevicePixels(layoutTop + top, dpiScale);
+                    float width = (float)rectangle.Width;
+                    float height = (float)(bottom - top);
+                    float midY = y + height / 2f;
+
+                    switch (kind)
+                    {
+                        case WhitespaceKind.Space:
+                            float radius = Math.Max(1.5f, width * 0.14f);
+                            ds.FillEllipse(x + width / 2f, midY, radius, radius, color);
+                            break;
+
+                        case WhitespaceKind.Tab:
+                            float x0 = x + 2f;
+                            float x1 = x + width - 2f;
+                            if (x1 > x0)
+                            {
+                                ds.DrawLine(x0, midY, x1, midY, color, 1.5f);
+                                ds.DrawLine(x1 - 4f, midY - 4f, x1, midY, color, 1.5f);
+                                ds.DrawLine(x1 - 4f, midY + 4f, x1, midY, color, 1.5f);
+                            }
+                            break;
+
+                        case WhitespaceKind.Control:
+                            ds.DrawRectangle(x + 1f, y + 2f, Math.Max(1, width - 2f),
+                                Math.Max(1, height - 4f), controlCharColor, 1.5f);
+                            break;
+                    }
+                }
+            }
+
+            if (line.SourceEndIndex == source.Length)
+            {
+                WhitespaceMarker? ending = line.Whitespace.FirstOrDefault(marker =>
+                    marker.Kind == WhitespaceKind.Lf || marker.Kind == WhitespaceKind.CrLf);
+                if (ending.HasValue && (ending.Value.Kind == WhitespaceKind.Lf ||
+                                        ending.Value.Kind == WhitespaceKind.CrLf))
+                {
+                    TextCaretGeometry caret = layout.GetCaretGeometry(source.Length);
+                    float x = (float)(line.TextX + caret.X);
+                    float y = (float)PixelSnap.SnapToDevicePixels(layoutTop + line.LayoutRowTop, dpiScale);
+                    DrawReturnMark(ds, x, y, (float)Math.Max(4, charWidth),
+                        (float)line.LayoutRowHeight, ending.Value.Kind == WhitespaceKind.CrLf);
+                }
+            }
+        }
+
         private void DrawAnnotationMarkers(
             CanvasDrawingSession ds, CanvasTextLayout? layout, VisibleLine line, float top)
         {
@@ -1176,6 +1384,9 @@ namespace FujiyNotepad.WinUI.Controls
 
         private TextPosition HitTestText(double x, double y)
         {
+            if (engine.UsesProportionalLayout)
+                return engine.HitTest(x, y);
+
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
             if (lines.Count == 0)
             {
@@ -1235,6 +1446,9 @@ namespace FujiyNotepad.WinUI.Controls
         // an anchor as part of it when DirectWrite reports a trailing caret position.
         private TextPosition HitTestTextCharacter(double x, double y)
         {
+            if (engine.UsesProportionalLayout)
+                return engine.HitTestCharacter(x, y);
+
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
             if (lines.Count == 0)
                 return engine.HitTest(x, y);
