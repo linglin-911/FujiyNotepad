@@ -87,6 +87,23 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void UpdateTotalLines_InvalidatesLayoutsEvenWhenCountIsUnchanged()
+    {
+        var provider = new FakeProportionalProvider();
+        var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 20 };
+        engine.SetMetrics(10, 20);
+        engine.ConfigureProportionalLayout(provider, "Test", 10);
+        engine.SetProvider(new FakeLines("one", "two"));
+
+        engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+        FakeProportionalResult cached = Assert.IsType<FakeProportionalResult>(provider.Results[0]);
+
+        engine.UpdateTotalLines(2);
+
+        Assert.True(cached.IsDisposed);
+    }
+
+    [Fact]
     public void LayoutCache_DisposesRowsThatLeaveTheViewport()
     {
         var provider = new FakeProportionalProvider();
