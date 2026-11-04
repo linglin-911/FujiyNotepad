@@ -140,8 +140,8 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 }
 
 /// <summary>
-/// A source-index-preserving wrapper around one native CanvasTextLayout. It is intentionally separate from
-/// TextCanvas so the layout backend can be verified before the engine and reader rendering path are migrated.
+/// A source-index-preserving wrapper around one native CanvasTextLayout. The engine and TextCanvas share this
+/// result for drawing, hit-testing, caret placement, selection and annotation geometry.
 /// </summary>
 internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 {
