@@ -86,6 +86,7 @@ public sealed partial class TextLayoutEngine
         proportionalLayoutCache.Clear();
         activeProportionalLayoutLines.Clear();
         cachedProportionalOptions = null;
+        desiredProportionalX = -1;
     }
 
     private TextLayoutOptions CreateProportionalOptions()
