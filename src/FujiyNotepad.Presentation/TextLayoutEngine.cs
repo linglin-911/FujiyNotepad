@@ -806,7 +806,7 @@ namespace FujiyNotepad.Presentation
             }
 
             lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
-            int lineLen = GetColumns(lineIndex).Source.Length;
+            int lineLen = LineLength(lineIndex);
             int start = Math.Clamp(startColumn, 0, lineLen);
             int end = Math.Clamp(startColumn + length, start, lineLen);
             anchor = new TextPosition(lineIndex, start);
