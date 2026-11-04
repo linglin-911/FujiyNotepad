@@ -640,20 +640,20 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 ### 13.1 GitHub 代码基线与项目结构
 
-- 本轮审查分支：\`feature/reader-proportional-font-layout\`。
-- 审查时 HEAD：\`c854b8b0946580cb80edd8b7669bc48af1293443\`，提交时间 2026-11-04 21:59（北京时间）。
-- 该分支相对 \`feature/novel-project-annotations\` 领先 171 个提交、落后 0 个提交，包含批注功能分支的全部提交及后续阅读器比例字体改造。
-- PR #4 仍为 Draft，head 仍指向旧分支 \`feature/novel-project-annotations\`（SHA \`87545052d545ecedd2a00e9c51198cefc5f85372\`），不是本轮最新工作分支；不得以 PR #4 的文件状态代替最新分支代码。
-- 远程仓库检查不能确认用户电脑上的本地检出分支、未提交修改或本地生成文件；如需直接修改本地工作区，仍须先检查本地 \`git status\`。
+- 本轮审查分支：`feature/reader-proportional-font-layout`。
+- 审查时 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`，提交时间 2026-11-04 21:59（北京时间）。
+- 该分支相对 `feature/novel-project-annotations` 领先 171 个提交、落后 0 个提交，包含批注功能分支的全部提交及后续阅读器比例字体改造。
+- PR #4 仍为 Draft，head 仍指向旧分支 `feature/novel-project-annotations`（SHA `87545052d545ecedd2a00e9c51198cefc5f85372`），不是本轮最新工作分支；不得以 PR #4 的文件状态代替最新分支代码。
+- 远程仓库检查不能确认用户电脑上的本地检出分支、未提交修改或本地生成文件；如需直接修改本地工作区，仍须先检查本地 `git status`。
 
 仓库主要结构：
 
-- \`src/FujiyNotepad.Core\`：项目、章节、批注、锚点、外部编辑等数据模型和存储逻辑。
-- \`src/FujiyNotepad.Presentation\`：阅读布局引擎、设置、文本布局契约等 UI 无关逻辑。
-- \`src/FujiyNotepad.WinUI\`：Windows 界面、主窗口、阅读画布及 Win2D 渲染后端。
-- \`src/FujiyNotepad.Core.Tests\`、\`src/FujiyNotepad.Presentation.Tests\`：自动化测试。
-- \`src/FujiyNotepad.TestSupport\`、\`src/FujiyNotepad.Benchmarks\`：测试支持和性能基准。
-- \`docs\`、\`scripts\`、\`changelog.d\`、\`samples\`：项目文档、脚本、变更记录和样例。
+- `src/FujiyNotepad.Core`：项目、章节、批注、锚点、外部编辑等数据模型和存储逻辑。
+- `src/FujiyNotepad.Presentation`：阅读布局引擎、设置、文本布局契约等 UI 无关逻辑。
+- `src/FujiyNotepad.WinUI`：Windows 界面、主窗口、阅读画布及 Win2D 渲染后端。
+- `src/FujiyNotepad.Core.Tests`、`src/FujiyNotepad.Presentation.Tests`：自动化测试。
+- `src/FujiyNotepad.TestSupport`、`src/FujiyNotepad.Benchmarks`：测试支持和性能基准。
+- `docs`、`scripts`、`changelog.d`、`samples`：项目文档、脚本、变更记录和样例。
 
 ### 13.2 FujiyNotepad 原项目继承功能
 
@@ -667,14 +667,14 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 显示和编码：空白字符显示、编码自动识别及手动切换、Tab 宽度设置。
 - 基础外观：原有五种等宽字体选择、Zoom 字号缩放、自动换行、System/Light/Dark 主题。
 
-**归属纠正：阅读模式不是原始上游继承功能。** 对照上游 \`felipepessoto/FujiyNotepad\` 的基线代码，原项目没有 \`ReadingMode\` 设置及对应菜单；专门的阅读模式由本项目的 \`feature/novel-reading-mode\` 分支提交 \`b4352eaffee36f8f74d632a8a7cb68999691dac9\` 加入。因此应归入本项目自主开发的阅读体验增强。阅读模式目前的行为是强制开启自动换行并隐藏水平、垂直滚动条，尚不等于完整的专业阅读排版系统。
+**归属纠正：阅读模式不是原始上游继承功能。** 对照上游 `felipepessoto/FujiyNotepad` 的基线代码，原项目没有 `ReadingMode` 设置及对应菜单；专门的阅读模式由本项目的 `feature/novel-reading-mode` 分支提交 `b4352eaffee36f8f74d632a8a7cb68999691dac9` 加入。因此应归入本项目自主开发的阅读体验增强。阅读模式目前的行为是强制开启自动换行并隐藏水平、垂直滚动条，尚不等于完整的专业阅读排版系统。
 
 ### 13.3 本项目自主开发且已实现的功能
 
 1. **小说项目管理**
    - 导入 TXT 创建独立项目目录。
-   - 将原 TXT 复制为项目内的 \`novel.txt\`，原始来源文件不作为项目工作文档。
-   - 保存 \`project.json\`、\`annotations.sqlite\`、备份目录和外部编辑会话目录。
+   - 将原 TXT 复制为项目内的 `novel.txt`，原始来源文件不作为项目工作文档。
+   - 保存 `project.json`、`annotations.sqlite`、备份目录和外部编辑会话目录。
    - 打开项目文件夹、关闭项目、最近项目恢复及项目与阅读会话关联。
 
 2. **章节索引和章节目录**
@@ -764,18 +764,18 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 **关键代码位置：**
 
-- 主窗口布局：\`src/FujiyNotepad.WinUI/MainWindow.xaml\`。
-- 主窗口启动、文件/项目生命周期、菜单、状态栏：\`src/FujiyNotepad.WinUI/MainWindow.xaml.cs\`。
-- 小批注界面：\`MainWindow.SmallAnnotations.cs\`。
-- 章节批注界面：\`MainWindow.ChapterAnnotations.cs\`。
-- 章节目录：\`MainWindow.ChapterDirectory.cs\`。
-- 大批注界面：\`MainWindow.BigAnnotations.cs\`。
-- 阅读画布：\`Controls/TextCanvas.cs\`。
-- 阅读布局引擎：\`Presentation/TextLayoutEngine.cs\`、\`TextLayoutEngine.Proportional.cs\`、\`TextLayoutContracts.cs\`。
-- Win2D/DirectWrite 后端：\`Rendering/Win2DTextLayoutProvider.cs\`。
-- 项目/批注数据：\`Core/NovelProject.cs\`、\`NovelAnnotationStore.cs\`、\`NovelAnnotations.cs\`。
-- 章节识别和变化处理：\`NovelChapterIndexBuilder.cs\`、\`NovelChapterIndexReconciler.cs\`。
-- 锚点与偏移：\`AnnotationAnchorMetadata.cs\`、\`DocumentTextOffsetMap.cs\`。
-- 外部编辑：\`ExternalEditSession.cs\`、\`ExternalEditMarkerCodec.cs\`。
+- 主窗口布局：`src/FujiyNotepad.WinUI/MainWindow.xaml`。
+- 主窗口启动、文件/项目生命周期、菜单、状态栏：`src/FujiyNotepad.WinUI/MainWindow.xaml.cs`。
+- 小批注界面：`MainWindow.SmallAnnotations.cs`。
+- 章节批注界面：`MainWindow.ChapterAnnotations.cs`。
+- 章节目录：`MainWindow.ChapterDirectory.cs`。
+- 大批注界面：`MainWindow.BigAnnotations.cs`。
+- 阅读画布：`Controls/TextCanvas.cs`。
+- 阅读布局引擎：`Presentation/TextLayoutEngine.cs`、`TextLayoutEngine.Proportional.cs`、`TextLayoutContracts.cs`。
+- Win2D/DirectWrite 后端：`Rendering/Win2DTextLayoutProvider.cs`。
+- 项目/批注数据：`Core/NovelProject.cs`、`NovelAnnotationStore.cs`、`NovelAnnotations.cs`。
+- 章节识别和变化处理：`NovelChapterIndexBuilder.cs`、`NovelChapterIndexReconciler.cs`。
+- 锚点与偏移：`AnnotationAnchorMetadata.cs`、`DocumentTextOffsetMap.cs`。
+- 外部编辑：`ExternalEditSession.cs`、`ExternalEditMarkerCodec.cs`。
 
 后续整体界面优化应先讨论主窗口整体信息架构和视觉规范，再逐个改造阅读器及三种批注界面；不得把原项目继承功能误写成本项目开发成果，也不得把“代码已实现”直接标记为“用户已验收”。
