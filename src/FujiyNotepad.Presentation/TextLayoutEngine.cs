@@ -675,6 +675,7 @@ namespace FujiyNotepad.Presentation
             }
 
             totalLines = count;
+            columnsCache.Clear();
             ClearProportionalLayoutCache();
             if (firstVisibleLine > MaxFirstLine)
             {
