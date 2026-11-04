@@ -528,14 +528,13 @@ public sealed partial class TextLayoutEngine
     /// rectangle, including whitespace around the glyph ink.
     /// </summary>
     public bool TryHitTestAnnotationMarkers(
-        int lineIndex,
-        IReadOnlyList<TextAnnotationMarker> markers,
         double x,
         double y,
+        IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
         out TextPosition position)
     {
         position = default;
-        if (!UsesProportionalLayout || markers.Count == 0
+        if (!UsesProportionalLayout || markersByLine.Count == 0
             || !double.IsFinite(x) || !double.IsFinite(y))
         {
             return false;
@@ -546,8 +545,7 @@ public sealed partial class TextLayoutEngine
         VisibleLine? hitRow = null;
         foreach (VisibleLine candidate in visible)
         {
-            if (candidate.LineIndex == lineIndex
-                && y >= candidate.Y
+            if (y >= candidate.Y
                 && y < candidate.Y + candidate.LayoutRowHeight)
             {
                 hitRow = candidate;
@@ -555,10 +553,13 @@ public sealed partial class TextLayoutEngine
             }
         }
 
-        if (hitRow is null)
+        if (hitRow is null
+            || !markersByLine.TryGetValue(hitRow.LineIndex, out List<TextAnnotationMarker>? markers))
+        {
             return false;
+        }
 
-        ITextLayoutResult layout = GetProportionalLayout(lineIndex);
+        ITextLayoutResult layout = GetProportionalLayout(hitRow.LineIndex);
         double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
         double localX = x - hitRow.TextX;
         double localY = y - layoutTop;
@@ -595,7 +596,7 @@ public sealed partial class TextLayoutEngine
                 int candidateColumn = Math.Clamp(nearestCaret, start, lastCaret);
                 if (nearestCaret >= start && nearestCaret < end)
                 {
-                    position = new TextPosition(lineIndex, nearestCaret);
+                    position = new TextPosition(hitRow.LineIndex, nearestCaret);
                     return true;
                 }
 
@@ -611,7 +612,7 @@ public sealed partial class TextLayoutEngine
         if (fallbackColumn < 0)
             return false;
 
-        position = new TextPosition(lineIndex, fallbackColumn);
+        position = new TextPosition(hitRow.LineIndex, fallbackColumn);
         return true;
     }
 
