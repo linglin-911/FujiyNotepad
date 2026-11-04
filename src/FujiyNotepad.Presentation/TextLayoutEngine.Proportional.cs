@@ -278,13 +278,9 @@ public sealed partial class TextLayoutEngine
         }
         else
         {
-            int renderCount = (int)Math.Ceiling(ViewportHeight / Math.Max(1, lineHeight)) + 1;
-            for (int offset = 0; offset < renderCount; offset++)
+            int sourceLine = firstVisibleLine;
+            while (sourceLine < totalLines && y < ViewportHeight)
             {
-                int sourceLine = firstVisibleLine + offset;
-                if (sourceLine >= totalLines)
-                    break;
-
                 ITextLayoutResult layout = GetProportionalLayout(sourceLine);
                 TextLayoutVisualLine row = layout.VisualLines.Count > 0
                     ? layout.VisualLines[0]
@@ -347,6 +343,7 @@ public sealed partial class TextLayoutEngine
                 });
 
                 y += rowHeight;
+                sourceLine++;
             }
 
             double newExtent = Math.Max(
