@@ -167,7 +167,7 @@ public sealed partial class TextLayoutEngine
 
         if (wordWrap)
         {
-            int firstRowCount = GetProportionalRowCount(firstVisibleLine);
+            int firstRowCount = Math.Max(1, GetProportionalLayout(firstVisibleLine).VisualLines.Count);
             firstVisibleRow = Math.Clamp(firstVisibleRow, 0, firstRowCount - 1);
         }
 
