@@ -32,7 +32,7 @@ Log path:
 
 The first-Draw and first-IndexRefreshTimer milestone logging was added after the user's 21:48 log. It is present on `feature/reader-proportional-font-layout`, but has not yet been confirmed by a user-side build/run.
 
-Before changing rendering code, build and launch the latest branch:
+Before changing rendering code, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
 
 ```powershell
 git status --short --branch
