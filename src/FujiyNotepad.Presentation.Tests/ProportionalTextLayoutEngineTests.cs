@@ -100,7 +100,7 @@ public sealed class ProportionalTextLayoutEngineTests
             [0] = new() { new TextAnnotationMarker(0, 1, 4) },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(45, 19, markers, out _);
+        bool hit = engine.TryHitTestAnnotationMarkers(60, 19, markers, out _);
 
         Assert.False(hit);
     }
@@ -134,7 +134,7 @@ public sealed class ProportionalTextLayoutEngineTests
             },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(25, 5, markers, out TextPosition position);
+        bool hit = engine.TryHitTestAnnotationMarkers(35, 5, markers, out TextPosition position);
 
         Assert.True(hit);
         Assert.Equal(new TextPosition(0, 3), position);
