@@ -674,7 +674,7 @@
                                           PlaceholderText="小批：全部分类"
                                           SelectionChanged="BigAnnotationSmallCategoryFilter_SelectionChanged" />
                                 <ToggleSwitch x:Name="BigAnnotationSmallVisibilityToggle" Grid.Column="1"
-                                              Width="48" IsOn="True" OnContent="" OffContent=""
+                                              Width="48" OnContent="" OffContent=""
                                               VerticalAlignment="Center" />
                             </Grid>
                             <Grid Grid.Column="1" ColumnSpacing="6"
@@ -688,7 +688,7 @@
                                           PlaceholderText="章批：全部分类"
                                           SelectionChanged="BigAnnotationChapterCategoryFilter_SelectionChanged" />
                                 <ToggleSwitch x:Name="BigAnnotationChapterVisibilityToggle" Grid.Column="1"
-                                              Width="48" IsOn="True" OnContent="" OffContent=""
+                                              Width="48" OnContent="" OffContent=""
                                               VerticalAlignment="Center" />
                             </Grid>
                         </Grid>
