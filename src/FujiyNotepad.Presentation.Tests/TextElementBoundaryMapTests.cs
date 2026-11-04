@@ -39,7 +39,8 @@ public sealed class TextElementBoundaryMapTests
 
         Assert.Equal(1, map.SnapToPreviousBoundary(3));
         Assert.Equal(3, map.SnapToNextBoundary(3));
-        Assert.Equal(5, map.SnapToNextBoundary(4));
+        Assert.Equal(3, map.SnapToNextBoundary(2));
+        Assert.Equal(4, map.SnapToNextBoundary(4));
     }
 
     [Fact]
