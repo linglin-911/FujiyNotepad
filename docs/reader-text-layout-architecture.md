@@ -1,6 +1,6 @@
 # Reader proportional-font text layout architecture
 
-Status: approved design; Phase 1 contracts are being introduced on
+Status: Phase 1 accepted; Phase 2 Win2D/DirectWrite provider implemented and awaiting local validation on
 feature/reader-proportional-font-layout. The existing renderer remains active until the new backend
 is integrated and verified.
 
