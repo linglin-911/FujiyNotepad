@@ -38,8 +38,8 @@ public sealed class ProportionalTextLayoutEngineTests
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition start = engine.HitTest(15, 5);
-        TextPosition end = engine.HitTest(15, 25);
+        TextPosition start = engine.HitTest(25, 5);
+        TextPosition end = engine.HitTest(25, 25);
         engine.PointerPress(start, shift: false);
         engine.PointerDrag(end);
 
