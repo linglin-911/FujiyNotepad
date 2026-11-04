@@ -463,7 +463,7 @@ public sealed partial class TextLayoutEngine
 
     /// <summary>Returns the source character under a point, rather than the nearest trailing caret boundary.</summary>
     public TextPosition HitTestCharacter(double x, double y)
-        => HitTestCharacter(x, y, out _);
+        => HitTestCharacter(x, y, out _, out _);
 
     /// <summary>
     /// Hit-tests the source character under a point and reports whether the pointer actually landed on a
@@ -471,23 +471,33 @@ public sealed partial class TextLayoutEngine
     /// on a character (such as clicking an annotation marker) must check <paramref name="isInside"/>.
     /// </summary>
     public TextPosition HitTestCharacter(double x, double y, out bool isInside)
+        => HitTestCharacter(x, y, out isInside, out _);
+
+    /// <summary>
+    /// Also returns the full source range of the hit character/shaping cluster. This matters for ligatures,
+    /// combining sequences and other glyphs whose visual hit region can represent multiple UTF-16 units.
+    /// </summary>
+    public TextPosition HitTestCharacter(
+        double x, double y, out bool isInside, out int sourceLength)
     {
         if (!UsesProportionalLayout)
         {
             isInside = false;
+            sourceLength = 0;
             return HitTest(x, y);
         }
 
-        return HitTestProportional(x, y, returnCharacter: true, out isInside);
+        return HitTestProportional(x, y, returnCharacter: true, out isInside, out sourceLength);
     }
 
     private TextPosition HitTestProportional(
-        double x, double y, bool returnCharacter, out bool isInside)
+        double x, double y, bool returnCharacter, out bool isInside, out int sourceLength)
     {
         IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(hasFocus: false, caretVisible: false);
         if (visible.Count == 0)
         {
             isInside = false;
+            sourceLength = 0;
             return new TextPosition(0, 0);
         }
 
@@ -505,7 +515,8 @@ public sealed partial class TextLayoutEngine
             x - hitRow.TextX,
             y - layoutTop);
 
-        isInside = hit.IsInside;
+        isInside = hit.IsInside && hit.SourceLength > 0;
+        sourceLength = isInside ? hit.SourceLength : 0;
         int sourceIndex = returnCharacter ? hit.SourceStartIndex : hit.CaretIndex;
         sourceIndex = Math.Clamp(sourceIndex, 0, layout.SourceText.Length);
         return new TextPosition(hitRow.LineIndex, sourceIndex);
