@@ -542,18 +542,20 @@ public sealed partial class TextLayoutEngine
 
         IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(
             hasFocus: false, caretVisible: false);
-        VisibleLine? hitRow = null;
+        VisibleLine hitRow = default;
+        bool foundVisibleRow = false;
         foreach (VisibleLine candidate in visible)
         {
             if (y >= candidate.Y
                 && y < candidate.Y + candidate.LayoutRowHeight)
             {
                 hitRow = candidate;
+                foundVisibleRow = true;
                 break;
             }
         }
 
-        if (hitRow is null
+        if (!foundVisibleRow
             || !markersByLine.TryGetValue(hitRow.LineIndex, out List<TextAnnotationMarker>? markers))
         {
             return false;
