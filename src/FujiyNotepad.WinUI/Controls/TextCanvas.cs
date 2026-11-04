@@ -34,6 +34,7 @@ namespace FujiyNotepad.WinUI.Controls
     public sealed partial class TextCanvas : UserControl
     {
         private readonly TextLayoutEngine engine = new();
+        private bool hasLoggedFirstContentDraw;
         private readonly CanvasControl canvas;
         private readonly CanvasTextFormat textFormat;
         private readonly Win2DTextLayoutProvider proportionalLayoutProvider = new();
@@ -901,8 +902,17 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args)
         {
-            CanvasDrawingSession ds = args.DrawingSession;
-            ds.Clear(backgroundColor);
+            bool logFirstContentDraw = engine.TotalLines > 0 && !hasLoggedFirstContentDraw;
+            if (logFirstContentDraw)
+            {
+                hasLoggedFirstContentDraw = true;
+                LogDiagnostic($"TextCanvas: first content draw entered; totalLines={engine.TotalLines:N0}; viewport={ActualWidth:N0}x{ActualHeight:N0}");
+            }
+
+            try
+            {
+                CanvasDrawingSession ds = args.DrawingSession;
+                ds.Clear(backgroundColor);
 
             EnsureMetrics();
             SyncViewport();
@@ -1097,6 +1107,44 @@ namespace FujiyNotepad.WinUI.Controls
             PruneTextLayoutCache();
             DrawGutter(ds, sender, lines);
             UpdateCaretOverlay(caretShown, caretLeftPx, caretTopPx, caretHeightPx, dpiScale);
+
+                if (logFirstContentDraw)
+                {
+                    int proportionalRows = lines.Count(line => line.UsesProportionalLayout);
+                    LogDiagnostic($"TextCanvas: first content draw completed; visibleRows={lines.Count}; proportionalRows={proportionalRows}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDiagnosticException("TextCanvas.OnDraw", ex);
+                throw;
+            }
+        }
+
+        private static void LogDiagnostic(string message)
+        {
+            try
+            {
+                CrashLogger.Default().Trace(message);
+            }
+            catch
+            {
+                // Diagnostics must never interfere with rendering.
+            }
+        }
+
+        private static void LogDiagnosticException(string operation, Exception exception)
+        {
+            try
+            {
+                CrashLogger logger = CrashLogger.Default();
+                logger.Trace($"{operation}: FAILED");
+                logger.Log(exception);
+            }
+            catch
+            {
+                // Diagnostics must never interfere with rendering.
+            }
         }
 
         private void DrawProportionalRowHighlights(
