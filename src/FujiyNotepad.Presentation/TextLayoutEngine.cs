@@ -1159,32 +1159,32 @@ namespace FujiyNotepad.Presentation
         {
             if (UsesProportionalLayout)
             {
-                int line = caret.Line;
-                int column = caret.Column;
+                int proportionalLine = caret.Line;
+                int proportionalColumn = caret.Column;
                 if (delta < 0)
                 {
-                    if (column > 0)
-                        column = GetProportionalLayout(line).GetPreviousCaretIndex(column);
-                    else if (line > 0)
+                    if (proportionalColumn > 0)
+                        proportionalColumn = GetProportionalLayout(proportionalLine).GetPreviousCaretIndex(proportionalColumn);
+                    else if (proportionalLine > 0)
                     {
-                        line--;
-                        column = LineLength(line);
+                        proportionalLine--;
+                        proportionalColumn = LineLength(proportionalLine);
                     }
                 }
                 else
                 {
-                    if (column < LineLength(line))
-                        column = GetProportionalLayout(line).GetNextCaretIndex(column);
-                    else if (line < totalLines - 1)
+                    if (proportionalColumn < LineLength(proportionalLine))
+                        proportionalColumn = GetProportionalLayout(proportionalLine).GetNextCaretIndex(proportionalColumn);
+                    else if (proportionalLine < totalLines - 1)
                     {
-                        line++;
-                        column = 0;
+                        proportionalLine++;
+                        proportionalColumn = 0;
                     }
                 }
 
                 desiredColumn = -1;
                 desiredProportionalX = -1;
-                ApplyCaret(new TextPosition(line, column), shift);
+                ApplyCaret(new TextPosition(proportionalLine, proportionalColumn), shift);
                 return;
             }
 
@@ -1388,14 +1388,14 @@ namespace FujiyNotepad.Presentation
                     return;
                 }
 
-                int visibleRows = VisibleRowCount;
-                (int lastLine, int lastRow) =
-                    AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, visibleRows - 1);
-                if (ComparePos(caret.Line, proportionalRow, lastLine, lastRow) > 0)
+                int proportionalVisibleRows = VisibleRowCount;
+                (int proportionalLastLine, int proportionalLastRow) =
+                    AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, proportionalVisibleRows - 1);
+                if (ComparePos(caret.Line, proportionalRow, proportionalLastLine, proportionalLastRow) > 0)
                 {
-                    (int topLine, int topRow) =
-                        AdvanceDisplayRows(caret.Line, proportionalRow, -(visibleRows - 1));
-                    SetTopPosition(topLine, topRow);
+                    (int proportionalTopLine, int proportionalTopRow) =
+                        AdvanceDisplayRows(caret.Line, proportionalRow, -(proportionalVisibleRows - 1));
+                    SetTopPosition(proportionalTopLine, proportionalTopRow);
                 }
                 return;
             }
@@ -1472,26 +1472,26 @@ namespace FujiyNotepad.Presentation
                     RaiseViewChanged();
                 }
 
-                double caretX = layout.GetCaretGeometry(caret.Column).X;
-                double adjacentCaretX = caretX;
+                double proportionalCaretX = layout.GetCaretGeometry(caret.Column).X;
+                double adjacentProportionalCaretX = proportionalCaretX;
                 if (caret.Column < layout.SourceText.Length)
                 {
                     int nextIndex = layout.GetNextCaretIndex(caret.Column);
-                    adjacentCaretX = layout.GetCaretGeometry(nextIndex).X;
+                    adjacentProportionalCaretX = layout.GetCaretGeometry(nextIndex).X;
                 }
                 else if (caret.Column > 0)
                 {
                     int previousIndex = layout.GetPreviousCaretIndex(caret.Column);
-                    adjacentCaretX = layout.GetCaretGeometry(previousIndex).X;
+                    adjacentProportionalCaretX = layout.GetCaretGeometry(previousIndex).X;
                 }
 
-                double caretAdvance = Math.Abs(adjacentCaretX - caretX);
-                double rightInset = Math.Max(1, caretAdvance) + TextPadding * 2;
-                double textViewport = ViewportWidth - GutterWidthPx;
-                if (caretX < horizontalOffset)
-                    SetHorizontalOffset(caretX);
-                else if (caretX > horizontalOffset + textViewport - rightInset)
-                    SetHorizontalOffset(caretX - textViewport + rightInset);
+                double proportionalCaretAdvance = Math.Abs(adjacentProportionalCaretX - proportionalCaretX);
+                double proportionalRightInset = Math.Max(1, proportionalCaretAdvance) + TextPadding * 2;
+                double proportionalTextViewport = ViewportWidth - GutterWidthPx;
+                if (proportionalCaretX < horizontalOffset)
+                    SetHorizontalOffset(proportionalCaretX);
+                else if (proportionalCaretX > horizontalOffset + proportionalTextViewport - proportionalRightInset)
+                    SetHorizontalOffset(proportionalCaretX - proportionalTextViewport + proportionalRightInset);
                 return;
             }
 
