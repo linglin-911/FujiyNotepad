@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="FujiyNotepad.Presentation.Tests" />
+    <InternalsVisibleTo Include="FujiyNotepad.WinUI" />
   </ItemGroup>
 
 </Project>
