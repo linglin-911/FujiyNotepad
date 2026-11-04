@@ -7,6 +7,7 @@
 > 当前开发分支：`feature/reader-proportional-font-layout`（比例字体阅读器改造分支）
 > 批注功能基线分支：`feature/novel-project-annotations`
 > 本轮代码审查基准 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`（2026-11-04 21:59，北京时间）
+> 最新诊断代码提交：`c08f1f9317451c2d0e85bc928ed21413098c0417`；新增诊断尚未经过用户本地编译和复测。
 
 ## 1. 状态标记与维护规则
 
