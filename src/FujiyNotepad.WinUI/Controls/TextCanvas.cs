@@ -1031,7 +1031,7 @@ namespace FujiyNotepad.WinUI.Controls
                 if (sourceLayout is not null)
                 {
                     DrawProportionalAnnotationMarkers(ds, sourceLayout, line, layoutTopPx, dpiScale);
-                    if (line.Whitespace is { Count: > 0 })
+                    if (engine.ShowWhitespace)
                         DrawProportionalWhitespaceMarkers(ds, sourceLayout, line, layoutTopPx, dpiScale);
                 }
                 else
@@ -1300,16 +1300,14 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (line.SourceEndIndex == source.Length)
             {
-                WhitespaceMarker? ending = line.Whitespace.FirstOrDefault(marker =>
-                    marker.Kind == WhitespaceKind.Lf || marker.Kind == WhitespaceKind.CrLf);
-                if (ending.HasValue && (ending.Value.Kind == WhitespaceKind.Lf ||
-                                        ending.Value.Kind == WhitespaceKind.CrLf))
+                LineEnding ending = engine.GetLineEnding(line.LineIndex);
+                if (ending == LineEnding.Lf || ending == LineEnding.CrLf)
                 {
                     TextCaretGeometry caret = layout.GetCaretGeometry(source.Length);
                     float x = (float)(line.TextX + caret.X);
                     float y = (float)PixelSnap.SnapToDevicePixels(layoutTop + line.LayoutRowTop, dpiScale);
                     DrawReturnMark(ds, x, y, (float)Math.Max(4, charWidth),
-                        (float)line.LayoutRowHeight, ending.Value.Kind == WhitespaceKind.CrLf);
+                        (float)line.LayoutRowHeight, ending == LineEnding.CrLf);
                 }
             }
         }
