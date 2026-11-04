@@ -237,7 +237,6 @@ namespace FujiyNotepad.Presentation
         private TextPosition caret;
         private TextPosition anchor;
         private int desiredColumn = -1;
-            desiredProportionalX = -1;
 
         /// <summary>Raised when the scroll position or horizontal extent changes (host re-syncs scrollbars).</summary>
         public event Action? ViewChanged;
