@@ -360,7 +360,10 @@ public sealed partial class TextLayoutEngine
 
     private (int line, int row) AdvanceProportionalDisplayRows(int line, int row, int delta)
     {
-        line = Math.Clamp(line, 0, Math.Max(0, totalLines - 1));
+        if (provider is null || totalLines == 0)
+            return (0, 0);
+
+        line = Math.Clamp(line, 0, totalLines - 1);
         row = Math.Max(0, row);
 
         while (delta > 0)
