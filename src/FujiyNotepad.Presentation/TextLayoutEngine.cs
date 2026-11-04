@@ -363,6 +363,7 @@ namespace FujiyNotepad.Presentation
                     return;
                 }
                 wordWrap = value;
+                desiredColumn = -1;
                 ClearProportionalLayoutCache();
                 firstVisibleRow = 0;
                 horizontalOffset = 0;
