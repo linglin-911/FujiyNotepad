@@ -1416,6 +1416,15 @@ namespace FujiyNotepad.Presentation
             if (UsesProportionalLayout)
             {
                 ITextLayoutResult layout = GetProportionalLayout(caret.Line);
+                double requiredExtent = Math.Max(
+                    layout.LayoutWidth + GutterWidthPx + TextPadding * 2,
+                    ViewportWidth);
+                if (Math.Abs(requiredExtent - horizontalExtentPx) > 0.5)
+                {
+                    horizontalExtentPx = requiredExtent;
+                    RaiseViewChanged();
+                }
+
                 double caretX = layout.GetCaretGeometry(caret.Column).X;
                 double rightInset = Math.Max(1, charWidth) + TextPadding * 2;
                 double textViewport = ViewportWidth - GutterWidthPx;
