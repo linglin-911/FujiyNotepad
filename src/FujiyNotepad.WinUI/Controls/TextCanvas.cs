@@ -72,7 +72,7 @@ namespace FujiyNotepad.WinUI.Controls
         private double readerLineSpacingMultiplier = ReaderSettings.DefaultLineSpacingMultiplier;
         private string readerTheme = ReaderSettings.DefaultTheme;
 
-        // Detects Windows High Contrast so ApplyTheme can switch the surface to the system HC palette. Kept
+        // Detects Windows High Contrast so ApplyReaderPalette can switch the surface to the system HC palette. Kept
         // alive as a field so its HighContrastChanged event keeps firing.
         private AccessibilitySettings? accessibility;
 
@@ -206,7 +206,7 @@ namespace FujiyNotepad.WinUI.Controls
             try
             {
                 accessibility = new AccessibilitySettings();
-                accessibility.HighContrastChanged += (_, _) => DispatcherQueue?.TryEnqueue(ApplyTheme);
+                accessibility.HighContrastChanged += (_, _) => DispatcherQueue?.TryEnqueue(ApplyReaderPalette);
             }
             catch
             {
