@@ -665,6 +665,12 @@ namespace FujiyNotepad.Presentation
         {
             if (count == totalLines)
             {
+                // The source provider may have been refreshed in place without changing the line count.
+                // Drop both legacy column maps and native layouts so same-count edits cannot render stale text.
+                columnsCache.Clear();
+                ClearProportionalLayoutCache();
+                RaiseViewChanged();
+                RaiseRedraw();
                 return;
             }
 
