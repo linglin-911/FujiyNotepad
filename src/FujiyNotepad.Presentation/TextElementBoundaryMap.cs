@@ -70,10 +70,13 @@ internal sealed class TextElementBoundaryMap
     public (int Start, int Length) ExpandRange(int utf16Start, int utf16Length)
     {
         int start = Math.Clamp(utf16Start, 0, sourceLength);
-        if (utf16Length <= 0 || start == sourceLength)
+        if (utf16Length <= 0)
             return (SnapToNearestBoundary(start), 0);
 
-        int end = (int)Math.Clamp((long)start + utf16Length, 0L, sourceLength);
+        int end = (int)Math.Clamp((long)utf16Start + utf16Length, 0L, sourceLength);
+        if (end <= start)
+            return (SnapToNearestBoundary(start), 0);
+
         int expandedStart = SnapDown(start);
         int expandedEnd = SnapUp(end);
         return (expandedStart, expandedEnd - expandedStart);
