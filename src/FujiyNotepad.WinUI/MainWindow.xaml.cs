@@ -3442,7 +3442,7 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        // A font-family or zoom (size) change: show the zoom percent, keep the Font menu ticked, and persist.
+        // A reader typography change: show the zoom percent, keep the Font menu ticked, and persist.
         private void OnFontChanged()
         {
             LblZoom.Text = $"{View.ZoomPercent}%";
