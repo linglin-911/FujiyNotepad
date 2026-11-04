@@ -309,9 +309,7 @@ public sealed partial class TextLayoutEngine
                         ? NoRuleHighlights
                         : ComputeProportionalRuleHighlights(highlightRules, source, 0, source.Length),
                     IsBookmarked = bookmarks.Count > 0 && bookmarks.Contains(sourceLine),
-                    Whitespace = showWhitespace
-                        ? WhitespaceMarkers.Compute(GetColumns(sourceLine), LineEndingOf(sourceLine))
-                        : NoWhitespace,
+                    Whitespace = NoWhitespace,
                     UsesProportionalLayout = true,
                     SourceStartIndex = 0,
                     SourceEndIndex = source.Length,
