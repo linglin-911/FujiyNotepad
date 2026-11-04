@@ -1,0 +1,83 @@
+# Reader startup / native crash diagnostics
+
+## Current reproduction (2026-11-04)
+
+The latest user-provided `crash.log` records:
+
+- App and MainWindow construction completed.
+- `RootGrid Loaded` fired.
+- Last-session restore opened `novel.txt`.
+- The 76,114,107-byte source was opened and attached to `LineProvider`.
+- Background indexing completed at 382,033 lines and reported 100% progress.
+- The log ends immediately after the final indexing progress entries.
+
+There is no `TextCanvas` first-content-draw entry, `IndexRefreshTimer` completion entry, managed exception, `MainWindow Closed`, or `ProcessExit` entry. This does not identify the cause. It narrows the next investigation to the first UI index-refresh tick, the first Win2D draw, or a process/native failure that bypasses managed handlers.
+
+## Temporary application diagnostics
+
+The current diagnostic build records:
+
+- The first `CanvasControl.Draw` event even if the reader still has zero indexed lines.
+- First content draw milestones before/after metrics, viewport synchronization and `GetVisibleLines`.
+- The first `IndexRefreshTimer_Tick`, with before/after markers around `View.UpdateTotalLines`, marker refresh and pending navigation.
+- The existing managed exception and process-exit diagnostics remain enabled.
+
+Log path:
+
+```text
+%LOCALAPPDATA%\FujiyNotepad\crash.log
+```
+
+## Capture a Windows Error Reporting full dump
+
+If the app still exits without an exception in `crash.log`, configure a per-executable LocalDumps rule. This writes a full user-mode dump when Windows Error Reporting handles an application crash.
+
+Run this in PowerShell (no administrator elevation is normally required for the per-user HKCU key):
+
+```powershell
+$dumpDir = Join-Path $env:LOCALAPPDATA "FujiyNotepad\Dumps"
+New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+
+$key = "HKCU:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\FujiyNotepad.WinUI.exe"
+New-Item -Path $key -Force | Out-Null
+New-ItemProperty -Path $key -Name DumpFolder -Value $dumpDir -PropertyType ExpandString -Force | Out-Null
+New-ItemProperty -Path $key -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
+New-ItemProperty -Path $key -Name DumpCount -Value 3 -PropertyType DWord -Force | Out-Null
+
+Write-Host "WER full dumps will be written to: $dumpDir"
+```
+
+If the executable in the build output has a different filename, replace `FujiyNotepad.WinUI.exe` in the registry key with that exact filename.
+
+After enabling the rule:
+
+1. Launch the application and reproduce the blank-screen exit once.
+2. Check `%LOCALAPPDATA%\FujiyNotepad\Dumps` for a new `.dmp` file.
+3. Also inspect Application events around the reproduction time:
+
+```powershell
+$since = (Get-Date).AddMinutes(-15)
+Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since } -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ProviderName -in @('Application Error', 'Windows Error Reporting') -and
+        $_.Message -match 'FujiyNotepad'
+    } |
+    Select-Object TimeCreated, ProviderName, Id, Message |
+    Format-List
+```
+
+Send the new `crash.log`, any matching Application Error / Windows Error Reporting event, and (if generated) the dump file. A full dump may be large; do not upload it unless requested, as the exception code, faulting module and event details may first be enough to narrow the cause.
+
+## Disable dump capture afterwards
+
+Once diagnosis is complete, remove only this application's LocalDumps key:
+
+```powershell
+Remove-Item "HKCU:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\FujiyNotepad.WinUI.exe" -Recurse -Force
+```
+
+The dump folder can then be deleted manually if no longer needed.
+
+## Important interpretation
+
+A log that stops without a managed exception or `ProcessExit` marker is not proof of a Win2D bug. It is evidence that the current managed logger did not observe the termination. Use the next diagnostic milestones and Windows crash event/dump to identify the actual failing instruction/module before changing rendering behavior.
