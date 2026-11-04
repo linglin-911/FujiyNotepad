@@ -7,7 +7,7 @@ feature/reader-proportional-font-layout.
 
 - **Phase 1 — accepted:** Release x64 solution build succeeded and all 501 original Presentation tests passed.
 - **Phase 2 — accepted:** the user rebuilt the full Release x64 solution after the DirectWrite provider was added; Presentation.Tests passed 508/508 (0 failed, 0 skipped).
-- **Phase 3 — integration code implemented, local validation pending:** TextLayoutEngine now has a source-indexed proportional path for visual-row generation, wrapping, caret movement, horizontal/vertical scrolling, hit testing, selection ranges, find highlights and persistent rule highlights. TextCanvas draws each complete source-line layout once and uses layout-derived geometry for selection, annotation underlines, whitespace markers and the caret. The previous fixed-cell path remains in the engine as a fallback.
+- **Phase 3 — integration code implemented, local validation pending:** TextLayoutEngine now has a source-indexed proportional path for visual-row generation, wrapping, caret movement, measured-row page navigation, horizontal/vertical scrolling, hit testing, selection ranges, find highlights and persistent rule highlights. TextCanvas paints proportional backgrounds before glyphs (so later wrapped rows do not cover their highlights), draws each complete source-line layout once, and uses layout-derived geometry for selection, annotation underlines, whitespace markers and the caret. Same-count source refreshes invalidate native layouts; horizontal extents are re-measured and clamped. Ten engine integration tests cover visual rows, source ranges, hit testing, Unicode caret movement, vertical navigation, selections, horizontal scrolling, measured page navigation, viewport fill, source refresh invalidation, cache pruning and wheel scrolling. The previous fixed-cell path remains in the engine as a fallback.
 - The reader currently uses the proportional backend with its existing default font family (Consolas). User-facing font family selection, persisted font/size/line-spacing/content-width settings and reading themes remain Phase 4 work.
 - Phase 3 has not yet been accepted: the new engine/rendering integration must first pass the user's local Release x64 build/tests and a real-reader visual/interaction check.
 - The provider rejects embedded CR/LF because its contract is one logical source line. The existing LineProvider remains responsible for separating line terminators.
@@ -17,9 +17,9 @@ feature/reader-proportional-font-layout.
 - `Win2DTextLayoutProvider` creates a `CanvasTextLayout` using the selected font, actual viewport width and DirectWrite wrapping.
 - Tabs remain a single source character. The backend measures the selected font's space advance and configures DirectWrite's incremental tab stop rather than expanding tabs into a display string.
 - `CanvasLineMetrics` supplies wrapped-row source lengths, baseline, height and trailing-whitespace counts.
-- Hit testing and character regions are queried from the same native layout used for drawing in the future integration phase.
+- Hit testing, character regions, caret positions and drawing all query the same native layout result.
 - `TextElementBoundaryMap` prevents caret movement and returned ranges from splitting surrogate pairs or combining sequences.
-- `Win2DTextLayoutResult` owns and disposes its native layout and text format. It is UI-thread-affine and is designed to be cached only for visible logical lines and a small prefetch area.
+- `Win2DTextLayoutResult` owns and disposes its native layout and text format. It is UI-thread-affine; the engine retains layouts for visible logical lines and creates/disposes temporary layouts when traversing off-screen lines for page or wheel navigation.
 
 ## Goals
 
@@ -54,8 +54,8 @@ DocumentTextOffsetMap remains the authority for mapping a document line and UTF-
 1. **File layer** — LineIndexer, byte sources and LineProvider keep the existing positional, bounded-read pipeline.
 2. **Source-coordinate layer** — DocumentTextOffsetMap maps line/column positions to document UTF-16 offsets. It is not aware of fonts or pixels.
 3. **Layout contract** — ITextLayoutProvider, ITextLayoutResult and TextLayoutOptions describe font-aware layout without referencing UI frameworks.
-4. **Rendering backend** — the WinUI layer will implement the contract using Win2D/DirectWrite. It owns native layout objects and their disposal.
-5. **Canvas layer** — TextCanvas draws and interacts with the layout result. It must not independently estimate character X positions.
+4. **Rendering backend** — the WinUI layer implements the contract using Win2D/DirectWrite. It owns native layout objects and their disposal.
+5. **Canvas layer** — TextCanvas draws and interacts with the same layout result used by the engine. It must not independently estimate character X positions.
 
 ## Layout contract
 
