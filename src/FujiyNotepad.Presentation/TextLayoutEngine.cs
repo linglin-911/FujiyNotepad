@@ -1061,7 +1061,7 @@ namespace FujiyNotepad.Presentation
         public TextPosition HitTest(double x, double y)
         {
             if (UsesProportionalLayout)
-                return HitTestProportional(x, y, returnCharacter: false);
+                return HitTestProportional(x, y, returnCharacter: false, out _);
 
             if (provider == null || totalLines == 0 || lineHeight <= 0)
             {
