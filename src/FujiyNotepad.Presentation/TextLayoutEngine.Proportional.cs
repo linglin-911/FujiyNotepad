@@ -463,13 +463,33 @@ public sealed partial class TextLayoutEngine
 
     /// <summary>Returns the source character under a point, rather than the nearest trailing caret boundary.</summary>
     public TextPosition HitTestCharacter(double x, double y)
-        => UsesProportionalLayout ? HitTestProportional(x, y, returnCharacter: true) : HitTest(x, y);
+        => HitTestCharacter(x, y, out _);
 
-    private TextPosition HitTestProportional(double x, double y, bool returnCharacter)
+    /// <summary>
+    /// Hit-tests the source character under a point and reports whether the pointer actually landed on a
+    /// character region. The nearest-boundary position is still returned when it did not; callers that act
+    /// on a character (such as clicking an annotation marker) must check <paramref name="isInside"/>.
+    /// </summary>
+    public TextPosition HitTestCharacter(double x, double y, out bool isInside)
+    {
+        if (!UsesProportionalLayout)
+        {
+            isInside = false;
+            return HitTest(x, y);
+        }
+
+        return HitTestProportional(x, y, returnCharacter: true, out isInside);
+    }
+
+    private TextPosition HitTestProportional(
+        double x, double y, bool returnCharacter, out bool isInside)
     {
         IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(hasFocus: false, caretVisible: false);
         if (visible.Count == 0)
+        {
+            isInside = false;
             return new TextPosition(0, 0);
+        }
 
         VisibleLine hitRow = visible[0];
         foreach (VisibleLine candidate in visible)
@@ -485,6 +505,7 @@ public sealed partial class TextLayoutEngine
             x - hitRow.TextX,
             y - layoutTop);
 
+        isInside = hit.IsInside;
         int sourceIndex = returnCharacter ? hit.SourceStartIndex : hit.CaretIndex;
         sourceIndex = Math.Clamp(sourceIndex, 0, layout.SourceText.Length);
         return new TextPosition(hitRow.LineIndex, sourceIndex);
