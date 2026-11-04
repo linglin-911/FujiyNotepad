@@ -60,4 +60,12 @@ public sealed class TextElementBoundaryMapTests
 
         Assert.Equal((1, 2), map.ExpandRange(1, int.MaxValue));
     }
+
+    [Fact]
+    public void ExpandRange_ClipsNegativeStartWithoutExtendingTheEnd()
+    {
+        var map = new TextElementBoundaryMap("abc");
+
+        Assert.Equal((0, 1), map.ExpandRange(-1, 2));
+    }
 }
