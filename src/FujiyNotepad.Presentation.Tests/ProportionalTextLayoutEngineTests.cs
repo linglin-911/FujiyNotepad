@@ -58,6 +58,35 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void SelectionRenderModel_UsesSourceIndexesAcrossSoftWrapRows()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+        engine.SelectMatch(0, 1, 4);
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        Assert.Equal(new[] { 1, 2, 4 }, rows.Select(row => row.SelectionStartIndex));
+        Assert.Equal(new[] { 1, 2, 1 }, rows.Select(row => row.SelectionLength));
+        Assert.Equal(new[] { true, true, false }, rows.Select(row => row.SelectionContinuesPastRow));
+    }
+
+    [Fact]
+    public void NoWrapLayout_UsesMeasuredWidthForHorizontalScrolling()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 40);
+        engine.GoToLineColumn(0, 6);
+
+        Assert.True(engine.HorizontalOffset > 0);
+        Assert.True(engine.HorizontalExtentPx > engine.ViewportWidth);
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+        Assert.Single(rows);
+        Assert.Equal("abcdef", rows[0].Display);
+        Assert.Equal((0, 6), (rows[0].SourceStartIndex, rows[0].SourceEndIndex));
+    }
+
+    [Fact]
     public void LayoutCache_DisposesRowsThatLeaveTheViewport()
     {
         var provider = new FakeProportionalProvider();
