@@ -422,6 +422,10 @@ public sealed partial class TextLayoutEngine
         ApplyCaret(new TextPosition(targetLine, hit.CaretIndex), shift, keepDesired: true);
     }
 
+    /// <summary>Returns the source character under a point, rather than the nearest trailing caret boundary.</summary>
+    public TextPosition HitTestCharacter(double x, double y)
+        => UsesProportionalLayout ? HitTestProportional(x, y, returnCharacter: true) : HitTest(x, y);
+
     private TextPosition HitTestProportional(double x, double y, bool returnCharacter)
     {
         IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(hasFocus: false, caretVisible: false);
