@@ -754,17 +754,39 @@ public sealed partial class MainWindow
     {
         NovelAnnotationStore? store = activeAnnotationStore;
         NovelProject? project = activeNovelProject;
-        if (store is null || project is null || provider is null || filteredSource is not null)
+        LineProvider? lines = provider;
+        if (store is null || project is null || lines is null || filteredSource is not null)
             return false;
 
-        chapterAnnotationChapters = await store.GetChaptersAsync();
-        NovelChapterIndexState? state = await store.GetChapterIndexStateAsync();
+        bool IsCurrentRequest()
+            => ReferenceEquals(store, activeAnnotationStore)
+               && ReferenceEquals(project, activeNovelProject)
+               && ReferenceEquals(lines, provider)
+               && filteredSource is null;
 
-        if (chapterAnnotationChapters.Count == 0 && state is null && LineIndexer.IsCompleted)
+        IReadOnlyList<NovelChapter> chapters = await store.GetChaptersAsync();
+        if (!IsCurrentRequest())
+            return false;
+        chapterAnnotationChapters = chapters;
+
+        NovelChapterIndexState? state = await store.GetChapterIndexStateAsync();
+        if (!IsCurrentRequest())
+            return false;
+
+        if (chapters.Count == 0 && state is null && LineIndexer.IsCompleted)
         {
             await EnsureChapterIndexAsync();
-            chapterAnnotationChapters = await store.GetChaptersAsync();
+            if (!IsCurrentRequest())
+                return false;
+
+            chapters = await store.GetChaptersAsync();
+            if (!IsCurrentRequest())
+                return false;
+            chapterAnnotationChapters = chapters;
+
             state = await store.GetChapterIndexStateAsync();
+            if (!IsCurrentRequest())
+                return false;
         }
 
         if (!LineIndexer.IsCompleted)
@@ -775,7 +797,7 @@ public sealed partial class MainWindow
             return false;
         }
 
-        bool missingChapterFingerprints = chapterAnnotationChapters.Any(chapter =>
+        bool missingChapterFingerprints = chapters.Any(chapter =>
             chapter.BodyStartOffset < chapter.StartOffset
             || string.IsNullOrWhiteSpace(chapter.BodySha256));
         bool staleIndexState = !project.IsDocumentFingerprintCurrent
@@ -784,7 +806,7 @@ public sealed partial class MainWindow
                 && (state.DocumentRevision != project.Metadata.DocumentRevision
                     || state.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion));
         bool staleChapterRows = state is null
-            && chapterAnnotationChapters.Any(chapter =>
+            && chapters.Any(chapter =>
                 chapter.DocumentRevision != project.Metadata.DocumentRevision
                 || chapter.BodyStartOffset < chapter.StartOffset
                 || string.IsNullOrWhiteSpace(chapter.BodySha256));
@@ -796,7 +818,7 @@ public sealed partial class MainWindow
             return false;
         }
 
-        if (chapterAnnotationChapters.Count == 0)
+        if (chapters.Count == 0)
         {
             await ShowNovelProjectMessageAsync(
                 "没有可用章节",
@@ -804,7 +826,7 @@ public sealed partial class MainWindow
             return false;
         }
 
-        return true;
+        return IsCurrentRequest();
     }
 
     private async void CreateChapterAnnotationFromPosition(TextPosition position)
