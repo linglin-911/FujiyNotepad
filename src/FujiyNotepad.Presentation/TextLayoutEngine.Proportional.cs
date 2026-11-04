@@ -101,7 +101,7 @@ public sealed partial class TextLayoutEngine
             tabSize);
     }
 
-    private ITextLayoutResult GetProportionalLayout(int lineIndex)
+    private TextLayoutOptions EnsureProportionalOptions()
     {
         TextLayoutOptions options = CreateProportionalOptions();
         if (cachedProportionalOptions != options)
@@ -109,7 +109,12 @@ public sealed partial class TextLayoutEngine
             ClearProportionalLayoutCache();
             cachedProportionalOptions = options;
         }
+        return options;
+    }
 
+    private ITextLayoutResult GetProportionalLayout(int lineIndex)
+    {
+        TextLayoutOptions options = EnsureProportionalOptions();
         activeProportionalLayoutLines.Add(lineIndex);
         if (proportionalLayoutCache.TryGetValue(lineIndex, out ITextLayoutResult? cached))
             return cached;
@@ -118,6 +123,20 @@ public sealed partial class TextLayoutEngine
         ITextLayoutResult created = proportionalLayoutProvider!.CreateLayout(sourceText, options);
         proportionalLayoutCache.Add(lineIndex, created);
         return created;
+    }
+
+    // Row-count traversal often crosses many off-screen source lines (large wheel/page movements). Do not
+    // retain native layouts for those intermediate lines: use an existing cache entry or create/dispose a
+    // temporary layout immediately. The destination line is cached separately when its geometry is needed.
+    private int GetProportionalRowCount(int lineIndex)
+    {
+        TextLayoutOptions options = EnsureProportionalOptions();
+        if (proportionalLayoutCache.TryGetValue(lineIndex, out ITextLayoutResult? cached))
+            return Math.Max(1, cached.VisualLines.Count);
+
+        using ITextLayoutResult temporary = proportionalLayoutProvider!.CreateLayout(
+            provider!.GetLine(lineIndex), options);
+        return Math.Max(1, temporary.VisualLines.Count);
     }
 
     private void PruneProportionalLayoutCache()
@@ -369,7 +388,7 @@ public sealed partial class TextLayoutEngine
 
         while (delta > 0)
         {
-            int rowCount = Math.Max(1, GetProportionalLayout(line).VisualLines.Count);
+            int rowCount = GetProportionalRowCount(line);
             if (row + 1 < rowCount)
             {
                 row++;
@@ -396,7 +415,7 @@ public sealed partial class TextLayoutEngine
             else if (line > 0)
             {
                 line--;
-                row = Math.Max(0, GetProportionalLayout(line).VisualLines.Count - 1);
+                row = GetProportionalRowCount(line) - 1;
             }
             else
             {
