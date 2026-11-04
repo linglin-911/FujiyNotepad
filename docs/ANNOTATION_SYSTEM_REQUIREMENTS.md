@@ -537,7 +537,7 @@ Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presen
 | 日期 | 变更 |
 |---|---|
 | 2026-11-05 | Phase 4.1 首轮实现：新增全局 ReaderSettings（字体、DIP 字号、行距倍数、正文宽度、Paper/Warm/Night 主题）及独立参数归一化；AppSettings 增加嵌套 Reader；SettingsStore 检测旧 JSON 并将旧文本视图 FontFamily/FontSize 迁移至 Reader，归一化后持久化；MainWindow 启动与现有字体/Zoom 快捷操作改为以 ReaderSettings 为主数据，同时同步旧字段兼容。新增 Reader 往返、默认值、旧 JSON 迁移、显式 Reader 优先级和非法值测试。代码提交：`e2fcfb5955c99d15140fab41d1448868b7561b11`、`0f677049f64ac22d31a3f710be9099d158a179fa`、`75461d04287cfbbcc0ed9c9cb02ccd3843799bea`、`6cdc6948b5787450c8d7283661afc5e1248e0597`、`c0cc5f4eb0dab7f6123e0947d6f3644f55835a78`、`0fcc5853c1d69422b16e3053344e780c22638689`。文档提交：`d448360f6b33d19d2810d6b6b84bd0246ebc6e4b`、`54e3e13c469dba2b727e7608d4847c62e942e81b`、`e531611353bdfbfedb8b4599f74da39c8640d46a`。当前无 .NET SDK/Windows App SDK 执行环境，尚未运行构建和测试，不宣称通过。 |
-| 2026-11-05 | 用户确认比例阅读器文字重叠问题已在独立分支 `fix/reader-proportional-line-overlap` 修复；检查实际代码后，确定 Phase 4 必须使用全局嵌套 `ReaderSettings`，与主界面外观完全隔离：全局 settings.json 持久化、独立 ReaderPalette、Reader-only 字体/字号/行距/正文宽度/主题、旧设置 JSON 兼容迁移、全宽背景+居中正文容器；主界面不新增字体/字号/背景设置。创建 `feature/reader-settings-phase4`，基于已修复的 Phase 3 分支；架构同步至 `reader-text-layout-architecture.md` 和本需求文档。代码实现尚未开始。 |
+| 2026-11-05 | 用户确认比例阅读器文字重叠问题已在独立分支 `fix/reader-proportional-line-overlap` 修复；检查实际代码后，确定 Phase 4 必须使用全局嵌套 `ReaderSettings`，与主界面外观完全隔离：全局 settings.json 持久化、独立 ReaderPalette、Reader-only 字体/字号/行距/正文宽度/主题、旧设置 JSON 兼容迁移、全宽背景+居中正文容器；主界面不新增字体/字号/背景设置。创建 `feature/reader-settings-phase4`，基于已修复的 Phase 3 分支；架构同步至 `reader-text-layout-architecture.md` 和本需求文档。4.1 后续已单独实现并记录于本表前一条。 |
 | 2026-11-04 | 整体界面优化阶段首次仓库盘点：以 `feature/reader-proportional-font-layout` 为基准，核对远程分支、主窗口布局、阅读器和三种批注代码；新增功能归属、未完整验收、待改造、未开发及暂缓清单。对照上游基线纠正“阅读模式”的功能归属；更新大批注基本验收状态；明确外部编辑当前仅支持带标记副本导出与标记校验；修正 21:48 日志早于首次 Draw/IndexRefreshTimer 诊断埋点的时间关系。审查基准 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`。 |
 | 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 同时新增启动诊断日志：记录 App/Window 生命周期、项目恢复、文件打开、索引进度、首次内容绘制、未观察任务异常及 ProcessExit；TextCanvas.OnDraw 托管异常会记录后重新抛出。用户此前在诊断代码加入前确认 975/975 测试通过；本轮诊断代码及新增日志测试尚待本地编译和运行验证。 |
 | 2026-11-04 | 根据用户 22:34 新日志，首次空 Canvas Draw 已成功获取 DrawingSession 并清除背景；76MB 文件索引至 382,033 行；IndexRefreshTimer 首次 Tick 进入后，最后记录停在 `before View.UpdateTotalLines`，未记录首次内容绘制、托管异常、窗口关闭或 ProcessExit。新增 TextCanvas.UpdateTotalLines 的 Ready/缓存清理/引擎更新阶段日志、ViewChanged/RedrawRequested 回调日志、OnReaderViewChanged 和 SyncScrollBars 逐项日志（代码提交 `41d6e65cdd0ed72e3758d075b6238acd704de675`、`c08f1f9317451c2d0e85bc928ed21413098c0417`）。该修改仅增加诊断，不改变功能逻辑，尚待用户 Release x64 构建和复测。 |
@@ -652,7 +652,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 | Phase 1 | 布局接口、UTF-16 坐标约定、契约测试、旧路径标记 | 用户验收通过：Release x64 编译成功，501/501 测试通过 |
 | Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 用户验收通过：Release x64 编译成功，Presentation.Tests 508/508 通过；后续已接入 Phase 3 |
 | Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；原有 975/975 测试通过。Win2D 行指标数组封送异常已修复；用户确认首屏正文正常显示。窗口宽度变化时曾出现文字重叠，用户切换到独立修复分支后确认已解决；Phase 3 其余交互冒烟测试仍待完成 |
-| Phase 4 | 阅读字体、字号、行距、正文宽度和独立阅读主题 | 架构已由用户确认；正在建立全局 ReaderSettings 数据模型和兼容策略，尚未完成代码实现 |
+| Phase 4 | 阅读字体、字号、行距、正文宽度和独立阅读主题 | 架构已由用户确认；4.1 ReaderSettings/旧设置迁移/归一化/测试代码已提交，待本地 x64 构建和测试；4.2–4.5 未开始 |
 | Phase 5 | 有界缓存、长行性能验证和旧代码清理 | 未开始 |
 
 当前已确认比例布局能够完成首次正文绘制并正常显示，用户也确认独立修复分支已解决窗口宽度变化时出现的文字重叠；普通中文比例字体/中英文混排、连续滚轮、目录跳转、选区、光标、小批注矩形命中和章节批注右键定位等其他 Phase 3 交互仍需针对性冒烟验收。Phase 4 将使用独立的全局 ReaderSettings，不能因为原项目已有字体切换或 Zoom 就标记为完成。
@@ -680,7 +680,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 ### 13.1 GitHub 代码基线与项目结构
 
 - 2026-11-05 Phase 4 开发基线：`fix/reader-proportional-line-overlap`，HEAD `72c8053b4bdfb58a663a88f0ad7b255450b189ef`；该分支从 `feature/reader-proportional-font-layout`（HEAD `599745f07cacf7f61231a0b8a387a34398ebf785`）派生，包含 8 个修复提交。
-- 当前 Phase 4 工作分支：`feature/reader-settings-phase4`，从上述已修复分支创建；文档架构提交后需在版本记录中持续更新最新 HEAD。
+- 当前 Phase 4 工作分支：`feature/reader-settings-phase4`，从上述已修复分支创建；当前已提交 4.1 数据模型、持久化迁移、测试和文档更新。最新代码提交为 `0fcc5853c1d69422b16e3053344e780c22638689`；最新进度文档提交记录在版本表中。
 - PR #5（比例阅读器文字重叠修复）仍为 Draft，head 为 `fix/reader-proportional-line-overlap`，base 为 `feature/reader-proportional-font-layout`；用户已确认切换到该分支后此前重叠问题已解决。Phase 4 分支以该修复分支为基线，避免重新引入已修复问题。
 - PR #4 仍为 Draft，head 仍指向旧分支 `feature/novel-project-annotations`（SHA `87545052d545ecedd2a00e9c51198cefc5f85372`），不是当前最新工作分支；不得以 PR #4 的文件状态代替最新分支代码。
 - 远程仓库检查不能确认用户电脑上的本地检出分支、未提交修改或本地生成文件；如需直接修改本地工作区，仍须先检查本地 `git status`。
@@ -769,7 +769,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 ### 13.6 尚未开发或尚未完成的功能
 
-- Phase 4 阅读器专用设置尚未编码：全局 ReaderSettings 数据模型、持久化兼容、ReaderPalette、排版接入、正文宽度容器及统一设置窗口。其详细架构已在 2026-11-05 确认，见第 13.9 节和 docs/reader-text-layout-architecture.md。
+- Phase 4 尚未完成：4.1 ReaderSettings 数据模型、持久化兼容及测试代码已提交，待用户 Windows x64 构建和测试；4.2 ReaderPalette 与字体/字号/行距排版接入、4.3 正文宽度容器、4.4 统一阅读设置窗口、4.5 最终验收仍未完成。详细架构见第 13.9 节和 docs/reader-text-layout-architecture.md。
 - 外部编辑后的完整差异生成、差异预览、标记清理、锚点重映射、确认应用和失败恢复。
 - 大批注 Markdown/TXT 导出。
 - 批注和大批注之间的关联关系。
@@ -819,7 +819,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 后续整体界面优化应先讨论主窗口整体信息架构和视觉规范，再逐个改造阅读器及三种批注界面；不得把原项目继承功能误写成本项目开发成果，也不得把“代码已实现”直接标记为“用户已验收”。
 
-### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（架构已确认，代码待实施）
+### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（架构已确认，4.1 代码已提交待测试）
 
 **核心决定：阅读界面与软件主界面是两套独立视觉系统。** 本阶段只开发阅读器专用设置；主界面菜单、工具栏、状态栏、批注面板、批注弹窗等保持固定样式，不增加字体、字号、背景、文字颜色设置，也不把阅读主题传递给这些控件。
 
