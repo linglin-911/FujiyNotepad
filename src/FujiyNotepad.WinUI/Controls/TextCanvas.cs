@@ -671,6 +671,7 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (isClick)
             {
+                Ready();
                 TextPosition position = HitTestTextCharacter(released.X, released.Y, out bool hitCharacter);
                 if (hitCharacter && HasAnnotationMarkerAt(position))
                     AnnotationMarkerClicked?.Invoke(position);
