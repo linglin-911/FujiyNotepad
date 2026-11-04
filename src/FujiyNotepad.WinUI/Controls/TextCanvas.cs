@@ -24,7 +24,7 @@ namespace FujiyNotepad.WinUI.Controls
     /// without loading it: it draws only the lines currently visible (read on demand via
     /// <see cref="LineProvider"/>) onto a Win2D <see cref="CanvasControl"/>, tracks its own scroll position
     /// in whole-line units, and supports caret placement, character-level selection, copy and
-    /// keyboard/mouse navigation. A fixed monospace font gives a uniform line height and column width.
+    /// keyboard/mouse navigation. Text shaping and visual-row geometry come from the active font's DirectWrite layout.
     ///
     /// This control is the WinUI shell: it owns the <see cref="CanvasControl"/>, focus, the caret-blink
     /// timer, clipboard access, the Win2D font metrics and the actual draw calls. All scroll/caret/selection
@@ -432,7 +432,7 @@ namespace FujiyNotepad.WinUI.Controls
         private const double MaxFontSize = 72;
         private const double FontSizeStep = 1;
 
-        /// <summary>The monospace font family used to render text. Changing it re-measures the cell metrics.</summary>
+        /// <summary>The font family used to render text. Changing it re-measures the font metrics.</summary>
         public string FontFamilyName
         {
             get => textFormat.FontFamily;
@@ -1048,7 +1048,7 @@ namespace FujiyNotepad.WinUI.Controls
                     {
                         TextCaretGeometry caret = sourceLayout.GetCaretGeometry(line.CaretSourceIndex);
                         caretLeftPx = line.TextX + caret.X;
-                        caretTopPx = layoutTopPx + caret.Y;
+                        caretTopPx = PixelSnap.SnapToDevicePixels(layoutTopPx + caret.Y, dpiScale);
                         caretHeightPx = caret.Height;
                     }
                     else if (layout is not null)
