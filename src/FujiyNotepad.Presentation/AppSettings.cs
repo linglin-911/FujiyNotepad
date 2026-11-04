@@ -9,11 +9,28 @@ namespace FujiyNotepad.Presentation
         /// <summary>Tab width in columns (2, 4, or 8). Defaults to 4.</summary>
         public int TabWidth { get; set; } = 4;
 
-        /// <summary>Monospace font family used by the text view. Defaults to Consolas.</summary>
+        /// <summary>
+        /// Legacy text-view font family retained for compatibility with existing settings files and the
+        /// inherited font menu while it is migrated to ReaderSettings. Never use this value for application chrome.
+        /// </summary>
         public string FontFamily { get; set; } = "Consolas";
 
-        /// <summary>Font size in points (drives zoom). Defaults to 14.</summary>
+        /// <summary>
+        /// Legacy text-view font size retained for compatibility with existing settings files and Zoom commands
+        /// while they are migrated to ReaderSettings. The Win2D text surface interprets this numeric value as DIPs.
+        /// </summary>
         public double FontSize { get; set; } = 14;
+
+        /// <summary>
+        /// Global novel-reader appearance settings. These are independent from application chrome and shared
+        /// across all novel projects; they are never stored in a project's SQLite database.
+        /// </summary>
+        private ReaderSettings reader = new();
+        public ReaderSettings Reader
+        {
+            get => reader;
+            set => reader = value ?? new ReaderSettings();
+        }
 
         /// <summary>Whether the line-number gutter is shown. Off by default.</summary>
         public bool ShowLineNumbers { get; set; }
