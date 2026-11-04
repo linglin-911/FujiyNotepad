@@ -882,6 +882,24 @@ namespace FujiyNotepad.WinUI.Controls
 
             double dpiScale = (canvas.Dpi > 0 ? canvas.Dpi : 96.0) / 96.0;
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocusInternal, caretVisible: true);
+
+            // Paint every proportional background before drawing any glyphs. A single source-line layout can
+            // produce several visible rows; painting a later row's highlight after drawing the complete layout
+            // would cover its text. This first pass keeps the z-order correct for all wrapped rows.
+            foreach (VisibleLine line in lines)
+            {
+                if (!line.UsesProportionalLayout)
+                    continue;
+
+                ITextLayoutResult? sourceLayout = engine.GetLayoutForLine(line.LineIndex);
+                if (sourceLayout is null)
+                    continue;
+
+                float layoutTopPx = (float)PixelSnap.SnapToDevicePixels(
+                    line.Y - line.LayoutRowTop, dpiScale);
+                DrawProportionalRowHighlights(ds, sourceLayout, line, layoutTopPx, dpiScale);
+            }
+
             bool caretShown = false;
             double caretLeftPx = 0, caretTopPx = 0, caretHeightPx = lineHeight;
 
@@ -900,113 +918,89 @@ namespace FujiyNotepad.WinUI.Controls
                     : line.Y;
                 float layoutTopPx = (float)PixelSnap.SnapToDevicePixels(layoutTop, dpiScale);
 
-                if (line.RuleHighlights is { Count: > 0 })
+                // Proportional backgrounds were painted in the pre-pass. Keep the original ordering for the
+                // legacy renderer, where each visible row owns an independent layout object.
+                if (sourceLayout is null)
                 {
-                    foreach (RuleHighlightRect highlight in line.RuleHighlights)
+                    if (line.RuleHighlights is { Count: > 0 })
                     {
-                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                        foreach (RuleHighlightRect highlight in line.RuleHighlights)
                         {
-                            DrawSourceTextRangeHighlight(
-                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
-                                ToColor(highlight.Argb), layoutTopPx, dpiScale);
+                            if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                            {
+                                DrawTextRangeHighlight(
+                                    ds, layout, line, highlight.StartIndex, highlight.Length,
+                                    ToColor(highlight.Argb), rowTopPx);
+                            }
+                            else
+                            {
+                                ds.FillRectangle(
+                                    (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                    (float)lineHeight, ToColor(highlight.Argb));
+                            }
                         }
-                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                    }
+
+                    if (line.Matches is { Count: > 0 })
+                    {
+                        foreach (HighlightRect highlight in line.Matches)
+                        {
+                            if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                            {
+                                DrawTextRangeHighlight(
+                                    ds, layout, line, highlight.StartIndex, highlight.Length,
+                                    matchHighlightColor, rowTopPx);
+                            }
+                            else
+                            {
+                                ds.FillRectangle(
+                                    (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                    (float)lineHeight, matchHighlightColor);
+                            }
+                        }
+                    }
+
+                    if (line.SelectionMatches is { Count: > 0 })
+                    {
+                        foreach (HighlightRect highlight in line.SelectionMatches)
+                        {
+                            if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                            {
+                                DrawTextRangeHighlight(
+                                    ds, layout, line, highlight.StartIndex, highlight.Length,
+                                    selectionOccurrenceColor, rowTopPx);
+                            }
+                            else
+                            {
+                                ds.FillRectangle(
+                                    (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                    (float)lineHeight, selectionOccurrenceColor);
+                            }
+                        }
+                    }
+
+                    if (line.HasSelection)
+                    {
+                        if (layout is not null)
                         {
                             DrawTextRangeHighlight(
-                                ds, layout, line, highlight.StartIndex, highlight.Length, ToColor(highlight.Argb), rowTopPx);
+                                ds, layout, line, line.SelectionStartIndex, line.SelectionLength,
+                                selectionColor, rowTopPx);
+                            if (line.SelectionContinuesPastRow)
+                            {
+                                Vector2 end = layout.GetCaretPosition(
+                                    line.Display.Length, trailingSideOfCharacter: false);
+                                ds.FillRectangle(
+                                    (float)(line.TextX + end.X), rowTopPx,
+                                    (float)Math.Max(1.0, charWidth), (float)lineHeight, selectionColor);
+                            }
                         }
                         else
                         {
                             ds.FillRectangle(
-                                (float)highlight.X, rowTopPx, (float)highlight.Width,
-                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
-                                ToColor(highlight.Argb));
+                                (float)line.SelectionX, rowTopPx,
+                                (float)line.SelectionWidth, (float)lineHeight, selectionColor);
                         }
-                    }
-                }
-
-                if (line.Matches is { Count: > 0 })
-                {
-                    foreach (HighlightRect highlight in line.Matches)
-                    {
-                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
-                        {
-                            DrawSourceTextRangeHighlight(
-                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
-                                matchHighlightColor, layoutTopPx, dpiScale);
-                        }
-                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
-                        {
-                            DrawTextRangeHighlight(
-                                ds, layout, line, highlight.StartIndex, highlight.Length, matchHighlightColor, rowTopPx);
-                        }
-                        else
-                        {
-                            ds.FillRectangle(
-                                (float)highlight.X, rowTopPx, (float)highlight.Width,
-                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
-                                matchHighlightColor);
-                        }
-                    }
-                }
-
-                if (line.SelectionMatches is { Count: > 0 })
-                {
-                    foreach (HighlightRect highlight in line.SelectionMatches)
-                    {
-                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
-                        {
-                            DrawSourceTextRangeHighlight(
-                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
-                                selectionOccurrenceColor, layoutTopPx, dpiScale);
-                        }
-                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
-                        {
-                            DrawTextRangeHighlight(
-                                ds, layout, line, highlight.StartIndex, highlight.Length,
-                                selectionOccurrenceColor, rowTopPx);
-                        }
-                        else
-                        {
-                            ds.FillRectangle(
-                                (float)highlight.X, rowTopPx, (float)highlight.Width,
-                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
-                                selectionOccurrenceColor);
-                        }
-                    }
-                }
-
-                if (line.HasSelection)
-                {
-                    if (sourceLayout is not null)
-                    {
-                        DrawSourceTextRangeHighlight(
-                            ds, sourceLayout, line, line.SelectionStartIndex, line.SelectionLength,
-                            selectionColor, layoutTopPx, dpiScale);
-                        if (line.SelectionContinuesPastRow)
-                        {
-                            DrawSourceSelectionContinuation(
-                                ds, sourceLayout, line, selectionColor, layoutTopPx, dpiScale);
-                        }
-                    }
-                    else if (layout is not null)
-                    {
-                        DrawTextRangeHighlight(
-                            ds, layout, line, line.SelectionStartIndex, line.SelectionLength, selectionColor, rowTopPx);
-                        if (line.SelectionContinuesPastRow)
-                        {
-                            Vector2 end = layout.GetCaretPosition(line.Display.Length, trailingSideOfCharacter: false);
-                            ds.FillRectangle(
-                                (float)(line.TextX + end.X), rowTopPx,
-                                (float)Math.Max(1.0, charWidth), (float)lineHeight, selectionColor);
-                        }
-                    }
-                    else
-                    {
-                        ds.FillRectangle(
-                            (float)line.SelectionX, rowTopPx, (float)line.SelectionWidth,
-                            (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
-                            selectionColor);
                     }
                 }
 
@@ -1053,7 +1047,8 @@ namespace FujiyNotepad.WinUI.Controls
                     }
                     else if (layout is not null)
                     {
-                        Vector2 caret = layout.GetCaretPosition(line.CaretDisplayIndex, trailingSideOfCharacter: false);
+                        Vector2 caret = layout.GetCaretPosition(
+                            line.CaretDisplayIndex, trailingSideOfCharacter: false);
                         caretLeftPx = line.TextX + caret.X;
                         caretTopPx = rowTopPx;
                         caretHeightPx = lineHeight;
@@ -1070,6 +1065,65 @@ namespace FujiyNotepad.WinUI.Controls
             PruneTextLayoutCache();
             DrawGutter(ds, sender, lines);
             UpdateCaretOverlay(caretShown, caretLeftPx, caretTopPx, caretHeightPx, dpiScale);
+        }
+
+        private void DrawProportionalRowHighlights(
+            CanvasDrawingSession ds,
+            ITextLayoutResult layout,
+            VisibleLine line,
+            float layoutTopPx,
+            double dpiScale)
+        {
+            if (line.RuleHighlights is { Count: > 0 })
+            {
+                foreach (RuleHighlightRect highlight in line.RuleHighlights)
+                {
+                    if (highlight.StartIndex >= 0 && highlight.Length > 0)
+                    {
+                        DrawSourceTextRangeHighlight(
+                            ds, layout, line, highlight.StartIndex, highlight.Length,
+                            ToColor(highlight.Argb), layoutTopPx, dpiScale);
+                    }
+                }
+            }
+
+            if (line.Matches is { Count: > 0 })
+            {
+                foreach (HighlightRect highlight in line.Matches)
+                {
+                    if (highlight.StartIndex >= 0 && highlight.Length > 0)
+                    {
+                        DrawSourceTextRangeHighlight(
+                            ds, layout, line, highlight.StartIndex, highlight.Length,
+                            matchHighlightColor, layoutTopPx, dpiScale);
+                    }
+                }
+            }
+
+            if (line.SelectionMatches is { Count: > 0 })
+            {
+                foreach (HighlightRect highlight in line.SelectionMatches)
+                {
+                    if (highlight.StartIndex >= 0 && highlight.Length > 0)
+                    {
+                        DrawSourceTextRangeHighlight(
+                            ds, layout, line, highlight.StartIndex, highlight.Length,
+                            selectionOccurrenceColor, layoutTopPx, dpiScale);
+                    }
+                }
+            }
+
+            if (line.HasSelection)
+            {
+                DrawSourceTextRangeHighlight(
+                    ds, layout, line, line.SelectionStartIndex, line.SelectionLength,
+                    selectionColor, layoutTopPx, dpiScale);
+                if (line.SelectionContinuesPastRow)
+                {
+                    DrawSourceSelectionContinuation(
+                        ds, layout, line, selectionColor, layoutTopPx, dpiScale);
+                }
+            }
         }
 
         private CanvasTextLayout? GetTextLayout(VisibleLine line)
