@@ -142,7 +142,11 @@ public interface ITextLayoutResult : IDisposable
     double LayoutHeight { get; }
     IReadOnlyList<TextLayoutVisualLine> VisualLines { get; }
 
-    /// <summary>Returns caret geometry for a source UTF-16 boundary.</summary>
+    /// <summary>
+    /// Returns caret geometry for a source UTF-16 position. When trailingSideOfCharacter is false, the
+    /// index is the leading caret boundary; when true, it identifies the source character/cluster whose
+    /// trailing caret edge is requested. Pass SourceText.Length with false for the end-of-line boundary.
+    /// </summary>
     TextCaretGeometry GetCaretGeometry(int sourceUtf16Index, bool trailingSideOfCharacter = false);
 
     /// <summary>Hit-tests layout-local coordinates and returns an original-source UTF-16 range.</summary>
