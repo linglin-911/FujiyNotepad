@@ -1266,7 +1266,8 @@ namespace FujiyNotepad.WinUI.Controls
                     };
                 }
 
-                bool isTrailing = (kind == WhitespaceKind.Space || kind == WhitespaceKind.Tab)
+                WhitespaceKind markerKind = kind.Value;
+                bool isTrailing = (markerKind == WhitespaceKind.Space || markerKind == WhitespaceKind.Tab)
                                   && index > lastSignificant;
                 Color color = isTrailing ? trailingWhitespaceColor : whitespaceColor;
 
@@ -1283,7 +1284,7 @@ namespace FujiyNotepad.WinUI.Controls
                     float height = (float)(bottom - top);
                     float midY = y + height / 2f;
 
-                    switch (kind)
+                    switch (markerKind)
                     {
                         case WhitespaceKind.Space:
                             float radius = Math.Max(1.5f, width * 0.14f);
