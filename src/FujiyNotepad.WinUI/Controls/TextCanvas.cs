@@ -55,8 +55,7 @@ namespace FujiyNotepad.WinUI.Controls
         private double lastMetricsDpi;    // DPI used for the last pixel-snap; re-snap when it changes
         private bool metricsValid;
 
-        // Theme-dependent colors for the Win2D surface (which paints its own pixels instead of using XAML
-        // brushes). Updated by ApplyTheme() from the control's resolved ActualTheme; default to light.
+        // Reader-palette colors for the Win2D surface. They are independent from the application's ActualTheme.
         private Color backgroundColor = Colors.White;
         private Color textColor = Colors.Black;
         private Color caretColor = Colors.Black;
@@ -69,6 +68,9 @@ namespace FujiyNotepad.WinUI.Controls
         private Color whitespaceColor = Color.FromArgb(210, 0x5A, 0x5A, 0x5A);
         private Color trailingWhitespaceColor = Color.FromArgb(235, 0xD0, 0x30, 0x30);
         private Color controlCharColor = Color.FromArgb(235, 0xD0, 0x30, 0x30);
+        private Color annotationMarkerColor = Color.FromArgb(255, 0xC5, 0x7A, 0x20);
+        private double readerLineSpacingMultiplier = ReaderSettings.DefaultLineSpacingMultiplier;
+        private string readerTheme = ReaderSettings.DefaultTheme;
 
         // Detects Windows High Contrast so ApplyTheme can switch the surface to the system HC palette. Kept
         // alive as a field so its HighContrastChanged event keeps firing.
@@ -97,7 +99,6 @@ namespace FujiyNotepad.WinUI.Controls
         private TextPosition contextMenuPosition;
         private bool hasPointerContextMenuPosition;
         private readonly Dictionary<int, List<TextAnnotationMarker>> annotationMarkersByLine = new();
-        private readonly Color annotationMarkerColor = Color.FromArgb(255, 0xC5, 0x7A, 0x20);
 
         public event Action? ViewChanged;
         public event Action<TextPosition>? CaretChanged;
@@ -114,8 +115,8 @@ namespace FujiyNotepad.WinUI.Controls
         {
             textFormat = new CanvasTextFormat
             {
-                FontFamily = "Consolas",
-                FontSize = 14,
+                FontFamily = ReaderSettings.DefaultFontFamily,
+                FontSize = (float)ReaderSettings.DefaultFontSizeDip,
                 WordWrapping = CanvasWordWrapping.NoWrap,
                 HorizontalAlignment = CanvasHorizontalAlignment.Left,
             };
@@ -175,7 +176,8 @@ namespace FujiyNotepad.WinUI.Controls
                     LogDiagnostic("TextCanvas: engine RedrawRequested completed during UpdateTotalLines");
             };
             engine.CaretBlinkResetRequested += RestartCaretBlink;
-            engine.ConfigureProportionalLayout(proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize);
+            engine.ConfigureProportionalLayout(
+                proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize, readerLineSpacingMultiplier);
 
             IsTabStop = true;
             UseSystemFocusVisuals = false;
@@ -194,13 +196,12 @@ namespace FujiyNotepad.WinUI.Controls
             LostFocus += (_, _) => { hasFocusInternal = false; caretTimer.Stop(); caretElement.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed; canvas.Invalidate(); };
             SizeChanged += (_, _) => { UpdateRootClip(); SyncViewport(); ViewChanged?.Invoke(); canvas.Invalidate(); };
 
-            // The Win2D surface paints its own colors, so re-theme it whenever the app theme changes.
-            ApplyTheme();
-            ActualThemeChanged += (_, _) => ApplyTheme();
-            Loaded += (_, _) => { UpdateRootClip(); ApplyTheme(); };
+            // Reader colors are selected only by ReaderSettings.Theme, never by the application's Light/Dark theme.
+            ApplyReaderPalette();
+            Loaded += (_, _) => { UpdateRootClip(); ApplyReaderPalette(); };
 
-            // Re-theme when the user toggles Windows High Contrast or switches HC scheme (the event also
-            // covers scheme changes). It can fire off the UI thread, so marshal back before repainting.
+            // Override the selected reader palette when the user toggles Windows High Contrast or switches
+            // HC scheme. It can fire off the UI thread, so marshal back before repainting.
             // Construction can throw if the thread has no view, so guard it and fall back to the palette.
             try
             {
@@ -209,7 +210,7 @@ namespace FujiyNotepad.WinUI.Controls
             }
             catch
             {
-                // High Contrast detection unavailable; ApplyTheme falls back to the curated light/dark palette.
+                // High Contrast detection unavailable; the selected reader preset remains active.
             }
 
             BuildContextMenu();
@@ -446,10 +447,10 @@ namespace FujiyNotepad.WinUI.Controls
             }
         }
 
-        // Font size bounds and the "100% zoom" baseline (the default size). Zoom changes the font size.
-        private const double BaseFontSize = 14;
-        private const double MinFontSize = 6;
-        private const double MaxFontSize = 72;
+        // Font size bounds and the "100% zoom" baseline (the default reader size). Zoom changes the font size.
+        private const double BaseFontSize = ReaderSettings.DefaultFontSizeDip;
+        private const double MinFontSize = ReaderSettings.MinFontSizeDip;
+        private const double MaxFontSize = ReaderSettings.MaxFontSizeDip;
         private const double FontSizeStep = 1;
 
         /// <summary>The font family used to render text. Changing it re-measures the font metrics.</summary>
@@ -466,7 +467,7 @@ namespace FujiyNotepad.WinUI.Controls
             }
         }
 
-        /// <summary>The font size in points (clamped). Zoom is expressed through this. Re-measures the metrics.</summary>
+        /// <summary>The reader font size in DIPs (clamped). Zoom is expressed through this. Re-measures the metrics.</summary>
         public double FontSizePoints
         {
             get => textFormat.FontSize;
@@ -478,6 +479,51 @@ namespace FujiyNotepad.WinUI.Controls
                     textFormat.FontSize = clamped;
                     RefreshFont();
                 }
+            }
+        }
+
+        /// <summary>The active reader line-spacing multiplier.</summary>
+        public double LineSpacingMultiplier => readerLineSpacingMultiplier;
+
+        /// <summary>The active reader-only theme key.</summary>
+        public string ReaderTheme => readerTheme;
+
+        /// <summary>
+        /// Applies a snapshot of global reader settings. Font, size and line spacing share one layout refresh;
+        /// palette changes repaint only the reader surface and never modify the application's XAML theme.
+        /// </summary>
+        public void ApplyReaderSettings(ReaderSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+
+            var normalized = new ReaderSettings
+            {
+                FontFamily = settings.FontFamily,
+                FontSizeDip = settings.FontSizeDip,
+                LineSpacingMultiplier = settings.LineSpacingMultiplier,
+                ContentWidthDip = settings.ContentWidthDip,
+                Theme = settings.Theme,
+            };
+            normalized.Normalize();
+
+            bool typographyChanged =
+                !string.Equals(textFormat.FontFamily, normalized.FontFamily, StringComparison.Ordinal) ||
+                Math.Abs(textFormat.FontSize - normalized.FontSizeDip) > 0.01 ||
+                Math.Abs(readerLineSpacingMultiplier - normalized.LineSpacingMultiplier) > 0.001;
+            bool paletteChanged = !string.Equals(readerTheme, normalized.Theme, StringComparison.Ordinal);
+
+            textFormat.FontFamily = normalized.FontFamily;
+            textFormat.FontSize = (float)normalized.FontSizeDip;
+            readerLineSpacingMultiplier = normalized.LineSpacingMultiplier;
+            readerTheme = normalized.Theme;
+
+            if (typographyChanged)
+            {
+                RefreshFont();
+            }
+            else if (paletteChanged)
+            {
+                ApplyReaderPalette();
             }
         }
 
@@ -499,7 +545,8 @@ namespace FujiyNotepad.WinUI.Controls
             ClearTextLayoutCache();
             metricsValid = false;
             EnsureMetrics();
-            engine.ConfigureProportionalLayout(proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize);
+            engine.ConfigureProportionalLayout(
+                proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize, readerLineSpacingMultiplier);
             ViewChanged?.Invoke();
             canvas?.Invalidate();
             FontChanged?.Invoke();
@@ -1916,18 +1963,15 @@ namespace FujiyNotepad.WinUI.Controls
         private static Color ToColor(uint argb) =>
             Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
 
-        // Resolves the surface palette from the control's resolved light/dark and the live High-Contrast
-        // state, then converts each packed colour to a Win2D Color. The curated palettes and the HC mapping
-        // live in the device-free CanvasPalette, which is unit-tested without a graphics device (issue #76).
-        private void ApplyTheme()
+        // Resolves the reader-only palette and the live Windows High-Contrast override. Application theme
+        // changes never influence this selection; the reader follows ReaderSettings.Theme exclusively.
+        private void ApplyReaderPalette()
         {
-            bool isDark = ActualTheme == Microsoft.UI.Xaml.ElementTheme.Dark;
-
             bool isHighContrast = false;
-            try { isHighContrast = accessibility?.HighContrast == true; } catch { /* fall back to non-HC */ }
+            try { isHighContrast = accessibility?.HighContrast == true; } catch { /* fall back to reader preset */ }
 
             HighContrastColors hc = isHighContrast ? ReadHighContrastColors() : default;
-            CanvasColors c = CanvasPalette.Resolve(isDark, isHighContrast, hc);
+            CanvasColors c = ReaderPalette.Resolve(readerTheme, isHighContrast, hc);
 
             backgroundColor = ToColor(c.Background);
             textColor = ToColor(c.Text);
@@ -1941,6 +1985,7 @@ namespace FujiyNotepad.WinUI.Controls
             whitespaceColor = ToColor(c.Whitespace);
             trailingWhitespaceColor = ToColor(c.TrailingWhitespace);
             controlCharColor = ToColor(c.ControlChar);
+            annotationMarkerColor = ToColor(c.AnnotationMarker);
 
             // The overlay caret uses a XAML brush (it isn't painted by Win2D); keep it in sync with the palette.
             if (caretBrush is null)
@@ -1956,7 +2001,7 @@ namespace FujiyNotepad.WinUI.Controls
             canvas?.Invalidate();
         }
 
-        // Reads the live Windows High-Contrast system colours for CanvasPalette to map onto the surface.
+        // Reads the live Windows High-Contrast system colours for ReaderPalette to map onto the surface.
         private static HighContrastColors ReadHighContrastColors() => new(
             Window: SysColor(COLOR_WINDOW),
             WindowText: SysColor(COLOR_WINDOWTEXT),
