@@ -1,4 +1,3 @@
-using System.Globalization;
 using FujiyNotepad.Presentation;
 using FujiyNotepad.TestSupport;
 
@@ -74,7 +73,7 @@ public sealed class ProportionalTextLayoutEngineTests
         engine.GetVisibleLines(hasFocus: false, caretVisible: false);
 
         Assert.True(first.IsDisposed);
-        Assert.DoesNotContain(0, provider.Results.Where(result => !result.IsDisposed).Select(result => result.LineIndex));
+        Assert.DoesNotContain(provider.Results.Where(result => !result.IsDisposed), result => result.SourceText == "one");
     }
 
     private static TextLayoutEngine NewEngine(
@@ -142,7 +141,6 @@ public sealed class ProportionalTextLayoutEngineTests
             LayoutHeight = rows.Count * 20;
         }
 
-        public int LineIndex { get; set; } = -1;
         public bool IsDisposed { get; private set; }
         public string SourceText { get; }
         public double LayoutWidth { get; }
