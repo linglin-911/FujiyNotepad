@@ -33,6 +33,48 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void HitTestCharacter_MapsWrappedVisualRowsBackToOriginalSourceColumns()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        TextPosition position = engine.HitTestCharacter(18, 25, out bool hitCharacter);
+
+        Assert.True(hitCharacter);
+        Assert.Equal(new TextPosition(0, 3), position);
+    }
+
+    [Fact]
+    public void HitTestCharacter_DistinguishesTextFromNearestBlankBoundaries()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        TextPosition beforeText = engine.HitTestCharacter(0, 25, out bool beforeHit);
+        TextPosition afterText = engine.HitTestCharacter(100, 25, out bool afterHit);
+
+        Assert.False(beforeHit);
+        Assert.False(afterHit);
+        Assert.Equal(new TextPosition(0, 2), beforeText);
+        Assert.Equal(new TextPosition(0, 4), afterText);
+
+        // Context-menu positioning still uses the nearest source boundary when the pointer is in blank space.
+        Assert.Equal(new TextPosition(0, 2), engine.HitTestCharacter(0, 25));
+    }
+
+    [Fact]
+    public void HitTestCharacter_MapsNextLogicalLineToItsOwnSourcePosition()
+    {
+        var engine = NewEngine(new FakeLines("ab", "cd"), viewportWidth: 100, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        TextPosition position = engine.HitTestCharacter(18, 25, out bool hitCharacter);
+
+        Assert.True(hitCharacter);
+        Assert.Equal(new TextPosition(1, 1), position);
+    }
+
+    [Fact]
     public void PointerDragAcrossSoftWrappedRows_PreservesOriginalSourceSelection()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
@@ -302,7 +344,10 @@ public sealed class ProportionalTextLayoutEngineTests
             else if (y >= rows[^1].Top + rows[^1].Height)
                 row = rows[^1];
 
-            int offset = Math.Clamp((int)Math.Floor(Math.Max(0, x) / 10), 0, row.SourceLength);
+            if (x < 0 || y < row.Top || y >= row.Top + row.Height)
+                return new TextLayoutHitTestResult(row.SourceStartIndex, 0, false, false);
+
+            int offset = Math.Clamp((int)Math.Floor(x / 10), 0, row.SourceLength);
             int index = row.SourceStartIndex + offset;
             if (offset >= row.SourceLength)
                 return new TextLayoutHitTestResult(index, 0, false, false);
