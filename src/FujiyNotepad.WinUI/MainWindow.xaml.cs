@@ -61,6 +61,7 @@ namespace FujiyNotepad.WinUI
         private int pendingSessionCaretColumn;
 
         private readonly DispatcherQueueTimer indexRefreshTimer;
+        private bool hasLoggedFirstIndexRefreshTick;
         private readonly DispatcherQueueTimer findPreviewTimer;
         private readonly DispatcherQueueTimer annotationMarkerRefreshTimer;
         private readonly DispatcherQueueTimer followTailTimer;
@@ -1388,12 +1389,28 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
+            bool logFirstTick = !hasLoggedFirstIndexRefreshTick;
+            if (logFirstTick)
+            {
+                hasLoggedFirstIndexRefreshTick = true;
+                LogDiagnostic(
+                    $"IndexRefreshTimer: first tick entered; providerLines={provider.LineCount:N0}; " +
+                    $"indexCompleted={LineIndexer.IsCompleted}; filtered={filteredSource is not null}");
+            }
+
             // While the filter view is active the engine renders the fixed matching-line set, so don't push the
             // real provider's (growing) line count into it; just keep the timer alive until indexing finishes.
             if (filteredSource is null)
             {
+                if (logFirstTick)
+                    LogDiagnostic("IndexRefreshTimer: before View.UpdateTotalLines");
                 View.UpdateTotalLines(provider.LineCount);
+                if (logFirstTick)
+                    LogDiagnostic($"IndexRefreshTimer: after View.UpdateTotalLines; viewLines={View.TotalLines:N0}");
+
                 RefreshMarkerMargin(); // bookmark tick positions shift as the total line count grows
+                if (logFirstTick)
+                    LogDiagnostic("IndexRefreshTimer: after RefreshMarkerMargin");
 
                 // Sticky-bottom follow: keep the view pinned to the new end as appended lines arrive.
                 if (followTail && tailSnapToBottom)
@@ -1416,6 +1433,8 @@ namespace FujiyNotepad.WinUI
                 ApplyPendingGoTo();
                 ApplyPendingSession();
                 ApplyPendingChapterNavigation();
+                if (logFirstTick)
+                    LogDiagnostic("IndexRefreshTimer: first tick completed pending navigation updates");
             }
 
             if (LineIndexer.IsCompleted)
@@ -1428,6 +1447,7 @@ namespace FujiyNotepad.WinUI
                 {
                     SetLineCountStatus();
                 }
+                LogDiagnostic("IndexRefreshTimer: scheduling EnsureChapterIndex");
                 _ = RunDiagnosticTaskAsync("EnsureChapterIndex", EnsureChapterIndexAsync);
             }
         }
