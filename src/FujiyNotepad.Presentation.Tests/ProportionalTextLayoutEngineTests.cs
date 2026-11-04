@@ -87,6 +87,34 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PageNavigation_UsesMeasuredRowHeightInsteadOfFontProbeEstimate()
+    {
+        var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 60 };
+        engine.SetMetrics(10, 10);
+        engine.ConfigureProportionalLayout(new FakeProportionalProvider(), "Test", 10);
+        engine.SetProvider(new FakeLines("1", "2", "3", "4", "5", "6", "7", "8"));
+
+        Assert.Equal(3, engine.FullyVisibleLineCount);
+        engine.HandleKey(NavKey.PageDown, shift: false);
+
+        Assert.Equal(new TextPosition(3, 0), engine.CaretPosition);
+    }
+
+    [Fact]
+    public void NoWrapViewportFill_UsesMeasuredRowHeight()
+    {
+        var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 60 };
+        engine.SetMetrics(10, 10);
+        engine.ConfigureProportionalLayout(new FakeProportionalProvider(), "Test", 10);
+        engine.SetProvider(new FakeLines("1", "2", "3", "4", "5"));
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new[] { 0d, 20d, 40d }, rows.Select(row => row.Y));
+    }
+
+    [Fact]
     public void UpdateTotalLines_InvalidatesLayoutsEvenWhenCountIsUnchanged()
     {
         var provider = new FakeProportionalProvider();
