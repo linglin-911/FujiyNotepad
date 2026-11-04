@@ -473,7 +473,7 @@ namespace FujiyNotepad.WinUI.Controls
         /// <summary>Raised when the font family or size (zoom) changes, so the host can persist and update status.</summary>
         public event Action? FontChanged;
 
-        // Re-measure the monospace cell, push the new metrics, refresh the scrollbars, and repaint.
+        // Re-measure the active font, update the proportional layout provider and gutter metrics, then repaint.
         private void RefreshFont()
         {
             ClearTextLayoutCache();
