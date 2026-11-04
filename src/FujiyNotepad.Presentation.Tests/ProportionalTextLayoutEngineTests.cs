@@ -334,6 +334,21 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void ConfigureProportionalLayout_PassesLineSpacingMultiplierToProvider()
+    {
+        var provider = new FakeProportionalProvider();
+        var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 100 };
+        engine.SetMetrics(10, 20);
+        engine.ConfigureProportionalLayout(provider, "Test", 10, lineSpacingMultiplier: 1.6);
+        engine.SetProvider(new FakeLines("reader line"));
+
+        engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        Assert.NotEmpty(provider.Options);
+        Assert.All(provider.Options, options => Assert.Equal(1.6, options.LineSpacingMultiplier));
+    }
+
+    [Fact]
     public void NoWrapViewportFill_UsesMeasuredRowHeight()
     {
         var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 60 };
@@ -428,9 +443,11 @@ public sealed class ProportionalTextLayoutEngineTests
         }
 
         public List<FakeProportionalResult> Results { get; } = new();
+        public List<TextLayoutOptions> Options { get; } = new();
 
         public ITextLayoutResult CreateLayout(string sourceText, TextLayoutOptions options)
         {
+            Options.Add(options);
             int maxCharacters = options.WordWrap
                 ? Math.Max(1, (int)(options.MaxWidth / 10))
                 : Math.Max(1, sourceText.Length);
