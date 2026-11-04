@@ -1,6 +1,7 @@
 using System.Numerics;
 using FujiyNotepad.Core;
 using FujiyNotepad.Presentation;
+using FujiyNotepad.WinUI.Rendering;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -35,6 +36,8 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly TextLayoutEngine engine = new();
         private readonly CanvasControl canvas;
         private readonly CanvasTextFormat textFormat;
+        private readonly Win2DTextLayoutProvider proportionalLayoutProvider = new();
+        private readonly HashSet<int> drawnProportionalLines = new();
 
         // Text layouts are retained only for the current viewport. Drawing, selection geometry, caret placement
         // and pointer hit-testing all query the same DirectWrite layout instead of estimating glyph widths.
@@ -154,6 +157,7 @@ namespace FujiyNotepad.WinUI.Controls
             };
             engine.RedrawRequested += () => canvas.Invalidate();
             engine.CaretBlinkResetRequested += RestartCaretBlink;
+            engine.ConfigureProportionalLayout(proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize);
 
             IsTabStop = true;
             UseSystemFocusVisuals = false;
@@ -475,6 +479,7 @@ namespace FujiyNotepad.WinUI.Controls
             ClearTextLayoutCache();
             metricsValid = false;
             EnsureMetrics();
+            engine.ConfigureProportionalLayout(proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize);
             ViewChanged?.Invoke();
             canvas?.Invalidate();
             FontChanged?.Invoke();
