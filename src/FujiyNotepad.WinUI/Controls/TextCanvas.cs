@@ -491,6 +491,7 @@ namespace FujiyNotepad.WinUI.Controls
         /// <summary>
         /// Applies a snapshot of global reader settings. Font, size and line spacing share one layout refresh;
         /// palette changes repaint only the reader surface and never modify the application's XAML theme.
+        /// ContentWidthDip is consumed by the reader viewport host in Phase 4.3.
         /// </summary>
         public void ApplyReaderSettings(ReaderSettings settings)
         {
@@ -537,7 +538,7 @@ namespace FujiyNotepad.WinUI.Controls
 
         public void ResetZoom() => FontSizePoints = BaseFontSize;
 
-        /// <summary>Raised when the font family or size (zoom) changes, so the host can persist and update status.</summary>
+        /// <summary>Raised when reader typography changes, so the host can persist settings and update status.</summary>
         public event Action? FontChanged;
 
         // Re-measure the active font, update the proportional layout provider and gutter metrics, then repaint.
