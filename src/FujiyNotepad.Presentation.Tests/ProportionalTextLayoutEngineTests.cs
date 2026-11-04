@@ -296,6 +296,43 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void GetVisibleLines_ReservesFullLayoutHeightBeforeNextWrappedSourceLine()
+    {
+        var engine = NewEngine(
+            new FakeLines("abcdef", "next"),
+            viewportWidth: 38,
+            viewportHeight: 100,
+            additionalLayoutHeight: 8);
+        engine.WordWrap = true;
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        VisibleLine lastRowOfFirstLine = Assert.Single(
+            rows.Where(row => row.LineIndex == 0 && row.SourceEndIndex == 6));
+        VisibleLine firstRowOfNextLine = Assert.Single(
+            rows.Where(row => row.LineIndex == 1).Take(1));
+
+        Assert.Equal(48, lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight);
+        Assert.Equal(48, firstRowOfNextLine.Y);
+    }
+
+    [Fact]
+    public void GetVisibleLines_ReservesFullLayoutHeightWhenWordWrapIsDisabled()
+    {
+        var engine = NewEngine(
+            new FakeLines("first", "second"),
+            viewportWidth: 200,
+            viewportHeight: 100,
+            additionalLayoutHeight: 8);
+        engine.WordWrap = false;
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        Assert.Equal(28, rows[0].LayoutRowHeight);
+        Assert.Equal(28, rows[1].Y);
+    }
+
+    [Fact]
     public void NoWrapViewportFill_UsesMeasuredRowHeight()
     {
         var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 60 };
@@ -365,7 +402,8 @@ public sealed class ProportionalTextLayoutEngineTests
     private static TextLayoutEngine NewEngine(
         FakeLines lines,
         double viewportWidth = 100,
-        double viewportHeight = 100)
+        double viewportHeight = 100,
+        double additionalLayoutHeight = 0)
     {
         var engine = new TextLayoutEngine
         {
@@ -373,12 +411,13 @@ public sealed class ProportionalTextLayoutEngineTests
             ViewportHeight = viewportHeight,
         };
         engine.SetMetrics(10, 20);
-        engine.ConfigureProportionalLayout(new FakeProportionalProvider(), "Test", 10);
+        engine.ConfigureProportionalLayout(
+            new FakeProportionalProvider(additionalLayoutHeight), "Test", 10);
         engine.SetProvider(lines);
         return engine;
     }
 
-    private sealed class FakeProportionalProvider : ITextLayoutProvider
+    private sealed class FakeProportionalProvider(double additionalLayoutHeight = 0) : ITextLayoutProvider
     {
         public List<FakeProportionalResult> Results { get; } = new();
 
@@ -406,7 +445,7 @@ public sealed class ProportionalTextLayoutEngineTests
                 }
             }
 
-            var result = new FakeProportionalResult(sourceText, rows);
+            var result = new FakeProportionalResult(sourceText, rows, additionalLayoutHeight);
             Results.Add(result);
             return result;
         }
@@ -417,14 +456,18 @@ public sealed class ProportionalTextLayoutEngineTests
         private readonly TextElementBoundaryMap boundaries;
         private readonly IReadOnlyList<TextLayoutVisualLine> rows;
 
-        public FakeProportionalResult(string sourceText, IReadOnlyList<TextLayoutVisualLine> rows)
+        public FakeProportionalResult(
+            string sourceText,
+            IReadOnlyList<TextLayoutVisualLine> rows,
+            double additionalLayoutHeight)
         {
             SourceText = sourceText;
             this.rows = rows;
             boundaries = new TextElementBoundaryMap(sourceText);
             VisualLines = rows;
             LayoutWidth = sourceText.Length * 10;
-            LayoutHeight = rows.Count * 20;
+            double mappedHeight = rows[^1].Top + rows[^1].Height;
+            LayoutHeight = Math.Max(mappedHeight, mappedHeight + additionalLayoutHeight);
         }
 
         public bool IsDisposed { get; private set; }
