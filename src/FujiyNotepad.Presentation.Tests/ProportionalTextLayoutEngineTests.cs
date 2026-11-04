@@ -339,6 +339,7 @@ public sealed class ProportionalTextLayoutEngineTests
         var provider = new FakeProportionalProvider();
         var engine = new TextLayoutEngine { ViewportWidth = 120, ViewportHeight = 20 };
         engine.SetMetrics(10, 20);
+        engine.WordWrap = true;
         engine.ConfigureProportionalLayout(provider, "Test", 10);
         engine.SetProvider(new FakeLines("abcdefghij"));
 
