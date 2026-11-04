@@ -164,7 +164,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         boundaryMap = new TextElementBoundaryMap(sourceText);
 
         (TextLayoutVisualLine[] visualLines, int[] trailingCounts, double height) =
-            BuildVisualLineMap(sourceText, layout, fontSize, lineSpacingMultiplier);
+            BuildVisualLineMap(sourceText, layout, fontSize, lineSpacingMultiplier, boundaryMap);
         VisualLines = Array.AsReadOnly(visualLines);
         trailingWhitespaceCounts = trailingCounts;
         LayoutHeight = height;
@@ -399,7 +399,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         string sourceText,
         CanvasTextLayout layout,
         double fontSize,
-        double lineSpacingMultiplier)
+        double lineSpacingMultiplier,
+        TextElementBoundaryMap boundaryMap)
     {
         // CanvasTextLayout.LineMetrics returns CanvasLineMetrics[], whose WinRT struct contains a Boolean
         // field. The CsWinRT projection used by the current WinAppSDK cannot marshal this non-blittable
@@ -433,8 +434,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         {
             (int currentStart, double currentTop) = rowStarts[^1];
             int nextStart = FindFirstBoundaryOnNextVisualRow(
-                sourceText, boundaryMap: new TextElementBoundaryMap(sourceText), layout,
-                currentStart, currentTop);
+                sourceText, boundaryMap, layout, currentStart, currentTop);
 
             if (nextStart <= currentStart || nextStart >= sourceText.Length)
                 break;
@@ -450,7 +450,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         // recover the scalar LineCount, scan grapheme starts as a correctness fallback.
         if (rowStarts.Count != expectedLineCount)
         {
-            var scannedStarts = ScanVisualLineStarts(sourceText, layout, firstTop, expectedLineCount);
+            var scannedStarts = ScanVisualLineStarts(
+                sourceText, boundaryMap, layout, firstTop, expectedLineCount);
             if (scannedStarts.Count > rowStarts.Count)
                 rowStarts = scannedStarts;
         }
@@ -563,6 +564,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 
     private static List<(int SourceIndex, double Top)> ScanVisualLineStarts(
         string sourceText,
+        TextElementBoundaryMap boundaryMap,
         CanvasTextLayout layout,
         float firstTop,
         int maximumRows)
@@ -571,7 +573,6 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         {
             (0, float.IsFinite(firstTop) ? firstTop : 0)
         };
-        var boundaryMap = new TextElementBoundaryMap(sourceText);
 
         for (int index = boundaryMap.SnapToNextBoundary(0);
              index < sourceText.Length && starts.Count < maximumRows;)
