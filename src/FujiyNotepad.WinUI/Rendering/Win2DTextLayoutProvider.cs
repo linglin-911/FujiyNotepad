@@ -124,11 +124,17 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 
     private static float GetNativeLayoutHeight(string sourceText, TextLayoutOptions options)
     {
+        double minimumHeight = Math.Min(options.FontSize * 2d, MaxNativeLayoutDimension);
+        if (!options.WordWrap)
+        {
+            // A no-wrap logical source line always occupies one visual row, regardless of its character count.
+            return (float)Math.Clamp(options.FontSize * 4d, minimumHeight, MaxNativeLayoutDimension);
+        }
+
         // In the worst case a narrow viewport can place each UTF-16 code unit on its own visual row.
         // The existing LineProvider caps a logical source line, so this remains a bounded allocation.
         double estimatedRows = Math.Max(4d, sourceText.Length + 1d);
         double height = options.FontSize * estimatedRows * Math.Max(1d, options.LineSpacingMultiplier) * 1.5d;
-        double minimumHeight = Math.Min(options.FontSize * 2d, MaxNativeLayoutDimension);
         return (float)Math.Clamp(height, minimumHeight, MaxNativeLayoutDimension);
     }
 }
