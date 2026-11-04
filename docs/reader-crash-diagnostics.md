@@ -41,8 +41,8 @@ The current diagnostic build records:
 - The first `IndexRefreshTimer_Tick`, with before/after markers around `View.UpdateTotalLines`, marker refresh and pending navigation.
 - The first `TextCanvas.UpdateTotalLines` call: before/after `Ready`, `ClearTextLayoutCache`, and `TextLayoutEngine.UpdateTotalLines`.
 - The `TextLayoutEngine.ViewChanged` and `RedrawRequested` callbacks while the first line-count update is active.
-- The corresponding `OnReaderViewChanged` and individual `SyncScrollBars` getter/assignment stages, including vertical and horizontal scrollbar updates.
-- The existing managed exception and process-exit diagnostics remain enabled.
+- The `TextCanvas` line-count update, `ViewChanged` and `RedrawRequested` callbacks.
+- The existing managed exception and process-exit diagnostics remain enabled. The reader ScrollBar controls and synchronization path have been removed; annotation-marker refresh remains attached to `OnReaderViewChanged`.
 
 Log path:
 
@@ -52,7 +52,7 @@ Log path:
 
 ## Rebuild and interpret the next diagnostic run
 
-The 22:34 log confirms the first empty Canvas draw and first index-refresh tick, then stops at the call to `View.UpdateTotalLines`. The new fine-grained markers listed above were added after that run and have not yet been confirmed by a user-side build/run.
+The 22:45 log confirms that the line-count update reached `TextLayoutEngine.UpdateTotalLines` and entered `OnReaderViewChanged`, then stopped in the former scrollbar-sync path while reading `View.FullyVisibleLineCount`. The reader ScrollBar controls and that synchronization path have since been removed. Build and run the latest branch to test this change before pursuing native dumps.
 
 Before changing rendering code, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
 
@@ -70,8 +70,7 @@ Interpret the last milestone as follows:
 - No `TextCanvas.UpdateTotalLines: entered` after the MainWindow's `before View.UpdateTotalLines`: the failure is at/before entry to the reader control method, or the logger did not flush.
 - The TextCanvas method enters but stops at `before Ready`, `Ready before EnsureMetrics`, or `Ready after EnsureMetrics`: inspect metric probing and viewport synchronization.
 - It stops before/after `ClearTextLayoutCache`: inspect disposal of cached Win2D layouts.
-- It reaches `engine.UpdateTotalLines` but stops during `engine ViewChanged`: inspect `OnReaderViewChanged` and the logged scrollbar stages.
-- It stops at a specific `VScroll` or `HScroll` assignment: inspect that WinUI ScrollBar property update and the values logged immediately before it.
+- It reaches `engine.UpdateTotalLines` but stops during `engine ViewChanged`: inspect the remaining annotation-marker refresh logic in `OnReaderViewChanged`.
 - `engine ViewChanged` completes but `engine RedrawRequested` does not: inspect Canvas invalidation.
 - `after View.UpdateTotalLines` appears but no `after RefreshMarkerMargin`: inspect marker-margin invalidation/drawing.
 - The first timer tick completes but no `TextCanvas: first Draw event entered`: inspect CanvasControl lifecycle, visibility and the reader visual tree.
