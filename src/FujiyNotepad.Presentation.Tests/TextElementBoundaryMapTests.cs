@@ -44,6 +44,25 @@ public sealed class TextElementBoundaryMapTests
     }
 
     [Fact]
+    public void AtOrAfter_ReturnsCurrentBoundaryWhenIndexIsAlreadyValid()
+    {
+        var map = new TextElementBoundaryMap("甲😀乙");
+
+        Assert.Equal(3, map.SnapToBoundaryAtOrAfter(3));
+        Assert.Equal(4, map.SnapToBoundaryAtOrAfter(4));
+    }
+
+    [Fact]
+    public void AtOrAfter_DoesNotSplitSurrogateOrCombiningSequences()
+    {
+        var map = new TextElementBoundaryMap("A😀e\u0301Z");
+
+        Assert.Equal(3, map.SnapToBoundaryAtOrAfter(2));
+        Assert.Equal(5, map.SnapToBoundaryAtOrAfter(4));
+        Assert.Equal(6, map.SnapToBoundaryAtOrAfter(5));
+    }
+
+    [Fact]
     public void EmptySource_HasSingleZeroBoundary()
     {
         var map = new TextElementBoundaryMap(string.Empty);
