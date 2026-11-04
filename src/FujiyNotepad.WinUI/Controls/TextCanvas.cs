@@ -1520,9 +1520,6 @@ namespace FujiyNotepad.WinUI.Controls
         private TextPosition HitTestTextCharacter(double x, double y)
             => HitTestTextCharacter(x, y, out _, out _);
 
-        private TextPosition HitTestTextCharacter(double x, double y, out bool hitCharacter)
-            => HitTestTextCharacter(x, y, out hitCharacter, out _);
-
         // Marker activation is stricter than context-menu positioning: a nearest-boundary result from a
         // click in the blank area before/after a line must not activate an annotation on the boundary glyph.
         private TextPosition HitTestTextCharacter(
