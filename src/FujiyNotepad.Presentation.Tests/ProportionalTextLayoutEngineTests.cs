@@ -87,6 +87,21 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void WheelScrolling_AdvancesMeasuredVisualRowsWithinALongSourceLine()
+    {
+        var engine = NewEngine(new FakeLines("abcdefghijkl"), viewportWidth: 38, viewportHeight: 40);
+        engine.WordWrap = true;
+
+        engine.ScrollByWheelDelta(-120);
+
+        IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+
+        Assert.Equal("gh", rows[0].Display);
+        Assert.Equal(0, rows[0].LineIndex);
+        Assert.True(rows[0].IsWrapContinuation);
+    }
+
+    [Fact]
     public void PageNavigation_UsesMeasuredRowHeightInsteadOfFontProbeEstimate()
     {
         var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 60 };
