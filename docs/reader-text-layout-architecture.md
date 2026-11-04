@@ -108,16 +108,16 @@ The proportional backend must measure the active font's actual space advance whe
 - The inherited font-family and Zoom quick commands now initialize from and write to ReaderSettings; legacy root FontFamily/FontSize values are still synchronized for backward compatibility.
 - Added SettingsStore tests for nested round-trip, defaults, legacy migration, explicit Reader precedence and invalid-value normalization.
 - **Validation status:** the user ran `dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` successfully and `dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` passed 983/983 tests (0 failed, 0 skipped). The build reported one non-blocking xUnit2031 analyzer warning at `ProportionalTextLayoutEngineTests.cs(310,42)`; it recommended the predicate overload of `Assert.Single`. The latest branch has changed that assertion to the predicate overload; disappearance of the warning awaits the next user build. The 983-test result covers Phase 4.1 and predates the Phase 4.2 tests below.
-- Phase 4.2 implementation is recorded separately below. Content-width hosting and the visible Reader Settings dialog are still not implemented.
+- Phase 4.2 is implemented and user-tested. Phase 4.3 content-width hosting and Phase 4.4 the visible Reader Settings dialog are still not implemented.
 
-## Phase 4.2 implementation status (2026-11-05; code committed, validation pending)
+## Phase 4.2 implementation status (2026-11-05; user-tested)
 
 - Added the device-free `ReaderPalette` resolver with independent `Paper`, `Warm` and `Night` presets. Every palette defines the Win2D text surface background/text/caret, selection, search and occurrence highlights, gutter, bookmark, whitespace/control markers and annotation-marker colors.
 - Windows High Contrast overrides the selected reader preset. Normal Windows/application Light/Dark changes no longer change the Win2D reading palette; `TextCanvas` does not set or modify `RootGrid.RequestedTheme`.
 - `TextCanvas.ApplyReaderSettings` now applies the reader font family, DIP font size, line-spacing multiplier and reader theme snapshot. Both the constructor and font-refresh path pass the reader line-spacing multiplier into the existing `TextLayoutEngine.ConfigureProportionalLayout` contract; the existing Win2D provider already maps it to DirectWrite proportional line spacing. No second layout engine was added.
 - Typography refresh captures the first visible row's original-source UTF-16 start position and restores the nearest visual row containing that source position after reflow. Added `TextLayoutEngine.SetViewportAnchor` and regression coverage for wrapping changes; the engine continues to create layouts on demand rather than reflowing the whole novel.
 - Added 11 ReaderPalette tests (three presets, fallback, High Contrast role mapping and preset separation) and two proportional-engine tests (line-spacing option propagation and viewport-anchor restoration). The default `Microsoft YaHei` font is also present in the existing quick Font menu so its selected state is visible.
-- **Validation status:** Phase 4.2 code and tests are committed, but have not yet been built or run by the user. The earlier 983/983 result does not include these 13 new tests.
+- **Validation status:** the user tested the current `feature/reader-settings-phase4` code and reported that the application runs normally with no issues found. The user did not provide an exact build/test summary, test count or analyzer-warning count, so no precise totals are claimed. This user feedback supersedes the earlier pending-validation status; the 13 Phase 4.2 tests are part of the submitted code.
 - Phase 4.3 content-width host and Phase 4.4 settings dialog remain pending. No new application-chrome typography/theme controls have been added.
 
 ## Phase 4 — global reader settings architecture (agreed)
@@ -165,7 +165,7 @@ The proportional backend must measure the active font's actual space advance whe
 ### Implementation slices
 
 1. **4.1 Settings model and compatibility:** add nested `ReaderSettings`, defaults, normalization and legacy JSON migration; add SettingsStore tests. No visible UI changes.
-2. **4.2 Layout/render integration — code committed, validation pending:** pass reader font, size and line spacing into the existing proportional layout contract; add reader-only palette resolution and preserve the viewport source anchor during re-layout.
+2. **4.2 Layout/render integration — user-tested:** pass reader font, size and line spacing into the existing proportional layout contract; add reader-only palette resolution and preserve the viewport source anchor during re-layout. The user reports the current code runs normally with no issues found.
 3. **4.3 Content width:** introduce the full-width reader viewport and centered maximum-width content host while keeping the annotation marker gutter aligned.
 4. **4.4 Settings UI:** add the unified dialog, apply/cancel behaviour, installed-font list, controls and persistence.
 5. **4.5 Acceptance:** explicit x64 build, Presentation/Core tests, then targeted Windows smoke tests for font/size/line spacing/width/theme, project switching, restart persistence, annotations and a 70MB+ novel.
