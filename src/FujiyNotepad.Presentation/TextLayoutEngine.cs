@@ -1472,7 +1472,20 @@ namespace FujiyNotepad.Presentation
                 }
 
                 double caretX = layout.GetCaretGeometry(caret.Column).X;
-                double rightInset = Math.Max(1, charWidth) + TextPadding * 2;
+                double adjacentCaretX = caretX;
+                if (caret.Column < layout.SourceText.Length)
+                {
+                    int nextIndex = layout.GetNextCaretIndex(caret.Column);
+                    adjacentCaretX = layout.GetCaretGeometry(nextIndex).X;
+                }
+                else if (caret.Column > 0)
+                {
+                    int previousIndex = layout.GetPreviousCaretIndex(caret.Column);
+                    adjacentCaretX = layout.GetCaretGeometry(previousIndex).X;
+                }
+
+                double caretAdvance = Math.Abs(adjacentCaretX - caretX);
+                double rightInset = Math.Max(1, caretAdvance) + TextPadding * 2;
                 double textViewport = ViewportWidth - GutterWidthPx;
                 if (caretX < horizontalOffset)
                     SetHorizontalOffset(caretX);
