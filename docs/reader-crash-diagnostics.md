@@ -1,5 +1,13 @@
 # Reader startup / native crash diagnostics
 
+## Resolution status (2026-11-04)
+
+The user has run the updated branch and confirmed that novel body text now displays normally and the application no longer crashes. The previous blank-screen/first-content-draw failure is resolved; do not continue the old crash investigation or ask the user to configure WER LocalDumps for that already-understood exception.
+
+Root cause: `CanvasTextLayout.LineMetrics` attempted to marshal `CanvasLineMetrics[]`, which the current CsWinRT projection rejected because the struct is non-blittable. Functional fix commit: `4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`. The provider now uses scalar `LineCount` and `GetCaretPosition()` calls, binary-searches Unicode grapheme boundaries for wrapped-row starts, and falls back to a grapheme scan when needed.
+
+This confirms startup and first body rendering only. It does not by itself prove all proportional-layout interactions or mixed-script typography. If a new crash appears, collect a fresh log and compare its timestamp/stack before reusing any of the historical diagnosis below. Enable WER dumps only for a future exit that has no useful managed exception or ProcessExit record.
+
 ## Current reproduction (2026-11-04)
 
 Four user-provided runs are available: 21:48, 22:34, 22:45 and 23:01. The 23:01 run is the first one to reach actual proportional text layout and record a managed exception.
@@ -43,7 +51,7 @@ The reader's visible vertical and horizontal ScrollBar controls, their synchroni
 
 The failing API is the Win2D `CanvasTextLayout.LineMetrics` array. `CanvasLineMetrics` includes an `IsTrimmed` Boolean field, making the struct non-blittable; the current CsWinRT projection rejects marshalling that array. The stack ends in `BuildVisualLineMap`, before any actual novel text is rendered.
 
-A code fix has been pushed: remove all use of `layout.LineMetrics`; use scalar `layout.LineCount` and `GetCaretPosition` (`Vector2`) calls to reconstruct visual-row source boundaries. It locates wrapped-row boundaries by binary search over grapheme boundaries and falls back to a full grapheme-boundary scan if the scalar row count is not recovered. Per-row height comes from adjacent caret Y positions; single/final-row height uses the layout bounds or previous row spacing. This change has not yet been built or runtime-tested by the user.
+The code fix removes all use of `layout.LineMetrics`; it uses scalar `layout.LineCount` and `GetCaretPosition` (`Vector2`) calls to reconstruct visual-row source boundaries. It locates wrapped-row boundaries by binary search over grapheme boundaries and falls back to a full grapheme-boundary scan if the scalar row count is not recovered. Per-row height comes from adjacent caret Y positions; single/final-row height uses the layout bounds or previous row spacing. The user has now confirmed that the updated application displays body text normally and no longer crashes; full interaction acceptance remains separate.
 ## Temporary application diagnostics
 
 The current diagnostic build records:
@@ -61,9 +69,9 @@ Log path:
 %LOCALAPPDATA%\FujiyNotepad\crash.log
 ```
 
-## Rebuild and interpret the next diagnostic run
+## If a future crash reappears
 
-The 23:01 log confirms the scrollbar-removal change passed line-count update, marker refresh and chapter indexing. The actual crash is the `CanvasTextLayout.LineMetrics` array marshalling in `BuildVisualLineMap`. The latest code replaces that array with scalar line-count/caret-position queries. Build and test this new change before doing any more native-dump work; WER dumps are not needed for the already captured managed exception.
+The 23:01 exception is resolved and the user has confirmed normal body rendering without a crash. The following commands and milestone interpretations are historical troubleshooting guidance only; use them only if a new crash is reported. Do not ask the user to reproduce the old blank-screen failure.
 
 Before making further rendering changes, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
 
@@ -74,7 +82,7 @@ git pull --ff-only origin feature/reader-proportional-font-layout
 dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64
 ```
 
-Reproduce the blank-screen exit once, then inspect the new `crash.log`.
+If a new failure is reported, reproduce that new failure once, then inspect the newly timestamped `crash.log`.
 
 Interpret the last milestone as follows:
 
