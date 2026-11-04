@@ -36,6 +36,8 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly TextLayoutEngine engine = new();
         private bool hasLoggedFirstDraw;
         private bool hasLoggedFirstContentDraw;
+        private bool hasLoggedFirstLineCountUpdate;
+        private bool isUpdatingTotalLines;
         private readonly CanvasControl canvas;
         private readonly CanvasTextFormat textFormat;
         private readonly Win2DTextLayoutProvider proportionalLayoutProvider = new();
@@ -151,13 +153,27 @@ namespace FujiyNotepad.WinUI.Controls
             autoScrollTimer.Interval = TimeSpan.FromMilliseconds(50);
             autoScrollTimer.Tick += AutoScrollTick;
 
-            engine.ViewChanged += () => ViewChanged?.Invoke();
+            engine.ViewChanged += () =>
+            {
+                if (isUpdatingTotalLines)
+                    LogDiagnostic("TextCanvas: engine ViewChanged entered during UpdateTotalLines");
+                ViewChanged?.Invoke();
+                if (isUpdatingTotalLines)
+                    LogDiagnostic("TextCanvas: engine ViewChanged completed during UpdateTotalLines");
+            };
             engine.CaretChanged += pos =>
             {
                 CaretChanged?.Invoke(pos);
                 NotifyAccessibilityCaretLineChanged(pos);
             };
-            engine.RedrawRequested += () => canvas.Invalidate();
+            engine.RedrawRequested += () =>
+            {
+                if (isUpdatingTotalLines)
+                    LogDiagnostic("TextCanvas: engine RedrawRequested entered during UpdateTotalLines");
+                canvas.Invalidate();
+                if (isUpdatingTotalLines)
+                    LogDiagnostic("TextCanvas: engine RedrawRequested completed during UpdateTotalLines");
+            };
             engine.CaretBlinkResetRequested += RestartCaretBlink;
             engine.ConfigureProportionalLayout(proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize);
 
@@ -265,8 +281,14 @@ namespace FujiyNotepad.WinUI.Controls
         // them (clamping, hit-testing, the render model).
         private void Ready()
         {
+            if (isUpdatingTotalLines)
+                LogDiagnostic("TextCanvas.UpdateTotalLines: Ready before EnsureMetrics");
             EnsureMetrics();
+            if (isUpdatingTotalLines)
+                LogDiagnostic("TextCanvas.UpdateTotalLines: Ready after EnsureMetrics");
             SyncViewport();
+            if (isUpdatingTotalLines)
+                LogDiagnostic("TextCanvas.UpdateTotalLines: Ready after SyncViewport");
         }
 
         private void SyncViewport()
@@ -498,12 +520,44 @@ namespace FujiyNotepad.WinUI.Controls
 
         public void UpdateTotalLines(int count)
         {
-            if (count == engine.TotalLines)
-                return;
+            bool logStages = !hasLoggedFirstLineCountUpdate;
+            if (logStages)
+            {
+                hasLoggedFirstLineCountUpdate = true;
+                LogDiagnostic(
+                    $"TextCanvas.UpdateTotalLines: entered; current={engine.TotalLines:N0}; requested={count:N0}");
+            }
 
-            Ready();
-            ClearTextLayoutCache();
-            engine.UpdateTotalLines(count);
+            if (count == engine.TotalLines)
+            {
+                if (logStages)
+                    LogDiagnostic("TextCanvas.UpdateTotalLines: unchanged line count; returning");
+                return;
+            }
+
+            isUpdatingTotalLines = logStages;
+            try
+            {
+                if (logStages)
+                    LogDiagnostic("TextCanvas.UpdateTotalLines: before Ready");
+                Ready();
+                if (logStages)
+                    LogDiagnostic("TextCanvas.UpdateTotalLines: after Ready; before ClearTextLayoutCache");
+
+                ClearTextLayoutCache();
+                if (logStages)
+                    LogDiagnostic("TextCanvas.UpdateTotalLines: after ClearTextLayoutCache; before engine.UpdateTotalLines");
+
+                engine.UpdateTotalLines(count);
+                if (logStages)
+                    LogDiagnostic($"TextCanvas.UpdateTotalLines: engine.UpdateTotalLines completed; total={engine.TotalLines:N0}");
+            }
+            finally
+            {
+                isUpdatingTotalLines = false;
+                if (logStages)
+                    LogDiagnostic("TextCanvas.UpdateTotalLines: finished and diagnostic stage flag cleared");
+            }
         }
 
         /// <summary>Notifies the reader that the existing line source changed without a line-count change.</summary>
