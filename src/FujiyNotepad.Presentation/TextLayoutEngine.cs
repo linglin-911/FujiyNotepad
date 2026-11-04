@@ -92,10 +92,10 @@ namespace FujiyNotepad.Presentation
         /// <summary>Top of the line in viewport pixels.</summary>
         public double Y { get; init; }
 
-        /// <summary>The tab-expanded text to draw.</summary>
+        /// <summary>Legacy path: tab-expanded row text. Proportional path: the corresponding source substring.</summary>
         public string Display { get; init; }
 
-        /// <summary>Index in the source line's tab-expanded display text where this visual row begins.</summary>
+        /// <summary>Start index in the legacy tab-expanded display, or source UTF-16 text in proportional mode.</summary>
         public int DisplayStartIndex { get; init; }
 
         /// <summary>X (viewport px) at which the text starts (accounts for the horizontal scroll offset).</summary>
@@ -110,10 +110,10 @@ namespace FujiyNotepad.Presentation
         /// <summary>Width of the selection highlight in viewport pixels.</summary>
         public double SelectionWidth { get; init; }
 
-        /// <summary>Start index of the selected range in this visual row's Display string.</summary>
+        /// <summary>Selected-range start: row-local display index in legacy mode, absolute source UTF-16 index in proportional mode.</summary>
         public int SelectionStartIndex { get; init; }
 
-        /// <summary>Length of the selected range in this visual row's Display string.</summary>
+        /// <summary>Length of the selected range in UTF-16 units.</summary>
         public int SelectionLength { get; init; }
 
         /// <summary>True when the selection continues beyond this visual row, including its row break.</summary>
@@ -125,7 +125,7 @@ namespace FujiyNotepad.Presentation
         /// <summary>X (viewport px) of the caret.</summary>
         public double CaretX { get; init; }
 
-        /// <summary>Caret index in this visual row's Display string.</summary>
+        /// <summary>Caret index in the legacy display row, or absolute source UTF-16 index in proportional mode.</summary>
         public int CaretDisplayIndex { get; init; }
 
         /// <summary>
