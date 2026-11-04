@@ -77,6 +77,70 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void AnnotationMarkerHitTest_UsesTheWholeSelectionRectangleNotGlyphPixels()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 1, 4) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(25, 19, markers, out TextPosition position);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 1), position);
+    }
+
+    [Fact]
+    public void AnnotationMarkerHitTest_DoesNotHitOutsideTheAnnotatedRectangle()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 1, 4) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(45, 19, markers, out _);
+
+        Assert.False(hit);
+    }
+
+    [Fact]
+    public void AnnotationMarkerHitTest_MapsWrappedRowToItsOriginalSourceRange()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 1, 5) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(15, 25, markers, out TextPosition position);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 3), position);
+    }
+
+    [Fact]
+    public void AnnotationMarkerHitTest_ResolvesOverlappingRangesAtTheSharedSourcePosition()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new()
+            {
+                new TextAnnotationMarker(0, 1, 4),
+                new TextAnnotationMarker(0, 2, 5),
+            },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(25, 5, markers, out TextPosition position);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 3), position);
+    }
+
+    [Fact]
     public void HitTestCharacter_MapsNextLogicalLineToItsOwnSourcePosition()
     {
         var engine = NewEngine(new FakeLines("ab", "cd"), viewportWidth: 100, viewportHeight: 60);
@@ -358,8 +422,13 @@ public sealed class ProportionalTextLayoutEngineTests
             else if (y >= rows[^1].Top + rows[^1].Height)
                 row = rows[^1];
 
-            if (x < 0 || y < row.Top || y >= row.Top + row.Height)
+            // Simulate DirectWrite returning no glyph hit in the lower row padding. The selection
+            // rectangle still spans the complete visual row and must remain clickable.
+            if (x < 0 || y < row.Top || y >= row.Top + row.Height
+                || y >= row.Top + row.Height * 0.75)
+            {
                 return new TextLayoutHitTestResult(row.SourceStartIndex, 0, false, false);
+            }
 
             int offset = Math.Clamp((int)Math.Floor(x / 10), 0, row.SourceLength);
             int index = row.SourceStartIndex + offset;
