@@ -41,6 +41,7 @@ public sealed partial class TextLayoutEngine
         proportionalFontFamily = fontFamily;
         proportionalFontSize = fontSize;
         proportionalLineSpacing = lineSpacingMultiplier;
+        desiredColumn = -1;
         desiredProportionalX = -1;
         ClearProportionalLayoutCache();
         RaiseViewChanged();
