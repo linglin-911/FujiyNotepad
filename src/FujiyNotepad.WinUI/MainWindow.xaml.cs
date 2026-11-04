@@ -125,9 +125,10 @@ namespace FujiyNotepad.WinUI
         {
             this.InitializeComponent();
 
-            // Wire these handlers only after InitializeComponent has created every named control.
-            // Setting ToggleSwitch.IsOn during XAML loading can raise Toggled before the category
-            // ComboBoxes below the switches have been constructed, causing startup XamlParseException.
+            // Set the initial states only after all XAML controls have been created. This avoids
+            // firing ToggleSwitch.Toggled while InitializeComponent is still constructing sibling controls.
+            BigAnnotationSmallVisibilityToggle.IsOn = true;
+            BigAnnotationChapterVisibilityToggle.IsOn = true;
             BigAnnotationSmallVisibilityToggle.Toggled += BigAnnotationSmallVisibility_Toggled;
             BigAnnotationChapterVisibilityToggle.Toggled += BigAnnotationChapterVisibility_Toggled;
 
