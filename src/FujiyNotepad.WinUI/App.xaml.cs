@@ -55,8 +55,18 @@ namespace FujiyNotepad.WinUI
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            _window = new MainWindow();
-            _window.Activate();
+            try
+            {
+                _window = new MainWindow();
+                _window.Activate();
+            }
+            catch (Exception ex)
+            {
+                // Capture synchronous startup failures (especially XAML construction errors) even when
+                // WinUI does not surface them through Application.UnhandledException.
+                SafeLog(logger => logger.Log(ex));
+                throw;
+            }
         }
 
         private void OnXamlUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
