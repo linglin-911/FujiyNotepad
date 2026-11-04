@@ -2,13 +2,13 @@
 
 > 本文档是小说批注系统的唯一维护型需求清单。新增需求、需求变更、功能完成、测试结论和开发顺序调整，都必须同步更新本文档。
 >
-> 最后更新：2026-11-04
+> 最后更新：2026-11-05
 > 当前仓库：`linglin-911/FujiyNotepad`
-> 当前开发分支：`feature/reader-proportional-font-layout`（比例字体阅读器改造分支）
+> 当前开发分支：`feature/reader-settings-phase4`（全局阅读设置与阅读器布局改造）
 > 批注功能基线分支：`feature/novel-project-annotations`
-> 本轮文档同步前代码基准 HEAD：`294bc3cd2f749f9392575ebcad77c4bffa060a2a`
-> 最新功能修复提交：`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`（移除 Win2D `CanvasLineMetrics[]` 封送异常路径，改用标量行数/光标位置查询和 grapheme 边界映射）
-> 用户最新运行反馈：更新后软件已能正常显示正文，不再闪退；首屏正文绘制链路已通过基本运行验证。Phase 3 的完整鼠标交互、批注定位和混排字体验收仍待完成。
+> Phase 4.2 用户验收代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`
+> 当前基线：`fix/reader-proportional-line-overlap` 已解决比例字体窗口宽度变化时的文字重叠；当前 Phase 4 工作分支从该修复分支建立。
+> 用户最新反馈（2026-11-05）：拉取上述代码后完成测试，软件运行正常，未发现问题。用户未提供具体构建摘要、测试数量或警告数量，因此不在文档中补写未经确认的数字。
 
 ## 1. 状态标记与维护规则
 
@@ -412,131 +412,48 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ## 10. 当前进度与交接
 
-### 已有实现（代码层面）
+### 当前项目状态
 
-- 小批注列表卡片：单击跳转采用 500ms 单次 DispatcherQueueTimer 延迟；标题区域双击可打开统一详情弹窗；原文摘要区域双击问题记录为 BUG-012，暂缓优化；关闭面板或刷新列表时取消待执行跳转；面板底部只保留删除操作。
-- 章节索引：`NovelChapterIndexBuilder` 在阅读器行索引完成后后台逐行识别章节标题；按 UTF-16 字符偏移保存章节范围；不把全文读入内存；索引状态记录文档版本和解析器版本。
-- 章节索引与小批注联动：新建/追加小批注时按起始偏移写入 ChapterId；初次建章索引时为历史锚点回填 ChapterId；文档编辑时章节范围和索引文档版本同步变换。
-- 章节批注：独立 SQLite 表、独立分类表和右侧面板；支持按章节/分类筛选、搜索、新建、编辑、删除及点击跳转章节。
-- 大批注数据层：新增独立大批注主体表、分类表和 ChapterId 关联表；CRUD 与分类管理独立于小批注/章节批注；创建或调整章节范围时在事务内验证至少两个连续活动章节。
-- 大批注参考资料查询：按所选章节读取小批注锚点和章节批注；同一小批注跨多个所选章节时只返回一条记录，同时返回全部匹配位置；分类和搜索在数据库查询阶段完成。
-- 大批注 UI：大批注管理列表、新建/编辑/删除、分类管理、连续章节范围选择；左右分栏写作工作区，左侧按章节分组并支持展开/折叠、完整内容查看、分类筛选、搜索、原文/章节跳转，右侧编辑标题/分类/正文；分隔条可拖动调整宽度。用户已完成基本功能测试并确认通过；完整回归和最终视觉统一暂缓至整体界面优化阶段后期。
-- Phase 4.1 已验收：新增全局 ReaderSettings 嵌套模型及参数归一化；SettingsStore 支持旧 settings.json 的 FontFamily/FontSize 迁移并持久化；现有字体菜单/Zoom 快捷操作以 ReaderSettings 为主数据，同时同步旧字段兼容旧版本。新增设置往返、默认值、旧 JSON 迁移、显式 Reader 优先级和非法值归一化测试。用户已完成 Release x64 编译及 983/983 测试，0 失败、0 跳过；仅有一条非阻断 xUnit2031 警告。Phase 4.2 的新代码和新增测试尚待本轮重新编译/运行。
-- Phase 4.2 代码已提交、待本轮构建/测试：新增独立 ReaderPalette（Paper/Warm/Night），Windows 高对比度优先；TextCanvas 不再跟随应用 ActualTheme，字体/字号/行距接入现有比例布局；排版刷新按首个可见视觉行的原文 UTF-16 起点恢复视口锚点；新增 11 项 ReaderPalette 测试及 2 项比例布局/视口锚点测试；默认字体 Microsoft YaHei 也已加入现有 Font 快捷菜单，保证默认项有正确选中状态。
+- 小说项目管理、章节索引、小批注、章节批注和大批注的功能边界、实现状态及遗留验收项，以本文件第 2–9 节和第 13 节为准；不要在交接提示词中重复整套需求。
+- Phase 1、Phase 2 已由用户验收；Phase 3 比例字体布局已接入阅读器，首屏显示/崩溃和窗口宽度变化时的文字重叠问题均已解决。Phase 3 其余交互仍按第 12.6 节列出的范围进行必要冒烟测试，不把历史故障重新当作当前故障。
+- Phase 4.1 已验收：全局 ReaderSettings、旧 settings.json 迁移、参数归一化和设置持久化已完成；用户曾确认 Release x64 build 成功、983/983 测试通过。
+- Phase 4.2 已由用户测试通过：ReaderPalette 的 Paper/Warm/Night 独立配色、Windows High Contrast 覆盖、字体/字号/行距接入现有比例布局、排版变化后恢复原文视口锚点均已接入。用户反馈拉取当前代码后测试正常、软件运行正常，未发现问题。用户未提供本轮测试数量和警告摘要，不记录推测数字。
+- Phase 4.3 尚未开发：实现全宽阅读背景视口与居中最大宽度正文容器，正文和批注标记刻度必须保持对齐。这是当前下一项任务。
+- Phase 4.4 尚未开发：统一阅读设置窗口，提供字体、字号、行距、正文宽度和 Paper/Warm/Night 主题的设置入口及应用/取消行为。
+- Phase 4.5 为 Phase 4 整体验收；应在 4.3、4.4 完成后执行。
 
-- `DocumentTextOffsetMap`：行列与全文 UTF-16 偏移转换，支持 LF/CRLF 和稀疏检查点。
-- 小批注、分类、原文锚点的 SQLite 表和基础 CRUD。
-- 小批注多位置锚点、重叠/嵌套范围支持。
-- 分类创建、重命名、删除、合并。
-- 小批注列表摘要查询，搜索标题、正文和关联原文。
-- 阅读器选中文字提取及右键菜单入口。
-- 小批注创建/追加/编辑/删除；新建、详情和编辑共用同一弹窗，详情默认只读并支持逐字段笔形编辑；双击列表项打开弹窗。
-- 分类加载与批注列表刷新已拆分，筛选空分类不再反复重建 ComboBox。
-- 创建窗口的关联原文预览使用独立滚动区域，长摘录和小窗口均可滚动查看。
-- 列表卡片逐处显示关联原文摘要，每处摘要均可单独点击跳转；卡片单击延迟 500ms 后跳转首个有效位置，双击取消待执行跳转并打开统一详情弹窗；跳转由阅读器引擎在自动换行/非自动换行模式下居中显示。
-- 阅读器已接入可视区锚点查询、虚线标记绘制和点击显示对应批注；点击父锚点区域会连带显示其范围内完全包含的嵌套锚点。
-- 原文偏移与摘录一致性校验；旧版无章节关联的锚点使用全文流式唯一匹配；新锚点保存 LF 归一化章节相对偏移、BodyStartOffset 快照、正文 SHA-256 和前后文；正文未变时按相对位置恢复，正文变化时仅在原章节内进行上下文消歧；定位修复后优先跳转，列表和标记刷新异步执行。
+### 当前 Git 状态
 
-### 用户已实际验证
+- 仓库：`linglin-911/FujiyNotepad`
+- 当前工作分支：`feature/reader-settings-phase4`
+- 本轮用户已测试代码基准：`19ade8c03ae19050acb625d7ab93254bd187b371`
+- Phase 4 的开发均在该工作分支继续，不另开普通功能分支。
+- **分支约定：** 普通功能开发、修复和文档更新默认继续当前分支。只有遇到关键架构变更或确有必要隔离的高风险改动，才先与用户商量并取得同意后新建分支。未经用户明确同意，不合并分支、不修改 PR。
 
-- 用户已确认最新提交的 Windows x64 Release 构建成功（WinUI 目标为 `win-x64`）。
-- 用户已确认 2026-11-03 提交 `6d92f3fc262d75c5e7258f5176358374bc35cc65` 的 x64 Release 构建成功；Core.Tests 与 Presentation.Tests 共 902 项通过，0 失败、0 跳过。该次测试仍有 2 个 xUnit2031 警告；随后已在新提交中清理，尚待再次构建验证。
-- 用户已反馈小批注本轮除双击打开统一弹窗外，其余已测试功能均通过；章节批注右侧新建和阅读器正文右键两种入口已由用户实测确认可以正常进入创建流程，章节/分类筛选框空白问题已修复；章节批注 CRUD、分类管理及完整筛选/搜索流程仍待系统验收。
-- 可以创建小批注，并在右侧列表看到批注。
-- 可以创建自定义分类。
-- 小批注最近一次用户界面验收：单击标题区域跳转存在约 500ms 延迟；双击标题区域打开弹窗；双击原文摘要区域仍跳转（BUG-012，暂缓）。
+### 下一步开发顺序
 
-### 尚未完成/未收到验证结果
+1. 开始 Phase 4.3 前，检查当前分支最新代码和本文件、`docs/reader-text-layout-architecture.md`，梳理 MainWindow、阅读器宿主、TextCanvas、比例布局和批注标记刻度的真实布局关系。
+2. 先提出全宽背景 + 居中正文容器的具体实现方案，重点说明布局容器归属、宽度计算、窗口缩放行为、标记刻度对齐和视口锚点保持；涉及跨模块结构变化时先与用户确认。
+3. 方案确认后再实施，优先复用现有阅读器和比例布局，不创建第二套阅读引擎，不改 SQLite、原文 UTF-16 偏移和批注锚点。
+4. 完成后更新本需求文档及阅读器布局架构文档，提交到当前分支；由用户执行 Windows x64 build/test 和必要的阅读器冒烟测试。
+5. Phase 4.3 验收后再讨论并实现 Phase 4.4 阅读设置窗口。
 
-- 章节批注新建异常（BUG-013）、章节/分类筛选框空白（BUG-014）及阅读器正文右键新建入口（BUG-015）均已由用户确认在 Windows 实际运行中修复。
-- 小批注定位速度问题（BUG-017）已由用户确认在 Windows 实际运行中修复。本轮已实现章节相对偏移、正文指纹、前后文消歧和严格章节边界校验，待用户做功能冒烟测试。
-- 章节批注章节筛选下拉框快速滚动时的性能：已将批注列表刷新推迟到下拉框关闭后，待使用上千章项目实测。
-- 章节目录（仅显示标题）已由用户实测通过。
-- 项目打开时的原文指纹检测、章节正文指纹比较和章节结构变化确认流程已实现，仍待 Windows UI 场景验收；章节内段落级差异定位（C-032）按用户要求暂缓，不纳入当前阶段。
+### 开发协作与构建约定
 
-
-- BUG-012 小批注卡片原文摘要区域双击打开统一弹窗的后续优化。
-- 小批注完整回归测试和长篇小说性能验收。
-- 章节索引和章节批注核心代码已有数据层自动化测试；用户已确认 Windows x64 Release 构建成功，并已实测两种章节批注新建入口正常。剩余重点是章节批注完整 CRUD、分类管理、搜索/筛选组合、项目重开持久化、章节重新识别与归档保护，以及大量章节下拉性能。
-- 旧项目数据库会在初始化时自动增加 Chapters.IsActive 字段；重新识别取消时不修改索引，确认后归档删除章节并保留其批注。
-- 阅读器滚动时的小批注标记刷新增加取消机制，避免旧视口查询堆积。
-
-- 大批注数据层、管理界面和多章节辅助写作工作区已实现；用户已完成基本功能测试并确认通过。当前进入整体界面优化阶段，完整回归和最终验收暂缓。
-- 项目列表主界面（暂缓）。
-
-### 最新代码提交
-
-当前比例字体改造分支：feature/reader-proportional-font-layout，基于批注功能分支提交 87545052d545ecedd2a00e9c51198cefc5f85372 创建。
-
-Phase 1 主要提交：
-- c40bdfa1cb1fcb29ac738fe867a80264a8e349b1：布局接口契约。
-- 7fb8f43946ee6ac759156a9496b466c43c815fba：布局契约测试。
-- cc9fb1c78833bb7e58d6488df99bdbd715077202、ffb9bfcf38ca5772339f0bf0fc8c69414ccf0962、a29d365a661989e27295a3c612f14c47495eaf5f：标记旧固定宽度实现。
-- f16e42bbd32cd342dfbf819bde5d188f7eba014d、006210dc9ba609d3cab9594506eca95d1a1f5de9、42d1476ce3d6013ceb4ea30ddf955a7769c85e29：架构和需求文档。
-
-Phase 1 已通过用户本地验收：Release x64 解决方案编译成功，Presentation.Tests 501/501 通过。
-
-Phase 2 主要提交：
-- 4fee9375f4979c7792d336ac6e7d61dd0a693b69：新增 Win2D/DirectWrite 比例字体布局提供器。
-- 152d254c0a97ebb1e95e82e6d17225653a800075、96eab95f21dc86270ecbe1d00b5e3c3561640fe6：新增 Unicode 文本元素边界映射及测试，避免 UTF-16 代理对/组合字符被拆开。
-- 171972391aff54a3f008b92170b6d0c3a7e4b7bc、52db2f6a01b1599035e3f766b0ce3f00b996ef78：完善换行行尾空白几何、无换行布局尺寸和性能处理。
-- e62fa20ddbc9cf6720526406db6a349d0d49465a：更新比例字体架构状态。
-
-Phase 3 主要提交（当前代码仍待本地验收）：
-- 7be57ac0d009f17ffb4827ed21efd61b37c47608：比例布局选区/搜索/规则高亮改为预绘制，避免后续软换行行的背景覆盖已绘制文字。
-- 3eb4eef1eaa07d8ffd4f91c26f18c234724aa8e8、62119a442a1a6dfbb4aae1cd76cda53afaa27716：按 DirectWrite 实际行高计算翻页与可视区，并让非自动换行模式按实测高度填充视口。
-- 498fc8222018d0b796c2c57f88981da7859fddec：修正比例光标列字段误放在主文件中的代码问题。
-- 4b740eebc6b26991888708796b82beca2d248118、c5853193b33df42f768b919ced24ffd2a2061ed0、d01f737e365dce3235f3b5bfc2204f03088640a1：横向滚动范围收缩时归位、按相邻字形实际宽度保持光标可见、软换行边界光标纵向位置校准。
-- 45e0f38acc6aa208eed71a4fb160234167bfae96：新增比例布局鼠标滚轮跨软换行行测试。
-- 116fad085e3f989652ff07a7e5136ef6024c3eab、0ccb43b3fbc2bc935d5766e4024f0cebe03face4、8444659a4955dbde2cb2abca8c253c7e70a66b79：新增比例布局鼠标拖选跨软换行、跨原文逻辑行（含换行符）及双击选词（包括跨软换行的长单词）测试。
-- 7fe98dffc51cf2aa6f0627292fbcd2bfbdadd0e7：按用户确认撤销不需要的垂直滚动条滑块优化；阅读器主要导航方式为鼠标滚轮连续滚动与目录/批注目录直接跳转。
-- 870b44a5ba9a6e23fdf793a8a53af205e7ad03be、367330d065ecf5af8b551e745c3687e5eb6704ca：命中测试增加“是否实际命中字符区域”的返回值，保留右键菜单使用的最近原文边界定位。
-- 2c164a942a7c755ebcee9f04bae4c3fbd759eaf4、8b802affc7741cf9bfa30ebea5a550a646e4d02c：小批注标记点击只有实际命中原文字形时才触发；点击行首/行尾空白的最近边界不会误触发批注，并在释放时刷新视口度量。（该阶段规则已被 2026-11-04 后续提交中的选择矩形命中方式取代。）
-- 508e10ac365b272d49e2363900fa8b23ab81f90a：新增 3 项命中测试，覆盖软换行续行、空白边界和下一逻辑行的原文 UTF-16 坐标映射。
-- 67a26f6afb9507cf7a1565592d0bf1417081bf70、51ef0a2d0eb5468da0c8b8964ba21da89a4bc481：命中结果保留完整 shaping cluster 的原文范围，不只返回起始 UTF-16 列。
-- 23a5d0e023e395ddcff7f456cba93a7d38cbe72b、11e0478d36d645045b332aa5656e9b5690f1d2fd、4d0e107f6d7bc750e2aeed27a31b2aba11cc3034：批注标记点击按“命中字符区间与批注区间是否相交”判断，覆盖连字/组合字符等多 UTF-16 单元字形，并新增完整命中区间测试。
-- e8c50121b220aa97835a68ab023c83c71bdef99e：右键创建章节批注在异步检查章节索引后，校验项目、原文行源和偏移映射仍为同一实例，防止菜单停留期间切换项目导致旧坐标套用到新原文。
-- 103b580c296b9e033ee78e462237ac110b45f57b：章节索引可用性检查在每次数据库/索引异步等待后校验项目和原文行源身份，避免旧项目的章节列表写入当前项目状态。
-- fa0c94bd355197ba57546ad38830552cc75018bb：修复比例布局分支与固定宽度回退分支的局部变量重名编译错误。
-- c8bf1684d23782da25117b3007506b876623f0cb、d4ab5e12040ac377983120388903c8a94d36d967、bd9030d1360b8ae6beafa91d1c8c511af5f228e5、e27d68a84ac3f9b818f2e1ee3195721e17ef7013：将“行数更新”与“同数量原文内容刷新”拆分；行数不变的索引轮询不再清理布局缓存或触发 ViewChanged，文件跟随模式确实刷新原文源时通过独立 RefreshSourceContent 接口失效缓存并重绘；新增事件测试。
-- cd38b770378ed4ed39da67430374533d354b4446：修正旧比例布局测试与新接口设计冲突；分别验证行数不变的 UpdateTotalLines 不清理缓存、RefreshSourceContent 会清理缓存。
-- 8c17866963fb46861daee4fc0dca586aaa32c49b、fd7e0fb8f927b0d4e3d4a194111f82844984b6d7：移除 XAML 中 ToggleSwitch.IsOn 初始值，在 MainWindow.InitializeComponent 完成后再设置默认开启状态，避免控件构造期间触发切换事件。
-- b2f658d97e9fc08208c19fff53077ebd1a7f0974：OnLaunched 捕获同步窗口创建/激活异常，写入 crash.log 后重新抛出，不吞掉启动异常。
-- f06122a88dd87e77c4eb2fa32d96c28d4370656f、2dca4d23b2ea082f4459de9ec85d3c0b267e67da：CrashLogger 增加 Diagnostic 时间戳记录接口及测试。
-- 2b5b0bc20deda1082780a56118ce57b286e643df：记录 App 构造、XAML 初始化、OnLaunched、窗口激活、全局异常、未观察任务异常和 ProcessExit。
-- e65c1abc5d3c63fe251ec53a180d3ce3dba13e57：记录 MainWindow 构造、XAML Loaded、设置加载、最近项目恢复、文件打开、索引进度和章节索引初始化；异步启动任务异常写入 crash.log。
-- d329944b580b884fbd0638f377f36a3de45a5802：记录阅读画布首次内容绘制的进入/完成状态，并在 OnDraw 遇到托管异常时记录完整异常后重新抛出。
-- 32e439a77a81f268ade53bae4921e1595facf7ca、fee5956a98d18b768135e83154ec75e13b8d1a66、b510280e8cc9cd25dec36bb14def4d310b3dda65、4f31fc8026661dd8e3158627a76d9593c8c5cb7c：新增小批注范围矩形命中测试；点击按选择背景同源的原文区间矩形判断，不要求 glyph 像素命中；多个重叠矩形优先返回共同原文区间内的位置。
-- 47d105777686ff9d2a6593425cf6276cff4f86a4：右键章节批注改为最近原文插入位置命中，空白处点击仍可定位所属章节；小批注点击接入范围矩形命中。
-- ea46211d4e7527342bf1275447379da8b4e59836、9cf42a265bbc24562554c35d41fec74f8c0fadc5、3024943208cb75d992a3438262885aa22290bc53：新增 5 项测试，覆盖矩形内非字形区域、矩形外点击、跨软换行、重叠批注及章节右键空白区域定位。
-- ffa06c39bc82933f6fc61514d634aa0f8e2acd31：小批注标记查询改为使用当前视口实际覆盖的原文逻辑行范围，不再用视觉行数估算，避免长段落自动换行时无谓扩大数据库查询范围。
-- a15c13988adaf51976bd03454d75d174cc3fbe6、cb75d2f18f19b8db4cacab568b82ccf015193f6b：布局模式切换时清理旧的首选光标列。
-- c3a308fc32d480937c14a1a4d496ea39dcd9719b：同步架构文档。
-
-当前比例字体改造分支：feature/reader-proportional-font-layout；Phase 3 实现与对应文档均已推送。
-
-Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presentation.Tests 508/508 通过。Phase 3 已将比例布局接入 TextLayoutEngine 与 TextCanvas：真实视觉行/换行、命中测试、光标与方向键/翻页导航、水平/垂直滚动、选区/搜索/规则高亮、批注虚线、空白字符标记及光标覆盖层均使用同一套原文 UTF-16 布局坐标；增加 23 项引擎集成测试（包括鼠标拖选跨软换行/原文逻辑行、双击选择跨软换行的长单词、小批注选择矩形点击、交叠批注及章节右键空白区域定位），并修复跨视觉行高亮绘制顺序、按实测行高计算翻页/可视区、横向滚动范围收缩、同总行数原文刷新时的布局缓存失效；小批注标记查询按实际可视原文行范围执行。旧固定宽度路径仍保留为回退。Phase 3 代码已推送，但尚未经过用户本地 Release x64 构建、测试和实际阅读器视觉/交互验收；不得提前标记为完成。2026-11-04 22:45 日志进一步确认：`TextCanvas.UpdateTotalLines`、`Ready` 和缓存清理均完成，`TextLayoutEngine.UpdateTotalLines` 触发 `ViewChanged`；随后 `OnReaderViewChanged` 进入 `SyncScrollBars`，最后停在 `View.FullyVisibleLineCount` getter 附近，期间出现嵌套 `Ready`，未进入任何滚动条属性赋值。现已移除阅读区水平/垂直滚动条控件、同步方法、滚动事件处理及关联布局行列；保留鼠标滚轮、目录跳转、程序化滚动、视图恢复、光标自动可见和标记刻度。 2026-11-04 23:01 新日志确认删除滚动条同步后，索引行数更新、标记刷新、章节索引和首次内容绘制均正常推进；真正崩溃发生在 `Win2DTextLayoutResult.BuildVisualLineMap` 读取 `CanvasTextLayout.LineMetrics` 时，抛出 `NotSupportedException: Cannot handle array marshalling for non blittable type CanvasLineMetrics`。已将视觉行映射改为标量 `LineCount`/`GetCaretPosition` 查询，通过 Unicode 文本元素边界二分查找软换行起点，并在行数不匹配时回退扫描；新增 grapheme 边界查找测试。该修复尚待用户本地 Release x64 构建、测试和启动/阅读交互复测。
-
-`d23e5776b3f76c1a42261a4489bda025affbd180`（纠正大批注参考资料区层级：目录树严格为“章节标题 → 批注”两层；小批/章批类型、对应分类和小批原文数量作为同一行平级标签；取消章节批注自身的折叠节点；小批与章批正文统一使用圆角淡色背景卡片；原文跳转返回按钮改为带左箭头的实色按钮，并通过动态预留左侧阅读栏位避免遮挡原文。）
-
-`f807463e341e7b17831a6c096751cdcad78f25eb`（补充空白新建大批注的返回恢复：即使尚未输入标题和正文、因此还没有数据库 ID，跳转到原文后也保留编辑器内存状态，点击返回可继续当前新建草稿。）
-
-`7f5df125702f1c847a4b1003389bdcb6bd2995ad`（增加从大批注参考资料跳转到原文后的“返回大批注”入口；小批注原文摘录改为直接点击跳转并移除定位按钮；章节批注跳转按钮仅在存在章批时显示并弱化，移动到章节计数右侧；移除章节批注卡片内重复的定位按钮；分类改为批注内容下方的小标识；原文位置标签简写为“原文1”；小批/章批开关与各自分类筛选器同排显示。）
-
-`7b91f365cdf0809ad22c0cf30e6e47ddd3a472f8`（根据工作区实测优化参考资料区：增加默认开启的“小批”“章批”独立显示开关；分类筛选随开关联动；仅显示当前过滤后仍有批注的章节；章节和批注内容默认展开并用箭头折叠；改为树形缩进；去掉未命名占位、重复分类和原文前缀章节标题；原文摘录灰色显示。）
-
-本轮大批注相关提交：
-- `1ee345788bc54cc7b203b5c4618830553a5367ea`：独立数据模型、SQLite 表、CRUD、连续章节校验、参考资料查询和数据层测试。
-- `23fd85ef5044b6eadd23d23d4b8fbb57b3b0db67`：管理列表、章节范围选择、左右辅助写作工作区和导航。
-- `89808eb5c9c145d56a9ee4c3eac732ffad34066d`：工作区 UI 状态和渲染细节修正。
-- `a02d9214f88058a07f11db90be2b51d7ec4e70d9`：每个关联章节分组增加独立原文跳转入口。
-
-> 注意：每次提交后更新此处的提交 SHA，并补充版本记录。
+- 不要重复开发已经存在并经用户验证的批注或阅读器功能；先检查实际代码和测试。
+- 区分原项目继承功能与本项目自主开发功能，不得混为一谈。
+- 优先局部修改；不擅自删除原编辑器功能，不顺便进行无关重构。
+- Windows x64 编译必须显式指定平台：
+  `dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64`
+- 自动化测试：
+  `dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64`
+- 用户要求先做必要的编译检查和功能冒烟测试；完整回归、长篇性能和边缘场景验收留到整体阶段后期。
 
 ## 11. 版本记录
 
 | 日期 | 变更 |
 |---|---|
+| 2026-11-05 | 用户完成 Phase 4.2 本地测试并反馈软件运行正常、未发现问题。验收范围对应当前 `feature/reader-settings-phase4` 代码：ReaderPalette（Paper/Warm/Night）与 Windows High Contrast 覆盖、阅读主题独立于应用 Light/Dark、ReaderSettings 字体/字号/行距接入现有比例布局、排版后恢复原文视口锚点。上次 xUnit2031 断言已改为 predicate overload；本轮未提供精确 build/test 数量和警告摘要，因此不记录具体数字。Phase 4.2 标记为用户测试通过；下一步为 Phase 4.3 全宽阅读背景和居中正文容器。测试代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`。 |
 | 2026-11-05 | 用户完成 Phase 4.1 验收：Release x64 build 成功，983/983 测试通过，0 失败、0 跳过；唯一警告为 `ProportionalTextLayoutEngineTests.cs(310,42)` 的 xUnit2031 建议，非阻断。随后在同一 `feature/reader-settings-phase4` 分支实现 Phase 4.2：新增 ReaderPalette（Paper/Warm/Night）及 High Contrast 覆盖；TextCanvas 阅读配色独立于应用 Light/Dark Theme；ReaderSettings 字体/字号/行距接入现有比例布局；排版刷新保存并恢复可见原文 UTF-16 视口锚点；新增 11 项 ReaderPalette 测试和 2 项布局/锚点测试。Phase 4.2 新增代码/测试尚待用户重新构建和运行；同时已按用户上次编译提示，将 `Where(...)+Assert.Single(...)` 改为 xUnit predicate overload，尝试消除 xUnit2031 警告，待新一轮构建确认。相关提交：`819ad0b47f2ec34703af6a2e6b5137d933399f6a`、`34190e260138f4c231c3b2bdd4174a605d28a9b1`、`4a9cf9dfcf8572162b493e291d44a3e43d16aab6`、`3c0344abd52a5d2b99ee22d88508b73a033ab240`、`bf608db7dad2297a43c2a9e1787887051e5e6e7f`、`4a25c3324519438c3321193349b3a4dd91dcd794`、`05ff89ce50e9103fc7f516467d299fb751fb5b99`、`61b2ce8126935135c2a8f49e60f46c322315bf4d`、`3a5dcc79bb7e7415b209600ecccf62bc7dc1a84e`。 |
 | 2026-11-05 | Phase 4.1 首轮实现：新增全局 ReaderSettings（字体、DIP 字号、行距倍数、正文宽度、Paper/Warm/Night 主题）及独立参数归一化；AppSettings 增加嵌套 Reader；SettingsStore 检测旧 JSON 并将旧文本视图 FontFamily/FontSize 迁移至 Reader，归一化后持久化；MainWindow 启动与现有字体/Zoom 快捷操作改为以 ReaderSettings 为主数据，同时同步旧字段兼容。新增 Reader 往返、默认值、旧 JSON 迁移、显式 Reader 优先级和非法值测试。代码提交：`e2fcfb5955c99d15140fab41d1448868b7561b11`、`0f677049f64ac22d31a3f710be9099d158a179fa`、`75461d04287cfbbcc0ed9c9cb02ccd3843799bea`、`6cdc6948b5787450c8d7283661afc5e1248e0597`、`c0cc5f4eb0dab7f6123e0947d6f3644f55835a78`、`0fcc5853c1d69422b16e3053344e780c22638689`。文档提交：`d448360f6b33d19d2810d6b6b84bd0246ebc6e4b`、`54e3e13c469dba2b727e7608d4847c62e942e81b`、`e531611353bdfbfedb8b4599f74da39c8640d46a`。当前无 .NET SDK/Windows App SDK 执行环境，尚未运行构建和测试，不宣称通过。 |
 | 2026-11-05 | 用户确认比例阅读器文字重叠问题已在独立分支 `fix/reader-proportional-line-overlap` 修复；检查实际代码后，确定 Phase 4 必须使用全局嵌套 `ReaderSettings`，与主界面外观完全隔离：全局 settings.json 持久化、独立 ReaderPalette、Reader-only 字体/字号/行距/正文宽度/主题、旧设置 JSON 兼容迁移、全宽背景+居中正文容器；主界面不新增字体/字号/背景设置。创建 `feature/reader-settings-phase4`，基于已修复的 Phase 3 分支；架构同步至 `reader-text-layout-architecture.md` 和本需求文档。4.1 后续已单独实现并记录于本表前一条。 |
@@ -654,10 +571,10 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 | Phase 1 | 布局接口、UTF-16 坐标约定、契约测试、旧路径标记 | 用户验收通过：Release x64 编译成功，501/501 测试通过 |
 | Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 用户验收通过：Release x64 编译成功，Presentation.Tests 508/508 通过；后续已接入 Phase 3 |
 | Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；原有 975/975 测试通过。Win2D 行指标数组封送异常已修复；用户确认首屏正文正常显示。窗口宽度变化时曾出现文字重叠，用户切换到独立修复分支后确认已解决；Phase 3 其余交互冒烟测试仍待完成 |
-| Phase 4 | 阅读字体、字号、行距、正文宽度和独立阅读主题 | 4.1 已验收：Release x64 build 成功、983/983 测试通过（1 条非阻断 xUnit2031 警告）；4.2 ReaderPalette/排版接入/视口锚点代码和 13 项新测试已提交，待本轮构建/测试；4.3–4.5 未开始 |
+| Phase 4 | 阅读字体、字号、行距、正文宽度和独立阅读主题 | 4.1、4.2 已完成用户测试；4.2 用户反馈当前代码运行正常、未发现问题（本轮未提供精确测试数量）；4.3 全宽背景/居中正文容器待开发；4.4 阅读设置窗口待开发；4.5 整体验收待执行 |
 | Phase 5 | 有界缓存、长行性能验证和旧代码清理 | 未开始 |
 
-当前已确认比例布局能够完成首次正文绘制并正常显示，用户也确认独立修复分支已解决窗口宽度变化时出现的文字重叠；普通中文比例字体/中英文混排、连续滚轮、目录跳转、选区、光标、小批注矩形命中和章节批注右键定位等其他 Phase 3 交互仍需针对性冒烟验收。Phase 4 使用独立的全局 ReaderSettings；4.1 已验收，4.2 代码待新一轮测试，不能因为原项目已有字体切换或 Zoom 就标记为完成。
+当前已确认比例布局能够完成首次正文绘制并正常显示，用户也确认独立修复分支已解决窗口宽度变化时出现的文字重叠；普通中文比例字体/中英文混排、连续滚轮、目录跳转、选区、光标、小批注矩形命中和章节批注右键定位等其他 Phase 3 交互仍需针对性冒烟验收。Phase 4 使用独立的全局 ReaderSettings；4.1、4.2 已完成用户测试。下一步按 Phase 4.3 实现全宽阅读背景和居中正文容器。
 
 ### 12.7 启动与渲染诊断日志及已解决故障
 
@@ -682,7 +599,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 ### 13.1 GitHub 代码基线与项目结构
 
 - 2026-11-05 Phase 4 开发基线：`fix/reader-proportional-line-overlap`，HEAD `72c8053b4bdfb58a663a88f0ad7b255450b189ef`；该分支从 `feature/reader-proportional-font-layout`（HEAD `599745f07cacf7f61231a0b8a387a34398ebf785`）派生，包含 8 个修复提交。
-- 当前 Phase 4 工作分支：`feature/reader-settings-phase4`，从上述已修复分支创建；4.1 和 4.2 均在此分支持续开发。当前最新代码提交为 `c6e4997875f5b9c3f828b2cbe1cc1cbc3b155c54`，本次进度文档提交后 HEAD 会继续更新。
+- 当前 Phase 4 工作分支：`feature/reader-settings-phase4`，从上述已修复分支创建；4.1 和 4.2 均在此分支持续开发。用户本轮测试的代码基准 HEAD 为 `19ade8c03ae19050acb625d7ab93254bd187b371`；后续文档提交不改变该代码验收基准。
 - **分支约定（用户明确要求）：** 普通功能迭代默认继续当前工作分支，不得随意创建多个分支；只有关键架构变更或高风险隔离确有必要时，必须先与用户商量并获得同意后再新建分支。未经用户明确同意，不合并分支、不改动 PR。
 - PR #5（比例阅读器文字重叠修复）仍为 Draft，head 为 `fix/reader-proportional-line-overlap`，base 为 `feature/reader-proportional-font-layout`；用户已确认切换到该分支后此前重叠问题已解决。Phase 4 分支以该修复分支为基线，避免重新引入已修复问题。
 - PR #4 仍为 Draft，head 仍指向旧分支 `feature/novel-project-annotations`（SHA `87545052d545ecedd2a00e9c51198cefc5f85372`），不是当前最新工作分支；不得以 PR #4 的文件状态代替最新分支代码。
@@ -772,7 +689,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 ### 13.6 尚未开发或尚未完成的功能
 
-- Phase 4 尚未完成：4.1 ReaderSettings 数据模型、持久化兼容及测试已通过用户 Release x64 build 和 983/983 测试；4.2 ReaderPalette、字体/字号/行距接入和视口锚点恢复已提交，但 13 项新增测试及最新代码待用户重新构建/测试；4.3 正文宽度容器、4.4 统一阅读设置窗口、4.5 最终验收仍未完成。详细架构见第 13.9 节和 docs/reader-text-layout-architecture.md。
+- Phase 4 尚未完成：4.1 ReaderSettings 数据模型和持久化兼容已验收；4.2 ReaderPalette、字体/字号/行距接入和视口锚点恢复已由用户测试通过，用户反馈运行正常、未发现问题（未提供精确测试数量）；4.3 正文宽度容器、4.4 统一阅读设置窗口、4.5 最终验收仍未完成。当前下一步是 4.3。详细架构见第 13.9 节和 docs/reader-text-layout-architecture.md。
 - 外部编辑后的完整差异生成、差异预览、标记清理、锚点重映射、确认应用和失败恢复。
 - 大批注 Markdown/TXT 导出。
 - 批注和大批注之间的关联关系。
@@ -822,7 +739,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 后续整体界面优化应先讨论主窗口整体信息架构和视觉规范，再逐个改造阅读器及三种批注界面；不得把原项目继承功能误写成本项目开发成果，也不得把“代码已实现”直接标记为“用户已验收”。
 
-### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（4.1 已验收，4.2 代码待测试）
+### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（4.1、4.2 已完成用户测试）
 
 **核心决定：阅读界面与软件主界面是两套独立视觉系统。** 本阶段只开发阅读器专用设置；主界面菜单、工具栏、状态栏、批注面板、批注弹窗等保持固定样式，不增加字体、字号、背景、文字颜色设置，也不把阅读主题传递给这些控件。
 
@@ -862,13 +779,13 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 #### 13.9.4 开发分片与验收
 
 1. 4.1（用户验收通过）：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；现有字体/Zoom 快捷操作已以 ReaderSettings 为主数据，不改变可见 UI。Release x64 build 成功，983/983 测试通过。
-2. 4.2（代码已提交，待新一轮构建/测试）：接通比例布局字体/字号/行距，新增独立 ReaderPalette，排版变化时恢复原文 UTF-16 视口锚点。
+2. 4.2（用户测试通过）：接通比例布局字体/字号/行距，新增独立 ReaderPalette，排版变化时恢复原文 UTF-16 视口锚点；用户测试反馈当前代码运行正常、未发现问题。
 3. 4.3：增加全宽阅读背景视口和居中最大宽度正文容器，保持标记刻度对齐。
 4. 4.4：增加统一阅读设置窗口，完成系统字体选择、控件、应用/取消和持久化。
 5. 4.5：显式 x64 构建、Core/Presentation 测试及 Windows 冒烟测试，覆盖设置即时应用、项目切换、重启持久化、批注显示和 70MB 以上小说。
 
 **禁止事项：** 不增加主界面字体/字号/背景设置；不让阅读主题驱动应用主题；不新增项目级阅读设置；不改 SQLite/锚点模型；不因修改设置而全文同步重排；Phase 4 不顺便重做主窗口整体视觉风格。
 
-4.1 验收结果：用户 Release x64 build 成功，983/983 测试通过（0 失败、0 跳过）；当时出现的 `ProportionalTextLayoutEngineTests.cs` xUnit2031 警告已在当前分支改用 predicate overload 修正，等待下一轮 build 确认。4.2 已提交代码：ReaderPalette.cs、CanvasPalette.cs、TextCanvas.cs、TextLayoutEngine.cs、MainWindow.xaml.cs，以及 ReaderPaletteTests.cs 和 ProportionalTextLayoutEngineTests.cs。4.2 新增 13 项测试尚未由用户运行，不能标记为验收通过。
+4.1 验收结果：用户 Release x64 build 成功，983/983 测试通过（0 失败、0 跳过）。当时出现的 `ProportionalTextLayoutEngineTests.cs` xUnit2031 警告已改为 predicate overload；本轮用户反馈测试正常，但未提供警告摘要，不推断警告是否完全消失。4.2 已提交代码：ReaderPalette.cs、CanvasPalette.cs、TextCanvas.cs、TextLayoutEngine.cs、MainWindow.xaml.cs，以及 ReaderPaletteTests.cs 和 ProportionalTextLayoutEngineTests.cs。用户已测试当前分支代码并确认软件运行正常、未发现问题；未提供精确测试数量。
 
 详细架构见 `docs/reader-text-layout-architecture.md` 的“Phase 4 — global reader settings architecture”。
