@@ -12,6 +12,7 @@ namespace FujiyNotepad.WinUI
     public partial class App : Application
     {
         private Window? _window;
+        private bool windowActivationLogged;
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -19,15 +20,23 @@ namespace FujiyNotepad.WinUI
         /// </summary>
         public App()
         {
-            ApplyLanguageOverride();
-            InitializeComponent();
+            SafeTrace("App: constructor entered");
 
-            // Turn an otherwise-silent Native AOT crash into an actionable log under
-            // %LOCALAPPDATA%\FujiyNotepad\crash.log. We log but do not mark the exception handled: swallowing
-            // an unhandled exception could leave the app in a corrupt state, so we let it terminate as usual.
-            // Cover both the UI-thread (WinUI) and any-thread (AppDomain) cases.
-            UnhandledException += OnXamlUnhandledException;
+            // Register process-wide handlers before XAML initialization so failures during startup are recorded.
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+                SafeTrace($"ProcessExit: ExitCode={Environment.ExitCode}");
+            TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+            ApplyLanguageOverride();
+            SafeTrace("App: language override applied");
+
+            InitializeComponent();
+            SafeTrace("App: application XAML initialized");
+
+            // Do not mark unhandled exceptions as handled: preserve the original failure semantics.
+            UnhandledException += OnXamlUnhandledException;
+            SafeTrace("App: global XAML exception handler registered");
         }
 
         // Lets a user preview a translation (issue #78) without changing their Windows display language: set the
@@ -55,22 +64,39 @@ namespace FujiyNotepad.WinUI
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            SafeTrace("App: OnLaunched entered");
             try
             {
                 _window = new MainWindow();
+                SafeTrace("App: MainWindow constructor completed");
+                _window.Activated += (_, _) =>
+                {
+                    if (windowActivationLogged)
+                        return;
+                    windowActivationLogged = true;
+                    SafeTrace("App: MainWindow first Activated event");
+                };
                 _window.Activate();
+                SafeTrace("App: MainWindow.Activate returned");
             }
             catch (Exception ex)
             {
-                // Capture synchronous startup failures (especially XAML construction errors) even when
-                // WinUI does not surface them through Application.UnhandledException.
                 SafeLog(logger => logger.Log(ex));
+                SafeTrace("App: OnLaunched failed");
                 throw;
             }
         }
 
+        private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            SafeLog(logger => logger.Log(e.Exception));
+            SafeTrace("TaskScheduler.UnobservedTaskException raised");
+            // Intentionally do not call SetObserved: diagnostics must not hide a faulted background task.
+        }
+
         private void OnXamlUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
+            SafeTrace($"Application.UnhandledException: {e.Message}");
             // The WinUI args can surface a null Exception (a failed cross-ABI marshal) while still carrying a
             // message, so fall back to the message in that case.
             if (e.Exception is { } ex)
@@ -85,6 +111,7 @@ namespace FujiyNotepad.WinUI
 
         private static void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
         {
+            SafeTrace($"AppDomain.UnhandledException: IsTerminating={e.IsTerminating}");
             if (e.ExceptionObject is Exception ex)
             {
                 SafeLog(logger => logger.Log(ex));
@@ -93,6 +120,11 @@ namespace FujiyNotepad.WinUI
             {
                 SafeLog(logger => logger.Write("UnhandledException", e.ExceptionObject?.ToString(), null));
             }
+        }
+
+        private static void SafeTrace(string message)
+        {
+            SafeLog(logger => logger.Trace(message));
         }
 
         // The crash handler must never throw (a second failure would mask the original crash), so resolving
