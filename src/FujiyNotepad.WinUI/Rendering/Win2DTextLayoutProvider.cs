@@ -198,7 +198,12 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         Vector2 position = layout.GetCaretPosition(index, trailingSideOfCharacter);
         TextLayoutVisualLine row = FindVisualLineForCaret(index);
 
-        double y = float.IsFinite(position.Y) ? position.Y : row.Top;
+        // At a soft-wrap boundary DirectWrite can expose the trailing edge of the previous row.
+        // The source-index row map is authoritative for vertical placement; keep X from DirectWrite.
+        double y = float.IsFinite(position.Y) &&
+                   position.Y >= row.Top && position.Y < row.Top + row.Height
+            ? position.Y
+            : row.Top;
         return new TextCaretGeometry(position.X, y, row.Height);
     }
 
