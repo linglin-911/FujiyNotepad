@@ -1316,7 +1316,6 @@ namespace FujiyNotepad.WinUI
                 }
 
                 View.UpdateTotalLines(provider.LineCount);
-                SyncScrollBars();
             }
 
             if (!LineIndexer.IsCompleted)
@@ -1476,7 +1475,6 @@ namespace FujiyNotepad.WinUI
 
             View.GoToLineColumn(position.Line, position.Column);
             View.CenterCaretVertically();
-            SyncScrollBars();
             View.FocusCanvas();
 
             if (refreshAnnotationUi)
