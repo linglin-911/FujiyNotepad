@@ -310,7 +310,7 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
-    public void UpdateTotalLines_InvalidatesLayoutsEvenWhenCountIsUnchanged()
+    public void UpdateTotalLines_DoesNotInvalidateLayoutsWhenCountIsUnchanged()
     {
         var provider = new FakeProportionalProvider();
         var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 20 };
@@ -322,6 +322,23 @@ public sealed class ProportionalTextLayoutEngineTests
         FakeProportionalResult cached = Assert.IsType<FakeProportionalResult>(provider.Results[0]);
 
         engine.UpdateTotalLines(2);
+
+        Assert.False(cached.IsDisposed);
+    }
+
+    [Fact]
+    public void RefreshSourceContent_InvalidatesLayoutsWhenCountIsUnchanged()
+    {
+        var provider = new FakeProportionalProvider();
+        var engine = new TextLayoutEngine { ViewportWidth = 100, ViewportHeight = 20 };
+        engine.SetMetrics(10, 20);
+        engine.ConfigureProportionalLayout(provider, "Test", 10);
+        engine.SetProvider(new FakeLines("one", "two"));
+
+        engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+        FakeProportionalResult cached = Assert.IsType<FakeProportionalResult>(provider.Results[0]);
+
+        engine.RefreshSourceContent();
 
         Assert.True(cached.IsDisposed);
     }
