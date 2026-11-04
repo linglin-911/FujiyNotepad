@@ -6,7 +6,7 @@
 > 当前仓库：`linglin-911/FujiyNotepad`
 > 当前开发分支：`feature/reader-proportional-font-layout`（比例字体阅读器改造分支）
 > 批注功能基线分支：`feature/novel-project-annotations`
-> 最新仓库 HEAD：`d18cc41f11f49ad28dddedfcb7c310d7e383c15c`（2026-11-04；已包含 Win2D 行布局异常修复及诊断/架构文档更新，待用户本地验收）
+> 最新功能代码提交：`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`（Win2D `CanvasLineMetrics[]` 封送异常修复；其后仅追加需求/诊断/架构文档记录；待用户本地验收）
 > 最新诊断代码提交：`c08f1f9317451c2d0e85bc928ed21413098c0417`；新增诊断尚未经过用户本地编译和复测。
 > 最新无滚动条改造提交：`01dd4fb5f0fdcb864bd7d2612781924e9c3dd318`、`ae2d29702a9bd5820ee08c70ff1ebf2da3461f5d`、`a61b8514aac7233970f3d50ac469d1d0e46a81f1`、`fecf60405a3aaeec228b87c6b41f5cb4aa79dc59`；遗漏调用修复：`b6fb8798a1a515099823d277eba91c3ff909db88`；待用户本地重新构建复测。
 
