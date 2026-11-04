@@ -297,6 +297,36 @@ namespace FujiyNotepad.Presentation
             set => SetFirstVisibleLine(value);
         }
 
+        /// <summary>
+        /// Positions the top of the viewport at the visual row containing an original-source UTF-16 position.
+        /// Used after typography changes so a reflow keeps the same reading anchor when possible.
+        /// </summary>
+        public void SetViewportAnchor(TextPosition position)
+        {
+            if (provider is null || totalLines <= 0)
+                return;
+
+            position = ClampPosition(position);
+            int row = 0;
+
+            if (UsesProportionalLayout)
+            {
+                ITextLayoutResult layout = GetProportionalLayout(position.Line);
+                row = FindVisualRowForCaret(layout.VisualLines, position.Column);
+            }
+            else if (wordWrap)
+            {
+                IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(GetColumns(position.Line), WrapColumns);
+                row = LineWrapper.RowOfCharIndex(rows, position.Column);
+            }
+
+            // Always assign the row: the same numeric row index can represent a different source range after reflow.
+            firstVisibleLine = position.Line;
+            firstVisibleRow = row;
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
         public double HorizontalOffset
         {
             get => horizontalOffset;
