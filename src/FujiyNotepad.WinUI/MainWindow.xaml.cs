@@ -3333,8 +3333,8 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        // Applies the theme override to the window's root element (System = follow the OS). The text canvas
-        // repaints from its resolved ActualTheme, which RequestedTheme drives, so the whole UI re-themes.
+        // Applies the application-chrome theme to the window root (System = follow the OS). The reading
+        // surface uses its independent ReaderSettings.Theme and is deliberately not changed here.
         private void ApplyThemeSetting(string theme)
         {
             RootGrid.RequestedTheme = theme switch
@@ -3570,10 +3570,9 @@ namespace FujiyNotepad.WinUI
             View.TabSize = tab;
             (tab switch { 2 => TabWidth2, 8 => TabWidth8, _ => TabWidth4 }).IsChecked = true;
 
-            // Reader font + zoom. (FontChanged isn't subscribed yet, so set the zoom label and Font menu directly.)
-            // ReaderSettings is canonical; the root fields remain only for old settings-file compatibility.
-            View.FontFamilyName = settings.Reader.FontFamily;
-            View.FontSizePoints = settings.Reader.FontSizeDip;
+            // Apply reader typography and the reader-only palette before the FontChanged event is subscribed.
+            // The application's Light/Dark theme below remains independent from the reading surface.
+            View.ApplyReaderSettings(settings.Reader);
             TickFontMenu(View.FontFamilyName);
             LblZoom.Text = $"{View.ZoomPercent}%";
 
