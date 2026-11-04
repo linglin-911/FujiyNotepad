@@ -34,6 +34,7 @@ namespace FujiyNotepad.WinUI.Controls
     public sealed partial class TextCanvas : UserControl
     {
         private readonly TextLayoutEngine engine = new();
+        private bool hasLoggedFirstDraw;
         private bool hasLoggedFirstContentDraw;
         private readonly CanvasControl canvas;
         private readonly CanvasTextFormat textFormat;
@@ -902,6 +903,15 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args)
         {
+            bool logFirstDraw = !hasLoggedFirstDraw;
+            if (logFirstDraw)
+            {
+                hasLoggedFirstDraw = true;
+                LogDiagnostic(
+                    $"TextCanvas: first Draw event entered; engineLines={engine.TotalLines:N0}; " +
+                    $"canvas={canvas.ActualWidth:N0}x{canvas.ActualHeight:N0}; dpi={canvas.Dpi:N0}");
+            }
+
             bool logFirstContentDraw = engine.TotalLines > 0 && !hasLoggedFirstContentDraw;
             if (logFirstContentDraw)
             {
@@ -913,9 +923,18 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 CanvasDrawingSession ds = args.DrawingSession;
                 ds.Clear(backgroundColor);
+                if (logFirstDraw)
+                    LogDiagnostic("TextCanvas: first Draw drawing session acquired and background cleared");
 
+            if (logFirstContentDraw)
+                LogDiagnostic("TextCanvas: first content draw before EnsureMetrics");
             EnsureMetrics();
+            if (logFirstContentDraw)
+                LogDiagnostic($"TextCanvas: first content draw metrics ready; charWidth={charWidth:F2}; lineHeight={lineHeight:F2}; dpi={canvas.Dpi:F0}");
+
             SyncViewport();
+            if (logFirstContentDraw)
+                LogDiagnostic($"TextCanvas: first content draw viewport synced; viewport={ViewportWidthPx:F0}x{ViewportHeightPx:F0}");
 
             // The legacy per-row cache is retained only for the fallback path. Proportional layouts are
             // owned and bounded by TextLayoutEngine, keyed by original source line and typography options.
@@ -923,7 +942,11 @@ namespace FujiyNotepad.WinUI.Controls
             drawnProportionalLines.Clear();
 
             double dpiScale = (canvas.Dpi > 0 ? canvas.Dpi : 96.0) / 96.0;
+            if (logFirstContentDraw)
+                LogDiagnostic($"TextCanvas: first content draw before GetVisibleLines; firstLine={engine.FirstVisibleLine}; totalLines={engine.TotalLines:N0}; wordWrap={engine.WordWrap}");
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocusInternal, caretVisible: true);
+            if (logFirstContentDraw)
+                LogDiagnostic($"TextCanvas: first content draw GetVisibleLines completed; visibleRows={lines.Count}; proportionalRows={lines.Count(line => line.UsesProportionalLayout)}");
 
             // Paint every proportional background before drawing any glyphs. A single source-line layout can
             // produce several visible rows; painting a later row's highlight after drawing the complete layout
