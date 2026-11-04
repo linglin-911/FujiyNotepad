@@ -875,121 +875,201 @@ namespace FujiyNotepad.WinUI.Controls
             EnsureMetrics();
             SyncViewport();
 
-            // Keep only layouts used by this viewport after the draw completes. A scrolling novel therefore
-            // never accumulates one native DirectWrite layout per line in a multi-hundred-thousand-line file.
+            // The legacy per-row cache is retained only for the fallback path. Proportional layouts are
+            // owned and bounded by TextLayoutEngine, keyed by original source line and typography options.
             activeTextLayouts.Clear();
+            drawnProportionalLines.Clear();
 
-            // The selection keeps its colour even when the canvas isn't focused (e.g. the menu has focus), so
-            // it stays clearly visible; only the caret is hidden while unfocused.
             double dpiScale = (canvas.Dpi > 0 ? canvas.Dpi : 96.0) / 96.0;
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocusInternal, caretVisible: true);
             bool caretShown = false;
-            double caretLeftPx = 0, caretTopPx = 0;
+            double caretLeftPx = 0, caretTopPx = 0, caretHeightPx = lineHeight;
+
             foreach (VisibleLine line in lines)
             {
-                float ty = (float)PixelSnap.SnapToDevicePixels(line.Y, dpiScale);
-                CanvasTextLayout? layout = GetTextLayout(line);
+                float rowTopPx = (float)PixelSnap.SnapToDevicePixels(line.Y, dpiScale);
+                ITextLayoutResult? sourceLayout = line.UsesProportionalLayout
+                    ? engine.GetLayoutForLine(line.LineIndex)
+                    : null;
+                CanvasTextLayout? layout = line.UsesProportionalLayout
+                    ? (sourceLayout as Win2DTextLayoutResult)?.NativeLayout
+                    : GetTextLayout(line);
 
-                // Persistent rules, Find matches, selected-occurrence matches and the active selection all use
-                // character positions from this exact layout. No fixed-width estimate is used for their X edges.
+                double layoutTop = line.UsesProportionalLayout
+                    ? line.Y - line.LayoutRowTop
+                    : line.Y;
+                float layoutTopPx = (float)PixelSnap.SnapToDevicePixels(layoutTop, dpiScale);
+
                 if (line.RuleHighlights is { Count: > 0 })
                 {
-                    foreach (RuleHighlightRect r in line.RuleHighlights)
+                    foreach (RuleHighlightRect highlight in line.RuleHighlights)
                     {
-                        if (layout != null && r.StartIndex >= 0 && r.Length > 0)
+                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
                         {
-                            DrawTextRangeHighlight(ds, layout, line, r.StartIndex, r.Length, ToColor(r.Argb), ty);
+                            DrawSourceTextRangeHighlight(
+                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
+                                ToColor(highlight.Argb), layoutTopPx, dpiScale);
+                        }
+                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                        {
+                            DrawTextRangeHighlight(
+                                ds, layout, line, highlight.StartIndex, highlight.Length, ToColor(highlight.Argb), rowTopPx);
                         }
                         else
                         {
-                            ds.FillRectangle((float)r.X, ty, (float)r.Width, (float)lineHeight, ToColor(r.Argb));
+                            ds.FillRectangle(
+                                (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
+                                ToColor(highlight.Argb));
                         }
                     }
                 }
 
                 if (line.Matches is { Count: > 0 })
                 {
-                    foreach (HighlightRect h in line.Matches)
+                    foreach (HighlightRect highlight in line.Matches)
                     {
-                        if (layout != null && h.StartIndex >= 0 && h.Length > 0)
+                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
                         {
-                            DrawTextRangeHighlight(ds, layout, line, h.StartIndex, h.Length, matchHighlightColor, ty);
+                            DrawSourceTextRangeHighlight(
+                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
+                                matchHighlightColor, layoutTopPx, dpiScale);
+                        }
+                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                        {
+                            DrawTextRangeHighlight(
+                                ds, layout, line, highlight.StartIndex, highlight.Length, matchHighlightColor, rowTopPx);
                         }
                         else
                         {
-                            ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, matchHighlightColor);
+                            ds.FillRectangle(
+                                (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
+                                matchHighlightColor);
                         }
                     }
                 }
 
                 if (line.SelectionMatches is { Count: > 0 })
                 {
-                    foreach (HighlightRect h in line.SelectionMatches)
+                    foreach (HighlightRect highlight in line.SelectionMatches)
                     {
-                        if (layout != null && h.StartIndex >= 0 && h.Length > 0)
+                        if (sourceLayout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
                         {
-                            DrawTextRangeHighlight(ds, layout, line, h.StartIndex, h.Length, selectionOccurrenceColor, ty);
+                            DrawSourceTextRangeHighlight(
+                                ds, sourceLayout, line, highlight.StartIndex, highlight.Length,
+                                selectionOccurrenceColor, layoutTopPx, dpiScale);
+                        }
+                        else if (layout is not null && highlight.StartIndex >= 0 && highlight.Length > 0)
+                        {
+                            DrawTextRangeHighlight(
+                                ds, layout, line, highlight.StartIndex, highlight.Length,
+                                selectionOccurrenceColor, rowTopPx);
                         }
                         else
                         {
-                            ds.FillRectangle((float)h.X, ty, (float)h.Width, (float)lineHeight, selectionOccurrenceColor);
+                            ds.FillRectangle(
+                                (float)highlight.X, rowTopPx, (float)highlight.Width,
+                                (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
+                                selectionOccurrenceColor);
                         }
                     }
                 }
 
                 if (line.HasSelection)
                 {
-                    if (layout != null)
+                    if (sourceLayout is not null)
                     {
-                        DrawTextRangeHighlight(ds, layout, line, line.SelectionStartIndex, line.SelectionLength, selectionColor, ty);
+                        DrawSourceTextRangeHighlight(
+                            ds, sourceLayout, line, line.SelectionStartIndex, line.SelectionLength,
+                            selectionColor, layoutTopPx, dpiScale);
+                        if (line.SelectionContinuesPastRow)
+                        {
+                            DrawSourceSelectionContinuation(
+                                ds, sourceLayout, line, selectionColor, layoutTopPx, dpiScale);
+                        }
+                    }
+                    else if (layout is not null)
+                    {
+                        DrawTextRangeHighlight(
+                            ds, layout, line, line.SelectionStartIndex, line.SelectionLength, selectionColor, rowTopPx);
                         if (line.SelectionContinuesPastRow)
                         {
                             Vector2 end = layout.GetCaretPosition(line.Display.Length, trailingSideOfCharacter: false);
-                            ds.FillRectangle((float)(line.TextX + end.X), ty, (float)Math.Max(1.0, charWidth), (float)lineHeight, selectionColor);
+                            ds.FillRectangle(
+                                (float)(line.TextX + end.X), rowTopPx,
+                                (float)Math.Max(1.0, charWidth), (float)lineHeight, selectionColor);
                         }
                     }
                     else
                     {
-                        ds.FillRectangle((float)line.SelectionX, ty, (float)line.SelectionWidth, (float)lineHeight, selectionColor);
+                        ds.FillRectangle(
+                            (float)line.SelectionX, rowTopPx, (float)line.SelectionWidth,
+                            (float)(line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight),
+                            selectionColor);
                     }
                 }
 
-                // Draw the same CanvasTextLayout that supplied the hit-test and highlight geometry.
-                if (layout != null)
+                // A proportional layout represents the complete original logical line. Draw it once at the
+                // correct layout origin; the canvas clips off-screen rows when the viewport starts mid-line.
+                if (layout is not null)
                 {
-                    ds.DrawTextLayout(layout, (float)line.TextX, ty, textColor);
+                    if (!line.UsesProportionalLayout || drawnProportionalLines.Add(line.LineIndex))
+                    {
+                        ds.DrawTextLayout(
+                            layout,
+                            (float)line.TextX,
+                            line.UsesProportionalLayout ? layoutTopPx : rowTopPx,
+                            textColor);
+                    }
                 }
                 else
                 {
-                    ds.DrawText(line.Display, new Vector2((float)line.TextX, ty), textColor, textFormat);
+                    ds.DrawText(line.Display, new Vector2((float)line.TextX, rowTopPx), textColor, textFormat);
                 }
 
-                DrawAnnotationMarkers(ds, layout, line, ty);
-
-                if (line.Whitespace is { Count: > 0 })
+                if (sourceLayout is not null)
                 {
-                    DrawWhitespaceMarkers(ds, line, ty);
+                    DrawProportionalAnnotationMarkers(ds, sourceLayout, line, layoutTopPx, dpiScale);
+                    if (line.Whitespace is { Count: > 0 })
+                        DrawProportionalWhitespaceMarkers(ds, sourceLayout, line, layoutTopPx, dpiScale);
+                }
+                else
+                {
+                    DrawAnnotationMarkers(ds, layout, line, rowTopPx);
+                    if (line.Whitespace is { Count: > 0 })
+                        DrawWhitespaceMarkers(ds, line, rowTopPx);
                 }
 
                 if (line.HasCaret)
                 {
                     caretShown = true;
-                    if (layout != null)
+                    if (sourceLayout is not null)
+                    {
+                        TextCaretGeometry caret = sourceLayout.GetCaretGeometry(line.CaretSourceIndex);
+                        caretLeftPx = line.TextX + caret.X;
+                        caretTopPx = layoutTopPx + caret.Y;
+                        caretHeightPx = caret.Height;
+                    }
+                    else if (layout is not null)
                     {
                         Vector2 caret = layout.GetCaretPosition(line.CaretDisplayIndex, trailingSideOfCharacter: false);
                         caretLeftPx = line.TextX + caret.X;
+                        caretTopPx = rowTopPx;
+                        caretHeightPx = lineHeight;
                     }
                     else
                     {
                         caretLeftPx = line.CaretX;
+                        caretTopPx = rowTopPx;
+                        caretHeightPx = lineHeight;
                     }
-                    caretTopPx = ty;
                 }
             }
 
             PruneTextLayoutCache();
             DrawGutter(ds, sender, lines);
-            UpdateCaretOverlay(caretShown, caretLeftPx, caretTopPx, dpiScale);
+            UpdateCaretOverlay(caretShown, caretLeftPx, caretTopPx, caretHeightPx, dpiScale);
         }
 
         private CanvasTextLayout? GetTextLayout(VisibleLine line)
