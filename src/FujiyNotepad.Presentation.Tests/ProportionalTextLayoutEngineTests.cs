@@ -45,6 +45,20 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void HitTestCharacter_PreservesTheFullSourceRangeOfAShapingCluster()
+    {
+        var engine = NewEngine(new FakeLines("fi"), viewportWidth: 100, viewportHeight: 40);
+        engine.WordWrap = true;
+
+        TextPosition position = engine.HitTestCharacter(
+            8, 5, out bool hitCharacter, out int sourceLength);
+
+        Assert.True(hitCharacter);
+        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.Equal(2, sourceLength);
+    }
+
+    [Fact]
     public void HitTestCharacter_DistinguishesTextFromNearestBlankBoundaries()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
@@ -353,7 +367,8 @@ public sealed class ProportionalTextLayoutEngineTests
                 return new TextLayoutHitTestResult(index, 0, false, false);
 
             bool trailing = x - offset * 10 >= 5;
-            return new TextLayoutHitTestResult(index, 1, trailing, true);
+            int sourceLength = SourceText == "fi" && offset == 0 ? 2 : 1;
+            return new TextLayoutHitTestResult(index, sourceLength, trailing, true);
         }
 
         public IReadOnlyList<TextLayoutRect> GetRangeGeometry(int sourceUtf16Start, int sourceUtf16Length)
