@@ -313,7 +313,35 @@ namespace FujiyNotepad.Presentation
 
             return GetColumns(lineIndex).DisplayIndexOfCharIndex(sourceColumn);
         }
-        public int FullyVisibleLineCount => lineHeight > 0 ? Math.Max(1, (int)(ViewportHeight / lineHeight)) : 1;
+        private double EffectiveVisualRowHeight
+        {
+            get
+            {
+                if (UsesProportionalLayout && provider is not null && totalLines > 0)
+                {
+                    int line = Math.Clamp(firstVisibleLine, 0, totalLines - 1);
+                    ITextLayoutResult layout = GetProportionalLayout(line);
+                    if (layout.VisualLines.Count > 0)
+                    {
+                        int row = wordWrap
+                            ? Math.Clamp(firstVisibleRow, 0, layout.VisualLines.Count - 1)
+                            : 0;
+                        return GetSafeRowHeight(layout.VisualLines[row]);
+                    }
+                }
+
+                return lineHeight;
+            }
+        }
+
+        public int FullyVisibleLineCount
+        {
+            get
+            {
+                double rowHeight = EffectiveVisualRowHeight;
+                return rowHeight > 0 ? Math.Max(1, (int)(ViewportHeight / rowHeight)) : 1;
+            }
+        }
         public int MaxFirstLine => wordWrap
             ? Math.Max(0, totalLines - 1)
             : Math.Max(0, totalLines - FullyVisibleLineCount);
@@ -1239,7 +1267,14 @@ namespace FujiyNotepad.Presentation
 
         // ----- Word-wrap navigation/scrolling (issue #31). Only reached when WordWrap is on. -----
 
-        private int VisibleRowCount => lineHeight > 0 ? Math.Max(1, (int)(ViewportHeight / lineHeight)) : 1;
+        private int VisibleRowCount
+        {
+            get
+            {
+                double rowHeight = EffectiveVisualRowHeight;
+                return rowHeight > 0 ? Math.Max(1, (int)(ViewportHeight / rowHeight)) : 1;
+            }
+        }
 
         private static int ComparePos(int line1, int row1, int line2, int row2)
             => line1 != line2 ? line1.CompareTo(line2) : row1.CompareTo(row2);
