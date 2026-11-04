@@ -2,6 +2,7 @@ using System.Numerics;
 using FujiyNotepad.Presentation;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
+using Windows.Foundation;
 
 namespace FujiyNotepad.WinUI.Rendering;
 
@@ -25,20 +26,24 @@ public sealed class Win2DTextLayoutProvider : ITextLayoutProvider
                 nameof(sourceText));
         }
 
-        if (options.FontSize > float.MaxValue)
+        float fontSize = (float)options.FontSize;
+        float lineSpacing = (float)options.LineSpacingMultiplier;
+        if (!float.IsFinite(fontSize) || fontSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "Font size exceeds the Win2D range.");
+        if (!float.IsFinite(lineSpacing) || lineSpacing <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "Line spacing exceeds the Win2D range.");
 
         CanvasDevice device = CanvasDevice.GetSharedDevice();
         var format = new CanvasTextFormat
         {
             FontFamily = options.FontFamily,
-            FontSize = (float)options.FontSize,
+            FontSize = fontSize,
             HorizontalAlignment = CanvasHorizontalAlignment.Left,
             VerticalAlignment = CanvasVerticalAlignment.Top,
             WordWrapping = options.WordWrap ? CanvasWordWrapping.Wrap : CanvasWordWrapping.NoWrap,
             LineSpacingMode = CanvasLineSpacingMode.Proportional,
-            LineSpacing = (float)options.LineSpacingMultiplier,
-            LineSpacingBaseline = (float)options.LineSpacingMultiplier,
+            LineSpacing = lineSpacing,
+            LineSpacingBaseline = lineSpacing,
         };
 
         CanvasTextLayout? layout = null;
@@ -104,7 +109,8 @@ public sealed class Win2DTextLayoutProvider : ITextLayoutProvider
         // The existing LineProvider caps a logical source line, so this remains a bounded allocation.
         double estimatedRows = Math.Max(4d, sourceText.Length + 1d);
         double height = options.FontSize * estimatedRows * Math.Max(1d, options.LineSpacingMultiplier) * 1.5d;
-        return (float)Math.Clamp(height, options.FontSize * 2d, MaxNativeLayoutDimension);
+        double minimumHeight = Math.Min(options.FontSize * 2d, MaxNativeLayoutDimension);
+        return (float)Math.Clamp(height, minimumHeight, MaxNativeLayoutDimension);
     }
 }
 
@@ -199,8 +205,9 @@ public sealed class Win2DTextLayoutResult : ITextLayoutResult
 
         int start = Math.Clamp(sourceUtf16Start, 0, SourceText.Length);
         int end = (int)Math.Clamp((long)start + sourceUtf16Length, 0L, SourceText.Length);
-        (start, int expandedLength) = boundaryMap.ExpandRange(start, end - start);
-        end = start + expandedLength;
+        var expandedRange = boundaryMap.ExpandRange(start, end - start);
+        start = expandedRange.Start;
+        end = start + expandedRange.Length;
         if (end <= start)
             return Array.Empty<TextLayoutRect>();
 
