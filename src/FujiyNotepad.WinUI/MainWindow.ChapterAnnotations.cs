@@ -809,17 +809,31 @@ public sealed partial class MainWindow
 
     private async void CreateChapterAnnotationFromPosition(TextPosition position)
     {
-        if (activeAnnotationStore is null || annotationOffsetMap is null
-            || provider is null || filteredSource is not null)
+        NovelAnnotationStore? store = activeAnnotationStore;
+        NovelProject? project = activeNovelProject;
+        LineProvider? lines = provider;
+        DocumentTextOffsetMap? map = annotationOffsetMap;
+        if (store is null || project is null || map is null
+            || lines is null || filteredSource is not null)
+        {
             return;
+        }
 
         try
         {
             if (!await EnsureChapterIndexAvailableForCreationAsync())
                 return;
 
-            LineProvider lines = provider;
-            DocumentTextOffsetMap map = annotationOffsetMap;
+            // The context menu can remain open while background work is awaited. Never apply its saved
+            // line/column to a different project or a refreshed document source.
+            if (!ReferenceEquals(store, activeAnnotationStore)
+                || !ReferenceEquals(project, activeNovelProject)
+                || !ReferenceEquals(lines, provider)
+                || !ReferenceEquals(map, annotationOffsetMap)
+                || filteredSource is not null)
+            {
+                return;
+            }
             if (position.Line < 0 || position.Line >= lines.LineCount)
             {
                 diagnostics.LogSwallowed(
