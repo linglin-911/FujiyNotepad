@@ -311,8 +311,8 @@ public sealed class ProportionalTextLayoutEngineTests
             rows.Where(row => row.LineIndex == 0 && row.SourceEndIndex == 6));
         VisibleLine firstRowOfNextLine = rows.First(row => row.LineIndex == 1);
 
-        Assert.Equal(48, lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight);
-        Assert.Equal(48, firstRowOfNextLine.Y);
+        Assert.Equal(48d, lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight);
+        Assert.Equal(48d, firstRowOfNextLine.Y);
     }
 
     [Fact]
@@ -327,8 +327,8 @@ public sealed class ProportionalTextLayoutEngineTests
 
         IReadOnlyList<VisibleLine> rows = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
 
-        Assert.Equal(28, rows[0].LayoutRowHeight);
-        Assert.Equal(28, rows[1].Y);
+        Assert.Equal(28d, rows[0].LayoutRowHeight);
+        Assert.Equal(28d, rows[1].Y);
     }
 
     [Fact]
