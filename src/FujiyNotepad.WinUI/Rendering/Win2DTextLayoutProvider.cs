@@ -52,7 +52,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
             // DirectWrite measures a real space in the selected font. Tabs stay as one source UTF-16
             // character in the layout; no expanded display string or reverse index map is exposed.
             float spaceAdvance = MeasureSpaceAdvance(device, format);
-            double tabStop = Math.Max(1.0, spaceAdvance) * options.TabSize;
+            double tabStop = spaceAdvance * options.TabSize;
             if (!double.IsFinite(tabStop) || tabStop > float.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(options), "Tab stop exceeds the Win2D range.");
 
@@ -88,7 +88,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
         }
 
         if (!float.IsFinite(advance) || advance <= 0)
-            return Math.Max(1f, format.FontSize * 0.25f);
+            return Math.Max(float.Epsilon, format.FontSize * 0.25f);
 
         return advance;
     }
