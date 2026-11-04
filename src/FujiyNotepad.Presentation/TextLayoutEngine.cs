@@ -1143,7 +1143,8 @@ namespace FujiyNotepad.Presentation
                 }
 
                 desiredColumn = -1;
-            desiredProportionalX = -1;
+
+                desiredProportionalX = -1;
                 desiredProportionalX = -1;
                 ApplyCaret(new TextPosition(line, column), shift);
                 return;
@@ -1178,6 +1179,7 @@ namespace FujiyNotepad.Presentation
             }
 
             desiredColumn = -1;
+
             desiredProportionalX = -1;
             ApplyCaret(new TextPosition(line, col), shift);
         }
@@ -1211,7 +1213,7 @@ namespace FujiyNotepad.Presentation
             if (!keepDesired)
             {
                 desiredColumn = -1;
-            desiredProportionalX = -1;
+                desiredProportionalX = -1;
             }
             if (wordWrap)
             {
