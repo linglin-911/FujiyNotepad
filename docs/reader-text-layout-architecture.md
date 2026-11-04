@@ -4,6 +4,22 @@ Status: approved design; Phase 1 contracts are being introduced on
 feature/reader-proportional-font-layout. The existing renderer remains active until the new backend
 is integrated and verified.
 
+## Current implementation status (2026-11-04)
+
+- **Phase 1 — accepted:** the user completed a Release x64 solution build and the Presentation test project passed all 501 tests (0 failed, 0 skipped).
+- **Phase 2 — backend code implemented, local validation pending:** the WinUI layer now contains a Win2D/DirectWrite provider. It uses real font shaping and line metrics, measured space advances for tab stops, native hit-testing/caret positions, character-region geometry and trailing-whitespace advances. UTF-16 indexes are normalized to Unicode text-element boundaries.
+- The Phase 2 provider is not yet wired into TextCanvas or TextLayoutEngine. The current reader therefore keeps its existing visual behaviour; no claim of end-to-end proportional-font support is made yet.
+- The new provider rejects embedded CR/LF because its contract is one logical source line. The existing LineProvider remains responsible for separating line terminators.
+
+## Phase 2 backend details
+
+- `Win2DTextLayoutProvider` creates a `CanvasTextLayout` using the selected font, actual viewport width and DirectWrite wrapping.
+- Tabs remain a single source character. The backend measures the selected font's space advance and configures DirectWrite's incremental tab stop rather than expanding tabs into a display string.
+- `CanvasLineMetrics` supplies wrapped-row source lengths, baseline, height and trailing-whitespace counts.
+- Hit testing and character regions are queried from the same native layout used for drawing in the future integration phase.
+- `TextElementBoundaryMap` prevents caret movement and returned ranges from splitting surrogate pairs or combining sequences.
+- `Win2DTextLayoutResult` owns and disposes its native layout and text format. It is UI-thread-affine and is designed to be cached only for visible logical lines and a small prefetch area.
+
 ## Goals
 
 - Support ordinary proportional Chinese fonts as well as Latin and mixed-script text.
@@ -81,6 +97,8 @@ The proportional backend must measure the active font's actual space advance whe
 5. **Phase 5 — performance and cleanup:** bound caches, validate long-line behaviour and remove obsolete fixed-cell code only after all dependent paths have migrated.
 
 ## Phase 1 acceptance
+
+Phase 1 was locally accepted on 2026-11-04: Release x64 build succeeded and all 501 Presentation tests passed.
 
 - The Presentation project contains no WinUI/Win2D references in the new contract.
 - All public text positions in the contract are explicitly source UTF-16 positions.
