@@ -245,8 +245,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             if (overlapEnd <= overlapStart)
                 continue;
 
+            int lastElementStart = boundaryMap.SnapToPreviousBoundary(overlapEnd);
             Vector2 first = layout.GetCaretPosition(overlapStart, trailingSideOfCharacter: false);
-            Vector2 last = layout.GetCaretPosition(overlapEnd, trailingSideOfCharacter: false);
+            Vector2 last = layout.GetCaretPosition(lastElementStart, trailingSideOfCharacter: true);
             double left = Math.Min(first.X, last.X);
             double width = Math.Abs(last.X - first.X);
             if (width > 0)
@@ -358,7 +359,10 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             : FindVisualLineNearestY(y);
 
         Vector2 start = layout.GetCaretPosition(row.SourceStartIndex, trailingSideOfCharacter: false);
-        Vector2 end = layout.GetCaretPosition(row.SourceEndIndex, trailingSideOfCharacter: false);
+        int lastElementStart = boundaryMap.SnapToPreviousBoundary(row.SourceEndIndex);
+        Vector2 end = row.SourceEndIndex > row.SourceStartIndex
+            ? layout.GetCaretPosition(lastElementStart, trailingSideOfCharacter: true)
+            : start;
         return Math.Abs(x - start.X) <= Math.Abs(x - end.X)
             ? row.SourceStartIndex
             : row.SourceEndIndex;
