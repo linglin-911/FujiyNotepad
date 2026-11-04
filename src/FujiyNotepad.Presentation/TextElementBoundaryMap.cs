@@ -67,6 +67,18 @@ internal sealed class TextElementBoundaryMap
         return boundaries[Math.Min(boundaries.Length - 1, insertion)];
     }
 
+    /// <summary>Returns the first valid text-element boundary at or after the supplied UTF-16 index.</summary>
+    public int SnapToBoundaryAtOrAfter(int utf16Index)
+    {
+        int index = Math.Clamp(utf16Index, 0, sourceLength);
+        int insertion = Array.BinarySearch(boundaries, index);
+        if (insertion >= 0)
+            return boundaries[insertion];
+
+        insertion = ~insertion;
+        return boundaries[Math.Min(boundaries.Length - 1, insertion)];
+    }
+
     public (int Start, int Length) ExpandRange(int utf16Start, int utf16Length)
     {
         int start = Math.Clamp(utf16Start, 0, sourceLength);
