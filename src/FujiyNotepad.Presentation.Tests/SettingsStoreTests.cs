@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FujiyNotepad.Presentation.Tests
 {
     /// <summary>
@@ -65,9 +67,9 @@ namespace FujiyNotepad.Presentation.Tests
                 Assert.True(loaded.ReadingMode);
                 Assert.False(loaded.HighlightSelectionOccurrences);
                 Assert.Equal("SimSun", loaded.Reader.FontFamily);
-                Assert.Equal(20, loaded.Reader.FontSizeDip);
-                Assert.Equal(1.6, loaded.Reader.LineSpacingMultiplier);
-                Assert.Equal(1024, loaded.Reader.ContentWidthDip);
+                Assert.Equal(20d, loaded.Reader.FontSizeDip);
+                Assert.Equal(1.6d, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(1024d, loaded.Reader.ContentWidthDip);
                 Assert.Equal("Warm", loaded.Reader.Theme);
             }
             finally
@@ -115,7 +117,7 @@ namespace FujiyNotepad.Presentation.Tests
                 AppSettings loaded = store.Load();
 
                 Assert.Equal("Cascadia Code", loaded.Reader.FontFamily);
-                Assert.Equal(22, loaded.Reader.FontSizeDip);
+                Assert.Equal(22d, loaded.Reader.FontSizeDip);
                 Assert.Equal(ReaderSettings.DefaultLineSpacingMultiplier, loaded.Reader.LineSpacingMultiplier);
                 Assert.Equal(ReaderSettings.DefaultContentWidthDip, loaded.Reader.ContentWidthDip);
                 Assert.Equal(ReaderSettings.DefaultTheme, loaded.Reader.Theme);
@@ -152,9 +154,9 @@ namespace FujiyNotepad.Presentation.Tests
                 AppSettings loaded = new SettingsStore(path).Load();
 
                 Assert.Equal("Microsoft YaHei", loaded.Reader.FontFamily);
-                Assert.Equal(19, loaded.Reader.FontSizeDip);
-                Assert.Equal(1.5, loaded.Reader.LineSpacingMultiplier);
-                Assert.Equal(1100, loaded.Reader.ContentWidthDip);
+                Assert.Equal(19d, loaded.Reader.FontSizeDip);
+                Assert.Equal(1.5d, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(1100d, loaded.Reader.ContentWidthDip);
                 Assert.Equal("Night", loaded.Reader.Theme);
             }
             finally
