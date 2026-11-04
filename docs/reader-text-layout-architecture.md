@@ -1,16 +1,16 @@
 # Reader proportional-font text layout architecture
 
-Status: Phase 1 and Phase 2 are accepted by local build/test. Phase 3 is integrated into TextLayoutEngine and TextCanvas. The 2026-11-04 `CanvasLineMetrics[]` WinRT marshalling crash has been fixed, and the user has confirmed that the updated application now displays novel body text normally without crashing. The first-content-draw runtime smoke test therefore passes. Full Phase 3 acceptance remains pending targeted interaction checks (wheel scrolling, chapter jumps, selection/caret, annotation hit geometry, chapter-annotation context clicks, mixed Chinese/Latin text) and confirmation of the newly added boundary tests.
+Status: Phase 1 and Phase 2 are accepted. Phase 3 is integrated into TextLayoutEngine and TextCanvas. The `CanvasLineMetrics[]` WinRT marshalling crash and a subsequent proportional-line overlap issue have both been fixed on the dedicated fix branch; the user confirmed the overlap was resolved after switching to that branch. Full Phase 3 acceptance still requires the remaining targeted interaction checks and confirmation of the latest boundary tests. Phase 4 architecture is now agreed: global reader-only settings, independent from the application's main UI appearance.
 
 ## Current implementation status (2026-11-04)
 
 - **Phase 1 — accepted:** Release x64 solution build succeeded and all 501 original Presentation tests passed.
 - **Phase 2 — accepted:** the user rebuilt the full Release x64 solution after the DirectWrite provider was added; Presentation.Tests passed 508/508 (0 failed, 0 skipped).
-- **Phase 3 — integrated; initial runtime/body-render smoke test passed; full interaction acceptance pending:** TextLayoutEngine now has a source-indexed proportional path for visual-row generation, wrapping, caret movement, measured-row page navigation, horizontal/vertical scrolling, hit testing, selection ranges, find highlights and persistent rule highlights. TextCanvas paints proportional backgrounds before glyphs (so later wrapped rows do not cover their highlights), draws each complete source-line layout once, and uses layout-derived geometry for selection, annotation underlines, whitespace markers and the caret. Explicit same-count source-content refreshes invalidate native layouts; ordinary indexing polls with an unchanged line count are no-ops, while file-follow growth calls the explicit refresh API; horizontal extents are re-measured and clamped. Twenty-three engine integration tests cover visual rows, source ranges, hit testing, wrapped-row source coordinates, blank-area hit status, selection-rectangle annotation clicks in row padding, misses outside the annotated range, overlapping markers, chapter context hit-testing in blank line space, Unicode caret movement, vertical navigation, selections across soft wraps/logical lines, word selection across wrapped rows, horizontal scrolling, measured page navigation, viewport fill, source refresh invalidation, cache pruning and wheel scrolling. The previous fixed-cell path remains in the engine as a fallback.
-- The reader currently uses the proportional backend with its existing default font family (Consolas). User-facing font family selection, persisted font/size/line-spacing/content-width settings and reading themes remain Phase 4 work.
+- **Phase 3 — integrated; first-content rendering and the reported overlap issue are user-confirmed fixed; full interaction acceptance pending:** TextLayoutEngine now has a source-indexed proportional path for visual-row generation, wrapping, caret movement, measured-row page navigation, horizontal/vertical scrolling, hit testing, selection ranges, find highlights and persistent rule highlights. TextCanvas paints proportional backgrounds before glyphs (so later wrapped rows do not cover their highlights), draws each complete source-line layout once, and uses layout-derived geometry for selection, annotation underlines, whitespace markers and the caret. Explicit same-count source-content refreshes invalidate native layouts; ordinary indexing polls with an unchanged line count are no-ops, while file-follow growth calls the explicit refresh API; horizontal extents are re-measured and clamped. Twenty-three engine integration tests cover visual rows, source ranges, hit testing, wrapped-row source coordinates, blank-area hit status, selection-rectangle annotation clicks in row padding, misses outside the annotated range, overlapping markers, chapter context hit-testing in blank line space, Unicode caret movement, vertical navigation, selections across soft wraps/logical lines, word selection across wrapped rows, horizontal scrolling, measured page navigation, viewport fill, source refresh invalidation, cache pruning and wheel scrolling. The previous fixed-cell path remains in the engine as a fallback. The user reported that line overlap varied with window width while running the original branch, then confirmed the issue was already fixed after switching to `fix/reader-proportional-line-overlap`; no additional overlap patch is planned unless it reappears on that branch.
+- The reader currently uses the proportional backend with its existing default font family (Consolas). Phase 4 will introduce a dedicated `ReaderSettings` object; it will not reuse the application-wide `Theme` setting for the reader palette. The legacy `FontFamily`/`FontSize` values currently applied to TextCanvas will be migrated into the nested reader settings for compatibility.
 - Reader navigation scope: continuous mouse-wheel scrolling and direct jumps from the chapter/annotation directory are the supported primary workflows.
 - Character hit-testing exposes whether the pointer actually hit a source character region for text-selection operations. Small-annotation activation does not require a glyph hit: it tests the same source-range rectangles used for selection backgrounds, including whitespace within the rectangle, and resolves the nearest source caret position inside the matched annotation range. This works across wrapped visual rows and overlapping ranges. Right-click chapter creation uses the nearest source caret/insertion position, so clicking blank space to the right of a line still resolves that line and its chapter. Wrapped visual rows always map back to the original logical-line UTF-16 column. Glyph hit results also preserve the full source range of a shaping cluster. The reader has no visible horizontal or vertical scrollbar controls. Primary navigation remains continuous mouse-wheel scrolling and direct jumps from the chapter/annotation directory; internal scroll position is retained for these workflows, saved-view restoration and caret visibility.
-- Phase 3 is not yet fully accepted. The user has confirmed that the application now reaches the first content draw, displays body text and no longer crashes. Remaining targeted checks: ordinary Chinese proportional fonts and Chinese/Latin mixed text; continuous mouse-wheel scrolling; chapter-directory and annotation jumps; selection/caret across soft wraps; small-annotation clicks inside source-range rectangles including row padding and overlapping annotations; right-click chapter-annotation creation in blank line space; find/highlight and saved-view restoration. Do not repeat the old startup-crash investigation unless a new crash is reported.
+- Phase 3 is not yet fully accepted. The user has confirmed that the application reaches the first content draw, displays body text, no longer crashes, and that the previously reported overlap is fixed on the dedicated fix branch. Remaining targeted checks: ordinary Chinese proportional fonts and Chinese/Latin mixed text; continuous mouse-wheel scrolling; chapter-directory and annotation jumps; selection/caret across soft wraps; small-annotation clicks inside source-range rectangles including row padding and overlapping annotations; right-click chapter-annotation creation in blank line space; find/highlight and saved-view restoration. Do not repeat the old startup-crash or already-fixed overlap investigation unless either problem reappears on the confirmed branch.
 - Diagnostic logging writes timestamped startup milestones, restore/open/index progress, first CanvasControl Draw entry (including zero-line draws), first content draw stages, index-refresh timer stages and line-count update callbacks to `%LOCALAPPDATA%\\FujiyNotepad\\crash.log`. Managed exceptions in `TextCanvas.OnDraw` are logged and rethrown. The 23:01 `CanvasLineMetrics[]` marshalling exception was fixed by replacing `LineMetrics` array access with scalar `LineCount`/`GetCaretPosition` calls; the user has since confirmed normal body rendering without a crash. WER LocalDumps are not currently needed and should only be enabled if a future unexplained process exit occurs.
 - The provider rejects embedded CR/LF because its contract is one logical source line. The existing LineProvider remains responsible for separating line terminators.
 
@@ -96,8 +96,68 @@ The proportional backend must measure the active font's actual space advance whe
 1. **Phase 1 — contracts and coordinate semantics:** add UI-independent layout contracts and tests; document the legacy fixed-cell path. No visible rendering change.
 2. **Phase 2 — proportional DirectWrite backend:** implement the contract in WinUI and prove measured visual rows, source-index hit testing, caret positions and range geometry.
 3. **Phase 3 — engine integration:** replace fixed-width wrapping, navigation, hit testing and render-model calculations incrementally; keep the old path available until parity is demonstrated.
-4. **Phase 4 — reader typography settings:** add font family, font size, line spacing, content width and reading theme settings, with persisted values.
+4. **Phase 4 — independent reader settings:** add globally persisted reader font family, font size, line spacing, content width and reader-only theme; keep all application chrome styling/settings independent.
 5. **Phase 5 — performance and cleanup:** bound caches, validate long-line behaviour and remove obsolete fixed-cell code only after all dependent paths have migrated.
+
+
+## Phase 4 — global reader settings architecture (agreed)
+
+### Product boundary
+
+- Reader appearance and application chrome are two independent visual systems.
+- Phase 4 settings apply only to the novel-reading surface: text font, text size, line spacing, content width, reading background and reading text/overlay colors.
+- Menus, toolbars, status bar, annotation lists, dialogs and other application chrome keep their existing fixed styling. Phase 4 must not add controls for their font family, font size, background or text color.
+- The existing application-wide `AppSettings.Theme` remains an application setting and must not be copied into, or used as the default for, the reader theme. The reader must not change `RootGrid.RequestedTheme` when its theme is changed.
+- Windows High Contrast is the sole system-level override allowed to supersede a selected reader palette for accessibility.
+
+### Persistence model
+
+- Reading settings are global across all novel projects and are stored in the existing `%LOCALAPPDATA%\\FujiyNotepad\\settings.json` file.
+- Add a nested `ReaderSettings Reader` object to `AppSettings`; do not add these values to `project.json`, any novel project's SQLite database, or per-project metadata.
+- Add `ReaderSettings` in the Presentation layer with these fields:
+  - `FontFamily`: installed font-family name; initial default `Microsoft YaHei`.
+  - `FontSizeDip`: font size in DIPs; initial default 18.
+  - `LineSpacingMultiplier`: multiplier applied to natural baseline spacing; initial default 1.4.
+  - `ContentWidthDip`: maximum reading-content width in DIPs; initial default 900. A value of 0 means adaptive/full available width.
+  - `Theme`: reader-only preset key; initial default `Paper`; supported presets are `Paper`, `Warm` and `Night`. There is deliberately no `FollowApp` value because the reader theme must remain independent from the main UI.
+- Keep the existing top-level `AppSettings.FontFamily` and `FontSize` properties as legacy compatibility fields for old settings files. When a settings file has no nested `Reader` object, migrate those legacy text-view values into `ReaderSettings` once; after migration, the reader UI and its quick zoom/font commands read and write only `AppSettings.Reader`. Do not use these legacy fields to style application chrome.
+- Keep `AppSettings.Theme` separate. It continues to represent the inherited application theme setting; the reader palette must not derive from it.
+- `SettingsStore.Load` must normalize null, blank, out-of-range and non-finite reader values to safe defaults. Missing nested reader settings in old JSON must remain backward compatible. The existing source-generated JSON serialization path remains in use.
+
+### Rendering and layout ownership
+
+- Add a reader-specific palette resolver (for example `ReaderPalette`) rather than extending the application theme logic into the reader. It must supply background, text, caret, selection, search highlight, selection-occurrence, gutter, bookmark, whitespace, control-character and annotation-marker colors.
+- `TextCanvas` consumes a reader-settings snapshot and renders only the reader palette. Changing `Reader.Theme` must not restyle menus, annotation panels or dialogs. The existing application theme may continue to style application chrome independently.
+- `TextLayoutOptions` already carries `FontFamily`, `FontSize`, `MaxWidth`, `WordWrap` and `LineSpacingMultiplier`. Phase 4 must pass the reader values through the existing contract/provider path and include every layout-affecting value in cache identity/invalidation. Do not create a second layout engine.
+- Font, size, line-spacing and width changes invalidate only affected visible/near-visible layout objects. Keep the bounded native-layout cache and the positional LineProvider pipeline; never load or synchronously reflow the entire novel.
+- Width is implemented by a full-width reader viewport/background host and a centered content host with a maximum width. The annotation/marker gutter remains aligned with the content host; the full viewport keeps one continuous reader background. On width changes, preserve the current source-text viewport anchor where possible, then regenerate visible layouts on demand.
+- Reader colors are rendering-only. They must not alter document offsets, ChapterId values, annotation anchors, SQLite schemas or project files.
+- Keep the current Win2D/DirectWrite layout provider as the single source of truth for drawing, hit testing, caret, selection and annotation geometry.
+
+### Settings interaction
+
+- Add one unified Reader Settings dialog reachable from the View menu.
+- The dialog edits a temporary settings snapshot. Apply updates the active reader immediately and persists the nested global reader settings; Cancel discards pending changes and leaves the current reader unchanged.
+- The existing font-family and Zoom quick actions, if retained, operate on the same reader settings model. They must not become separate application-chrome settings.
+- The first version provides system-installed font selection, font size, line spacing, maximum content width/adaptive width, and the three preset reader themes. Custom RGB colors, imported font files and per-project overrides are non-goals.
+- Switching projects does not change reader settings. Restarting the application restores the same global reader settings.
+
+### Implementation slices
+
+1. **4.1 Settings model and compatibility:** add nested `ReaderSettings`, defaults, normalization and legacy JSON migration; add SettingsStore tests. No visible UI changes.
+2. **4.2 Layout/render integration:** pass reader font, size and line spacing into the existing proportional layout contract; add reader-only palette resolution and preserve the viewport source anchor during re-layout.
+3. **4.3 Content width:** introduce the full-width reader viewport and centered maximum-width content host while keeping the annotation marker gutter aligned.
+4. **4.4 Settings UI:** add the unified dialog, apply/cancel behaviour, installed-font list, controls and persistence.
+5. **4.5 Acceptance:** explicit x64 build, Presentation/Core tests, then targeted Windows smoke tests for font/size/line spacing/width/theme, project switching, restart persistence, annotations and a 70MB+ novel.
+
+### Non-goals and protected behaviour
+
+- No per-project reader settings.
+- No new settings for application menus, toolbar, status bar, annotation panels or dialogs.
+- No SQLite or novel-project schema migration.
+- No changes to durable UTF-16 annotation anchors or chapter offsets.
+- No whole-document in-memory loading/reflow.
+- No full visual redesign of the main window in Phase 4; overall chrome and annotation-workspace visual design remains a later UI-optimization stage.
 
 ## Phase 1 acceptance
 
