@@ -1,7 +1,7 @@
 namespace FujiyNotepad.Presentation
 {
     /// <summary>The live Windows High-Contrast system colours, packed 0xAARRGGBB. The platform layer reads
-    /// these (via <c>GetSysColor</c>) and passes them in so <see cref="CanvasPalette"/> stays device-free.</summary>
+    /// these (via <c>GetSysColor</c>) and passes them in so palette resolution stays device-free.</summary>
     public readonly record struct HighContrastColors(
         uint Window,
         uint WindowText,
