@@ -468,10 +468,12 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
-            int firstLine = Math.Clamp(View.FirstVisibleLine, 0, lines.LineCount - 1);
-            int lastLine = Math.Min(
-                lines.LineCount - 1,
-                firstLine + Math.Max(1, View.FullyVisibleLineCount) + 2);
+            // Use the actual source lines represented by the proportional-layout viewport. A single
+            // logical line may occupy many wrapped visual rows, so FullyVisibleLineCount is not a
+            // reliable estimate of the source-line query range.
+            (int visibleFirstLine, int visibleLastLine) = View.GetVisibleSourceLineRange();
+            int firstLine = Math.Clamp(visibleFirstLine, 0, lines.LineCount - 1);
+            int lastLine = Math.Clamp(visibleLastLine, firstLine, lines.LineCount - 1);
 
             if (!force && firstLine == lastAnnotationMarkerStartLine
                 && lastLine == lastAnnotationMarkerEndLine)
