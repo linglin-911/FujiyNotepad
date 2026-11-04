@@ -1645,7 +1645,7 @@ namespace FujiyNotepad.WinUI.Controls
         // toggles only this element's opacity and never invalidates the canvas, so the text is never
         // re-rasterized for a blink and cannot jitter (issues #113 / #75 — made structural rather than a
         // pixel-snapping mitigation). The left edge is snapped to a device pixel so the 1px bar stays crisp.
-        private void UpdateCaretOverlay(bool show, double leftPx, double topPx, double dpiScale)
+        private void UpdateCaretOverlay(bool show, double leftPx, double topPx, double caretHeightPx, double dpiScale)
         {
             // Hide when unfocused / off-screen, or when a horizontal scroll has pushed the caret column under the
             // fixed gutter or past the right edge (the overlay sits above the gutter, so unlike the old in-surface
@@ -1660,7 +1660,7 @@ namespace FujiyNotepad.WinUI.Controls
             caretTransform.X = PixelSnap.SnapToDevicePixels(leftPx, dpiScale);
             caretTransform.Y = topPx; // already device-snapped (the line top), so it shares the text's pixel grid
             caretElement.Width = widthDip;
-            caretElement.Height = lineHeight;
+            caretElement.Height = Math.Max(1, caretHeightPx);
             caretElement.Opacity = caretBlinkOn ? 1 : 0;
             caretElement.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         }
