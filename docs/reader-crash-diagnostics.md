@@ -2,16 +2,28 @@
 
 ## Current reproduction (2026-11-04)
 
-The latest user-provided `crash.log` records:
+Two user-provided runs are present in `crash(3).log`: an earlier 21:48 run with the original instrumentation and a newer 22:34 run with first-Draw and first-index-refresh markers.
 
-- App and MainWindow construction completed.
-- `RootGrid Loaded` fired.
-- Last-session restore opened `novel.txt`.
-- The 76,114,107-byte source was opened and attached to `LineProvider`.
-- Background indexing completed at 382,033 lines and reported 100% progress.
-- The log ends immediately after the final indexing progress entries.
+### 21:48 run
 
-The log contains no managed exception, `MainWindow Closed`, or `ProcessExit` entry. It also has no `TextCanvas` first-content-draw or `IndexRefreshTimer` milestone entries, but this log was generated before those milestone logs were added to the application. Their absence is therefore not evidence that the corresponding events did not fire. The log confirms the last recorded startup milestones but does not identify the exact failure point.
+- App/MainWindow construction, project restoration, file open and indexing completed.
+- `novel.txt` was 76,114,107 bytes; indexing reached 382,033 lines and 100%.
+- This run predates first-Draw and first-IndexRefreshTimer instrumentation, so their absence is not evidence that those events did not occur.
+
+### 22:34 run — latest reproduction
+
+- MainWindow/XAML initialization and `RootGrid Loaded` completed.
+- `TextCanvas: first Draw event entered` was recorded with `engineLines=0`, canvas 1,463 × 781 and DPI 168.
+- The first DrawingSession was acquired and the background cleared successfully. This was an empty-canvas draw before the file was opened; it was not a content draw.
+- The 76,114,107-byte `novel.txt` was opened, attached to `LineProvider`, and indexed to 382,033 lines.
+- `IndexRefreshTimer` entered with `providerLines=382,033`, `indexCompleted=True`, `filtered=False`.
+- The final record is `IndexRefreshTimer: before View.UpdateTotalLines` at 22:34:31.960.
+
+There is no subsequent `after View.UpdateTotalLines`, no first-content-draw milestone, no managed exception, no `MainWindow Closed`, and no `ProcessExit` record. The latest log therefore narrows the last recorded call chain to:
+
+`IndexRefreshTimer_Tick → TextCanvas.UpdateTotalLines → Ready/ClearTextLayoutCache → TextLayoutEngine.UpdateTotalLines → ViewChanged/OnReaderViewChanged/SyncScrollBars → RedrawRequested`.
+
+This is a boundary, not yet a proven root cause: the 22:34 build did not yet contain the finer-grained markers inside `TextCanvas.UpdateTotalLines` and `SyncScrollBars`.
 
 ## Temporary application diagnostics
 
