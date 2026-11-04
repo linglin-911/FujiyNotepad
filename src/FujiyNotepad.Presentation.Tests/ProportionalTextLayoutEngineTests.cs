@@ -33,6 +33,16 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void HitTest_MapsRightClickInBlankAreaToTheNearestSourceBoundary()
+    {
+        var engine = NewEngine(new FakeLines("chapter title"), viewportWidth: 200, viewportHeight: 40);
+
+        TextPosition position = engine.HitTest(190, 5);
+
+        Assert.Equal(new TextPosition(0, 13), position);
+    }
+
+    [Fact]
     public void HitTestCharacter_MapsWrappedVisualRowsBackToOriginalSourceColumns()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
