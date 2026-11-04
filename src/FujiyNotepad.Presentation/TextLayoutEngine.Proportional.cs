@@ -184,6 +184,12 @@ public sealed partial class TextLayoutEngine
                 }
 
                 string source = layout.SourceText;
+                IReadOnlyList<(int Start, int Length)> lineMatches =
+                    highlighter?.Find(source) ?? Array.Empty<(int Start, int Length)>();
+                IReadOnlyList<(int Start, int Length)> lineSelectionMatches =
+                    selectionHighlighter?.Find(source) ?? Array.Empty<(int Start, int Length)>();
+                IReadOnlyList<HighlightSpan> lineRuleHighlights =
+                    highlightRules?.Find(source) ?? Array.Empty<HighlightSpan>();
                 int firstRow = sourceLine == firstVisibleLine
                     ? Math.Clamp(firstVisibleRow, 0, visualRows.Count - 1)
                     : 0;
@@ -239,17 +245,12 @@ public sealed partial class TextLayoutEngine
                         HasCaret = hasCaret,
                         CaretX = hasCaret ? TextOriginX + caretGeometry.X : 0,
                         CaretDisplayIndex = hasCaret ? caret.Column : -1,
-                        Matches = highlighter is null
-                            ? NoHighlights
-                            : ComputeProportionalHighlights(highlighter, source, row.SourceStartIndex, row.SourceEndIndex),
-                        SelectionMatches = selectionHighlighter is null
-                            ? NoHighlights
-                            : ComputeProportionalHighlights(
-                                selectionHighlighter, source, row.SourceStartIndex, row.SourceEndIndex, highlighter),
-                        RuleHighlights = highlightRules is null
-                            ? NoRuleHighlights
-                            : ComputeProportionalRuleHighlights(
-                                highlightRules, source, row.SourceStartIndex, row.SourceEndIndex),
+                        Matches = ClipProportionalHighlights(
+                            lineMatches, row.SourceStartIndex, row.SourceEndIndex),
+                        SelectionMatches = ClipProportionalHighlights(
+                            lineSelectionMatches, row.SourceStartIndex, row.SourceEndIndex, lineMatches),
+                        RuleHighlights = ClipProportionalRuleHighlights(
+                            lineRuleHighlights, row.SourceStartIndex, row.SourceEndIndex),
                         IsBookmarked = rowIndex == 0 && bookmarks.Count > 0 && bookmarks.Contains(sourceLine),
                         Whitespace = NoWhitespace,
                         IsWrapContinuation = rowIndex > 0,
@@ -284,6 +285,12 @@ public sealed partial class TextLayoutEngine
                     : new TextLayoutVisualLine(0, layout.SourceText.Length, 0, lineHeight * 0.8, lineHeight);
                 double rowHeight = GetSafeRowHeight(row);
                 string source = layout.SourceText;
+                IReadOnlyList<(int Start, int Length)> lineMatches =
+                    highlighter?.Find(source) ?? Array.Empty<(int Start, int Length)>();
+                IReadOnlyList<(int Start, int Length)> lineSelectionMatches =
+                    selectionHighlighter?.Find(source) ?? Array.Empty<(int Start, int Length)>();
+                IReadOnlyList<HighlightSpan> lineRuleHighlights =
+                    highlightRules?.Find(source) ?? Array.Empty<HighlightSpan>();
                 maxWidth = Math.Max(maxWidth, layout.LayoutWidth);
 
                 int selectedStart = 0;
@@ -319,15 +326,10 @@ public sealed partial class TextLayoutEngine
                     HasCaret = hasCaret,
                     CaretX = hasCaret ? TextOriginX - horizontalOffset + caretGeometry.X : 0,
                     CaretDisplayIndex = hasCaret ? caret.Column : -1,
-                    Matches = highlighter is null
-                        ? NoHighlights
-                        : ComputeProportionalHighlights(highlighter, source, 0, source.Length),
-                    SelectionMatches = selectionHighlighter is null
-                        ? NoHighlights
-                        : ComputeProportionalHighlights(selectionHighlighter, source, 0, source.Length, highlighter),
-                    RuleHighlights = highlightRules is null
-                        ? NoRuleHighlights
-                        : ComputeProportionalRuleHighlights(highlightRules, source, 0, source.Length),
+                    Matches = ClipProportionalHighlights(lineMatches, 0, source.Length),
+                    SelectionMatches = ClipProportionalHighlights(
+                        lineSelectionMatches, 0, source.Length, lineMatches),
+                    RuleHighlights = ClipProportionalRuleHighlights(lineRuleHighlights, 0, source.Length),
                     IsBookmarked = bookmarks.Count > 0 && bookmarks.Contains(sourceLine),
                     Whitespace = NoWhitespace,
                     UsesProportionalLayout = true,
@@ -478,25 +480,22 @@ public sealed partial class TextLayoutEngine
         return new TextPosition(hitRow.LineIndex, sourceIndex);
     }
 
-    private IReadOnlyList<HighlightRect> ComputeProportionalHighlights(
-        ILineHighlighter source,
-        string lineText,
+    private static IReadOnlyList<HighlightRect> ClipProportionalHighlights(
+        IReadOnlyList<(int Start, int Length)> spans,
         int clipStart,
         int clipEnd,
-        ILineHighlighter? exclude = null)
+        IReadOnlyList<(int Start, int Length)>? exclude = null)
     {
-        IReadOnlyList<(int Start, int Length)> spans = source.Find(lineText);
         if (spans.Count == 0)
             return NoHighlights;
 
-        IReadOnlyList<(int Start, int Length)>? excluded = exclude?.Find(lineText);
         var result = new List<HighlightRect>();
         foreach ((int start, int length) in spans)
         {
-            if (excluded is not null && Coincides(excluded, start, length))
+            if (exclude is not null && Coincides(exclude, start, length))
                 continue;
 
-            int end = (int)Math.Clamp((long)start + length, 0L, lineText.Length);
+            int end = (int)Math.Clamp((long)start + length, 0L, int.MaxValue);
             int clippedStart = Math.Max(start, clipStart);
             int clippedEnd = Math.Min(end, clipEnd);
             if (clippedEnd > clippedStart)
@@ -506,20 +505,18 @@ public sealed partial class TextLayoutEngine
         return result.Count > 0 ? result : NoHighlights;
     }
 
-    private static IReadOnlyList<RuleHighlightRect> ComputeProportionalRuleHighlights(
-        HighlightRuleSet rules,
-        string lineText,
+    private static IReadOnlyList<RuleHighlightRect> ClipProportionalRuleHighlights(
+        IReadOnlyList<HighlightSpan> spans,
         int clipStart,
         int clipEnd)
     {
-        IReadOnlyList<HighlightSpan> spans = rules.Find(lineText);
         if (spans.Count == 0)
             return NoRuleHighlights;
 
         var result = new List<RuleHighlightRect>();
         foreach (HighlightSpan span in spans)
         {
-            int end = (int)Math.Clamp((long)span.Start + span.Length, 0L, lineText.Length);
+            int end = (int)Math.Clamp((long)span.Start + span.Length, 0L, int.MaxValue);
             int clippedStart = Math.Max(span.Start, clipStart);
             int clippedEnd = Math.Min(end, clipEnd);
             if (clippedEnd > clippedStart)
