@@ -543,11 +543,30 @@ namespace FujiyNotepad.WinUI.Controls
         // Re-measure the active font, update the proportional layout provider and gutter metrics, then repaint.
         private void RefreshFont()
         {
+            // Capture the first visible source position before invalidating layouts. A font/size/line-spacing
+            // change may alter soft-wrap boundaries, so restoring only the old visual-row number is incorrect.
+            TextPosition? viewportAnchor = null;
+            if (engine.TotalLines > 0)
+            {
+                IReadOnlyList<VisibleLine> visible = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+                if (visible.Count > 0)
+                {
+                    VisibleLine first = visible[0];
+                    viewportAnchor = new TextPosition(
+                        first.LineIndex,
+                        first.UsesProportionalLayout ? first.SourceStartIndex : 0);
+                }
+            }
+
             ClearTextLayoutCache();
             metricsValid = false;
             EnsureMetrics();
             engine.ConfigureProportionalLayout(
                 proportionalLayoutProvider, textFormat.FontFamily, textFormat.FontSize, readerLineSpacingMultiplier);
+
+            if (viewportAnchor is TextPosition anchor)
+                engine.SetViewportAnchor(anchor);
+
             ViewChanged?.Invoke();
             canvas?.Invalidate();
             FontChanged?.Invoke();
