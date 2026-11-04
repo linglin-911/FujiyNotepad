@@ -59,7 +59,8 @@ public sealed class TextElementBoundaryMapTests
 
         Assert.Equal(3, map.SnapToBoundaryAtOrAfter(2));
         Assert.Equal(5, map.SnapToBoundaryAtOrAfter(4));
-        Assert.Equal(6, map.SnapToBoundaryAtOrAfter(5));
+        Assert.Equal(5, map.SnapToBoundaryAtOrAfter(5));
+        Assert.Equal(6, map.SnapToBoundaryAtOrAfter(6));
     }
 
     [Fact]
