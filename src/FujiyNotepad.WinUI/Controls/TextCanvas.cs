@@ -1218,7 +1218,7 @@ namespace FujiyNotepad.WinUI.Controls
             for (int index = 0; index < source.Length; index++)
             {
                 char value = source[index];
-                if (value != ' ' && value != '\\t')
+                if (value != ' ' && value != '\t')
                     lastSignificant = index;
             }
 
@@ -1233,7 +1233,7 @@ namespace FujiyNotepad.WinUI.Controls
                 WhitespaceKind? kind = value switch
                 {
                     ' ' => WhitespaceKind.Space,
-                    '\\t' => WhitespaceKind.Tab,
+                    '\t' => WhitespaceKind.Tab,
                     _ when char.IsControl(value) => WhitespaceKind.Control,
                     _ => null,
                 };
