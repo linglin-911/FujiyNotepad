@@ -19,7 +19,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
         ArgumentNullException.ThrowIfNull(sourceText);
         ArgumentNullException.ThrowIfNull(options);
 
-        if (sourceText.IndexOfAny(new[] { '\r', '\n' }) >= 0)
+        if (sourceText.IndexOf('\r') >= 0 || sourceText.IndexOf('\n') >= 0)
         {
             throw new ArgumentException(
                 "CreateLayout accepts one logical source line without its line terminator.",
@@ -51,7 +51,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
         {
             // DirectWrite measures a real space in the selected font. Tabs stay as one source UTF-16
             // character in the layout; no expanded display string or reverse index map is exposed.
-            float spaceAdvance = MeasureSpaceAdvance(device, format);
+            float spaceAdvance = GetSpaceAdvance(device, format);
             double tabStop = spaceAdvance * options.TabSize;
             if (!double.IsFinite(tabStop) || tabStop > float.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(options), "Tab stop exceeds the Win2D range.");
@@ -70,6 +70,20 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
             format.Dispose();
             throw;
         }
+    }
+
+    private float GetSpaceAdvance(CanvasDevice device, CanvasTextFormat format)
+    {
+        var key = (format.FontFamily, format.FontSize);
+        if (spaceAdvanceCache.TryGetValue(key, out float cached))
+            return cached;
+
+        float measured = MeasureSpaceAdvance(device, format);
+        if (spaceAdvanceCache.Count >= 32)
+            spaceAdvanceCache.Clear();
+
+        spaceAdvanceCache[key] = measured;
+        return measured;
     }
 
     private static float MeasureSpaceAdvance(CanvasDevice device, CanvasTextFormat format)
@@ -207,11 +221,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (sourceUtf16Length <= 0 || SourceText.Length == 0)
             return Array.Empty<TextLayoutRect>();
 
-        int start = Math.Clamp(sourceUtf16Start, 0, SourceText.Length);
-        int end = (int)Math.Clamp((long)start + sourceUtf16Length, 0L, SourceText.Length);
-        var expandedRange = boundaryMap.ExpandRange(start, end - start);
-        start = expandedRange.Start;
-        end = start + expandedRange.Length;
+        var expandedRange = boundaryMap.ExpandRange(sourceUtf16Start, sourceUtf16Length);
+        int start = expandedRange.Start;
+        int end = start + expandedRange.Length;
         if (end <= start)
             return Array.Empty<TextLayoutRect>();
 
