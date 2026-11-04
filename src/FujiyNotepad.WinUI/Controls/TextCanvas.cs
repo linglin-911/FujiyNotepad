@@ -934,7 +934,7 @@ namespace FujiyNotepad.WinUI.Controls
 
             SyncViewport();
             if (logFirstContentDraw)
-                LogDiagnostic($"TextCanvas: first content draw viewport synced; viewport={ViewportWidthPx:F0}x{ViewportHeightPx:F0}");
+                LogDiagnostic($"TextCanvas: first content draw viewport synced; viewport={ActualWidth:F0}x{ActualHeight:F0}");
 
             // The legacy per-row cache is retained only for the fallback path. Proportional layouts are
             // owned and bounded by TextLayoutEngine, keyed by original source line and typography options.
