@@ -312,7 +312,6 @@ namespace FujiyNotepad.WinUI.Controls
         }
 
         public int TotalLines => engine.TotalLines;
-        public int FullyVisibleLineCount { get { Ready(); return engine.FullyVisibleLineCount; } }
         public int MaxFirstLine { get { Ready(); return engine.MaxFirstLine; } }
 
         /// <summary>
@@ -332,9 +331,6 @@ namespace FujiyNotepad.WinUI.Controls
 
             return (visible.Min(line => line.LineIndex), visible.Max(line => line.LineIndex));
         }
-        public double CharWidthPx { get { EnsureMetrics(); return engine.CharWidthPx; } }
-        public double ViewportWidthPx => ActualWidth;
-        public double HorizontalExtentPx { get { Ready(); return engine.HorizontalExtentPx; } }
         public TextPosition CaretPosition => engine.CaretPosition;
 
         // ----- Accessibility: expose file content to screen readers via a UIA peer (issue #75) -----
