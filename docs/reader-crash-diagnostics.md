@@ -2,7 +2,7 @@
 
 ## Current reproduction (2026-11-04)
 
-Two user-provided runs are present in `crash(3).log`: an earlier 21:48 run with the original instrumentation and a newer 22:34 run with first-Draw and first-index-refresh markers.
+Three user-provided runs are available: the original 21:48 run and the later 22:34 and 22:45 runs.
 
 ### 21:48 run
 
@@ -10,20 +10,27 @@ Two user-provided runs are present in `crash(3).log`: an earlier 21:48 run with 
 - `novel.txt` was 76,114,107 bytes; indexing reached 382,033 lines and 100%.
 - This run predates first-Draw and first-IndexRefreshTimer instrumentation, so their absence is not evidence that those events did not occur.
 
-### 22:34 run — latest reproduction
+### 22:34 run
 
 - MainWindow/XAML initialization and `RootGrid Loaded` completed.
-- `TextCanvas: first Draw event entered` was recorded with `engineLines=0`, canvas 1,463 × 781 and DPI 168.
-- The first DrawingSession was acquired and the background cleared successfully. This was an empty-canvas draw before the file was opened; it was not a content draw.
-- The 76,114,107-byte `novel.txt` was opened, attached to `LineProvider`, and indexed to 382,033 lines.
-- `IndexRefreshTimer` entered with `providerLines=382,033`, `indexCompleted=True`, `filtered=False`.
-- The final record is `IndexRefreshTimer: before View.UpdateTotalLines` at 22:34:31.960.
+- The first empty `CanvasControl.Draw` acquired a DrawingSession and cleared the background.
+- The 76,114,107-byte source indexed to 382,033 lines.
+- The first `IndexRefreshTimer` tick entered with indexing complete and stopped at `before View.UpdateTotalLines`.
+- This build predates the finer-grained `TextCanvas.UpdateTotalLines` and view-change markers.
 
-There is no subsequent `after View.UpdateTotalLines`, no first-content-draw milestone, no managed exception, no `MainWindow Closed`, and no `ProcessExit` record. The latest log therefore narrows the last recorded call chain to:
+### 22:45 run — latest evidence
 
-`IndexRefreshTimer_Tick → TextCanvas.UpdateTotalLines → Ready/ClearTextLayoutCache → TextLayoutEngine.UpdateTotalLines → ViewChanged/OnReaderViewChanged/SyncScrollBars → RedrawRequested`.
+- MainWindow/XAML initialization and the first empty Canvas draw completed.
+- The file indexed to 382,033 lines. `IndexRefreshTimer` called `View.UpdateTotalLines`.
+- `TextCanvas.UpdateTotalLines` entered; `Ready`, `EnsureMetrics`, `SyncViewport`, and `ClearTextLayoutCache` all reached their after-markers.
+- `TextLayoutEngine.UpdateTotalLines` raised `ViewChanged`, which entered `MainWindow.OnReaderViewChanged` and then `SyncScrollBars`.
+- The last stage before the nested calls is `SyncScrollBars: before View.FullyVisibleLineCount`. During this getter, `TextCanvas.Ready` ran again (the log records another `EnsureMetrics` and `SyncViewport` sequence).
+- The log does not contain `after View.FullyVisibleLineCount` or any vertical/horizontal ScrollBar property assignment. It does record the `SyncScrollBars` finally block and then the `TextCanvas.UpdateTotalLines` diagnostic finally block.
+- There is no `engine.UpdateTotalLines completed`, no `after View.UpdateTotalLines`, no first content-draw completion, managed exception, `MainWindow Closed`, or `ProcessExit` record.
 
-This is a boundary, not yet a proven root cause: the 22:34 build did not yet contain the finer-grained markers inside `TextCanvas.UpdateTotalLines` and `SyncScrollBars`.
+This is strong evidence that the failure occurs during the scrollbar synchronization path while reading the viewport-line-count property, with a re-entrant `Ready` call. It does not prove whether the underlying trigger is the property getter, its nested metrics/viewport work, or an exception/termination elsewhere on that call stack. It does show that the failure occurs before either scrollbar receives a value assignment.
+
+The reader's visible vertical and horizontal ScrollBar controls, their synchronization method, event handlers, and associated layout row/column have now been removed. Mouse-wheel scrolling, programmatic navigation, saved view restoration, caret visibility, and the independent bookmark/find overview ruler remain. The next local run will test whether removing this synchronization path resolves startup.
 
 ## Temporary application diagnostics
 
