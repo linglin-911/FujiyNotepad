@@ -22,8 +22,8 @@ namespace FujiyNotepad.WinUI.Controls
     /// <summary>
     /// A from-scratch, read-only text surface that simulates a text box over an arbitrarily large file
     /// without loading it: it draws only the lines currently visible (read on demand via
-    /// <see cref="LineProvider"/>) onto a Win2D <see cref="CanvasControl"/>, tracks its own scroll position
-    /// in whole-line units, and supports caret placement, character-level selection, copy and
+    /// <see cref="LineProvider"/>) onto a Win2D <see cref="CanvasControl"/>, tracks scrolling in source-line units
+    /// with a visual-row offset when wrapping is enabled, and supports caret placement, character-level selection, copy and
     /// keyboard/mouse navigation. Text shaping and visual-row geometry come from the active font's DirectWrite layout.
     ///
     /// This control is the WinUI shell: it owns the <see cref="CanvasControl"/>, focus, the caret-blink
