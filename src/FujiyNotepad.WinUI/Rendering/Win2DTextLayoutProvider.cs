@@ -224,9 +224,13 @@ public sealed class Win2DTextLayoutResult : ITextLayoutResult
 
         // DirectWrite's character-region ink/layout bounds omit trailing whitespace. Add the advance
         // rectangle for any selected trailing spaces or tabs on each wrapped visual row.
-        for (int i = 0; i < VisualLines.Count; i++)
+        int firstRow = FindFirstVisualLineEndingAfter(start);
+        for (int i = firstRow; i < VisualLines.Count; i++)
         {
             TextLayoutVisualLine row = VisualLines[i];
+            if (row.SourceStartIndex >= end)
+                break;
+
             int trailingCount = trailingWhitespaceCounts[i];
             if (trailingCount <= 0)
                 continue;
@@ -280,25 +284,74 @@ public sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (sourceUtf16Index >= SourceText.Length)
             return VisualLines[^1];
 
-        foreach (TextLayoutVisualLine row in VisualLines)
+        int low = 0;
+        int high = VisualLines.Count - 1;
+        while (low <= high)
         {
-            if (sourceUtf16Index >= row.SourceStartIndex && sourceUtf16Index < row.SourceEndIndex)
+            int middle = low + (high - low) / 2;
+            TextLayoutVisualLine row = VisualLines[middle];
+
+            if (sourceUtf16Index < row.SourceStartIndex)
+                high = middle - 1;
+            else if (sourceUtf16Index >= row.SourceEndIndex)
+                low = middle + 1;
+            else
                 return row;
         }
 
-        return VisualLines[^1];
+        return VisualLines[Math.Clamp(low, 0, VisualLines.Count - 1)];
+    }
+
+    private int FindFirstVisualLineEndingAfter(int sourceUtf16Index)
+    {
+        int low = 0;
+        int high = VisualLines.Count;
+        while (low < high)
+        {
+            int middle = low + (high - low) / 2;
+            if (VisualLines[middle].SourceEndIndex <= sourceUtf16Index)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    private TextLayoutVisualLine FindVisualLineNearestY(double y)
+    {
+        int low = 0;
+        int high = VisualLines.Count - 1;
+        while (low <= high)
+        {
+            int middle = low + (high - low) / 2;
+            TextLayoutVisualLine row = VisualLines[middle];
+
+            if (y < row.Top)
+                high = middle - 1;
+            else if (y >= row.Top + row.Height)
+                low = middle + 1;
+            else
+                return row;
+        }
+
+        if (high < 0)
+            return VisualLines[0];
+        if (low >= VisualLines.Count)
+            return VisualLines[^1];
+
+        TextLayoutVisualLine previous = VisualLines[high];
+        TextLayoutVisualLine next = VisualLines[low];
+        double previousDistance = Math.Abs(y - (previous.Top + previous.Height));
+        double nextDistance = Math.Abs(next.Top - y);
+        return previousDistance <= nextDistance ? previous : next;
     }
 
     private int FindNearestBoundary(double x, double y)
     {
         TextLayoutVisualLine row = VisualLines.Count == 0
             ? new TextLayoutVisualLine(0, SourceText.Length, 0, 0, 0)
-            : VisualLines.OrderBy(candidate =>
-                y < candidate.Top
-                    ? candidate.Top - y
-                    : y > candidate.Top + candidate.Height
-                        ? y - (candidate.Top + candidate.Height)
-                        : 0).First();
+            : FindVisualLineNearestY(y);
 
         Vector2 start = layout.GetCaretPosition(row.SourceStartIndex, trailingSideOfCharacter: false);
         Vector2 end = layout.GetCaretPosition(row.SourceEndIndex, trailingSideOfCharacter: false);
