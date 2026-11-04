@@ -626,7 +626,10 @@ namespace FujiyNotepad.WinUI.Controls
                 if (pointer.Properties.IsRightButtonPressed)
                 {
                     Ready();
-                    contextMenuPosition = HitTestTextCharacter(pointer.Position.X, pointer.Position.Y);
+                    // Chapter creation is based on the source position nearest the pointer, not on
+                    // whether the pointer landed on a glyph. Blank space to the right of a line therefore
+                    // still resolves to that line's end and its owning chapter.
+                    contextMenuPosition = HitTestText(pointer.Position.X, pointer.Position.Y);
                     hasPointerContextMenuPosition = true;
                 }
                 return;
@@ -672,10 +675,19 @@ namespace FujiyNotepad.WinUI.Controls
             if (isClick)
             {
                 Ready();
-                TextPosition position = HitTestTextCharacter(
-                    released.X, released.Y, out bool hitCharacter, out int hitSourceLength);
-                if (hitCharacter && HasAnnotationMarkerAt(position, hitSourceLength))
+                if (engine.TryHitTestAnnotationMarkers(
+                        released.X, released.Y, annotationMarkersByLine, out TextPosition position))
+                {
                     AnnotationMarkerClicked?.Invoke(position);
+                }
+                else if (!engine.UsesProportionalLayout)
+                {
+                    // Keep the legacy fixed-cell renderer working while using its full row hit region.
+                    TextPosition legacyPosition = HitTestTextCharacter(
+                        released.X, released.Y, out bool hitCharacter, out int hitSourceLength);
+                    if (hitCharacter && HasAnnotationMarkerAt(legacyPosition, hitSourceLength))
+                        AnnotationMarkerClicked?.Invoke(legacyPosition);
+                }
             }
         }
 
