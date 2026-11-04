@@ -672,20 +672,28 @@ namespace FujiyNotepad.WinUI.Controls
             if (isClick)
             {
                 Ready();
-                TextPosition position = HitTestTextCharacter(released.X, released.Y, out bool hitCharacter);
-                if (hitCharacter && HasAnnotationMarkerAt(position))
+                TextPosition position = HitTestTextCharacter(
+                    released.X, released.Y, out bool hitCharacter, out int hitSourceLength);
+                if (hitCharacter && HasAnnotationMarkerAt(position, hitSourceLength))
                     AnnotationMarkerClicked?.Invoke(position);
             }
         }
 
-        private bool HasAnnotationMarkerAt(TextPosition position)
+        private bool HasAnnotationMarkerAt(TextPosition position, int sourceLength)
         {
-            if (!annotationMarkersByLine.TryGetValue(position.Line, out List<TextAnnotationMarker>? markers))
+            if (sourceLength <= 0
+                || !annotationMarkersByLine.TryGetValue(position.Line, out List<TextAnnotationMarker>? markers))
+            {
                 return false;
+            }
 
+            // A DirectWrite hit can represent a complete shaping cluster (for example, a ligature or
+            // combining sequence). Treat the hit and annotation as overlapping source ranges, not just
+            // as a single UTF-16 starting column.
+            long hitEnd = (long)position.Column + sourceLength;
             foreach (TextAnnotationMarker marker in markers)
             {
-                if (position.Column >= marker.StartColumn && position.Column < marker.EndColumn)
+                if (position.Column < marker.EndColumn && hitEnd > marker.StartColumn)
                     return true;
             }
 
@@ -1510,19 +1518,24 @@ namespace FujiyNotepad.WinUI.Controls
         // Annotation anchors are half-open ranges, so this avoids treating the character immediately after
         // an anchor as part of it when DirectWrite reports a trailing caret position.
         private TextPosition HitTestTextCharacter(double x, double y)
-            => HitTestTextCharacter(x, y, out _);
+            => HitTestTextCharacter(x, y, out _, out _);
+
+        private TextPosition HitTestTextCharacter(double x, double y, out bool hitCharacter)
+            => HitTestTextCharacter(x, y, out hitCharacter, out _);
 
         // Marker activation is stricter than context-menu positioning: a nearest-boundary result from a
         // click in the blank area before/after a line must not activate an annotation on the boundary glyph.
-        private TextPosition HitTestTextCharacter(double x, double y, out bool hitCharacter)
+        private TextPosition HitTestTextCharacter(
+            double x, double y, out bool hitCharacter, out int hitSourceLength)
         {
             if (engine.UsesProportionalLayout)
-                return engine.HitTestCharacter(x, y, out hitCharacter);
+                return engine.HitTestCharacter(x, y, out hitCharacter, out hitSourceLength);
 
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
             if (lines.Count == 0)
             {
                 hitCharacter = false;
+                hitSourceLength = 0;
                 return engine.HitTest(x, y);
             }
 
@@ -1542,6 +1555,7 @@ namespace FujiyNotepad.WinUI.Controls
             if (hitLine.Display.Length == 0)
             {
                 hitCharacter = false;
+                hitSourceLength = 0;
                 return engine.PositionFromDisplayIndex(
                     hitLine.LineIndex, hitLine.DisplayStartIndex, trailing: false);
             }
@@ -1550,6 +1564,7 @@ namespace FujiyNotepad.WinUI.Controls
             if (layout is null)
             {
                 hitCharacter = false;
+                hitSourceLength = 0;
                 return HitTestText(x, y);
             }
 
@@ -1559,15 +1574,23 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 hitCharacter = true;
                 int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
-                int characterCount = Math.Max(1, region.CharacterCount);
-                return engine.PositionFromDisplayIndex(
+                int displayCharacterCount = Math.Max(1, region.CharacterCount);
+                int sourceDisplayIndex = hitLine.DisplayStartIndex + localIndex;
+                TextPosition start = engine.PositionFromDisplayIndex(
                     hitLine.LineIndex,
-                    hitLine.DisplayStartIndex + localIndex,
+                    sourceDisplayIndex,
                     trailing: false,
-                    displayCharacterCount: characterCount);
+                    displayCharacterCount: displayCharacterCount);
+                TextPosition end = engine.PositionFromDisplayIndex(
+                    hitLine.LineIndex,
+                    sourceDisplayIndex + displayCharacterCount,
+                    trailing: false);
+                hitSourceLength = Math.Max(1, end.Column - start.Column);
+                return start;
             }
 
             hitCharacter = false;
+            hitSourceLength = 0;
             int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
                 ? 0
                 : hitLine.Display.Length;
