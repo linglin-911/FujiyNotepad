@@ -3456,6 +3456,7 @@ namespace FujiyNotepad.WinUI
 
         private void TickFontMenu(string family)
         {
+            FontMicrosoftYaHei.IsChecked = family == "Microsoft YaHei";
             FontConsolas.IsChecked = family == "Consolas";
             FontCascadiaMono.IsChecked = family == "Cascadia Mono";
             FontCascadiaCode.IsChecked = family == "Cascadia Code";
