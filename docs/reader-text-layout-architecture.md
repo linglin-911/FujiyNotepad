@@ -100,6 +100,16 @@ The proportional backend must measure the active font's actual space advance whe
 5. **Phase 5 — performance and cleanup:** bound caches, validate long-line behaviour and remove obsolete fixed-cell code only after all dependent paths have migrated.
 
 
+## Phase 4.1 implementation status (2026-11-05)
+
+- Added the Presentation-layer `ReaderSettings` model with reader-only font family, DIP font size, line-spacing multiplier, content width and Paper/Warm/Night theme keys.
+- Added `AppSettings.Reader` as a nested global settings object. It is persisted through the existing source-generated JSON settings store and remains outside novel-project folders and SQLite.
+- `SettingsStore.Load` detects old settings files without a Reader object, migrates the legacy text-view font/size into ReaderSettings, normalizes invalid values, and persists the migration. An explicit nested Reader object always takes precedence.
+- The inherited font-family and Zoom quick commands now initialize from and write to ReaderSettings; legacy root FontFamily/FontSize values are still synchronized for backward compatibility.
+- Added SettingsStore tests for nested round-trip, defaults, legacy migration, explicit Reader precedence and invalid-value normalization.
+- **Validation status:** code and tests are committed, but this environment has no .NET SDK/Windows App SDK. No build or test pass is claimed. User-side explicit x64 build and Presentation.Tests execution are pending.
+- Phase 4.2 is not started: TextCanvas still uses its current theme-following palette and the new reader-only palette/layout application path is not yet connected. No visible settings dialog or content-width host has been added.
+
 ## Phase 4 — global reader settings architecture (agreed)
 
 ### Product boundary
