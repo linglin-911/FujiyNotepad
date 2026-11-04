@@ -1146,20 +1146,29 @@ namespace FujiyNotepad.WinUI.Controls
             float layoutTop,
             double dpiScale)
         {
-            if (line.SourceEndIndex <= line.SourceStartIndex)
-                return;
+            double endX;
+            double advance;
+            if (line.SourceEndIndex > line.SourceStartIndex)
+            {
+                int lastCharacter = layout.GetPreviousCaretIndex(line.SourceEndIndex);
+                TextCaretGeometry leading = layout.GetCaretGeometry(lastCharacter);
+                TextCaretGeometry trailing = layout.GetCaretGeometry(lastCharacter, trailingSideOfCharacter: true);
+                endX = trailing.X;
+                advance = Math.Abs(trailing.X - leading.X);
+            }
+            else
+            {
+                endX = layout.GetCaretGeometry(line.SourceEndIndex).X;
+                advance = 0;
+            }
 
-            int lastCharacter = layout.GetPreviousCaretIndex(line.SourceEndIndex);
-            TextCaretGeometry leading = layout.GetCaretGeometry(lastCharacter);
-            TextCaretGeometry trailing = layout.GetCaretGeometry(lastCharacter, trailingSideOfCharacter: true);
-            double advance = Math.Abs(trailing.X - leading.X);
             if (!double.IsFinite(advance) || advance <= 0)
                 advance = Math.Max(1, textFormat.FontSize * 0.25);
 
             float y = (float)PixelSnap.SnapToDevicePixels(
                 layoutTop + line.LayoutRowTop, dpiScale);
             ds.FillRectangle(
-                (float)(line.TextX + trailing.X),
+                (float)(line.TextX + endX),
                 y,
                 (float)advance,
                 (float)line.LayoutRowHeight,
@@ -1180,8 +1189,10 @@ namespace FujiyNotepad.WinUI.Controls
             double rowEnd = rowStart + line.LayoutRowHeight;
             foreach (TextAnnotationMarker marker in markers)
             {
-                int start = Math.Clamp(marker.StartColumn, 0, layout.SourceText.Length);
-                int end = Math.Clamp(marker.EndColumn, start, layout.SourceText.Length);
+                int start = Math.Max(
+                    line.SourceStartIndex, Math.Clamp(marker.StartColumn, 0, layout.SourceText.Length));
+                int end = Math.Min(
+                    line.SourceEndIndex, Math.Clamp(marker.EndColumn, start, layout.SourceText.Length));
                 if (end <= start)
                     continue;
 
