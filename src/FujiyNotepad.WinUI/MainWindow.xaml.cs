@@ -1153,6 +1153,7 @@ namespace FujiyNotepad.WinUI
                     tailSnapToBottom = TailController.ShouldStickToBottom(View.FirstVisibleLine, View.MaxFirstLine);
                     LineIndexer.IsCompleted = false; // hide the open line until its newline is found
                     provider.RefreshLength();         // new size + endsWithNewline, drop the stale last line
+                    View.RefreshSourceContent();     // explicitly invalidate same-count source-line layouts
                     indexRefreshTimer.Start();        // push the growing line count and (sticky) follow the end
                     StartIndexing();                  // resume the index over the appended region
                     break;
