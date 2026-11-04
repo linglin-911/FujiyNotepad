@@ -1526,9 +1526,8 @@ namespace FujiyNotepad.WinUI.Controls
                 hitLine.LineIndex, hitLine.DisplayStartIndex + boundary, trailing: false);
         }
 
-        // Returns the source column of the glyph under the pointer, not the nearest caret boundary.
-        // Annotation anchors are half-open ranges, so this avoids treating the character immediately after
-        // an anchor as part of it when DirectWrite reports a trailing caret position.
+        // Legacy fixed-cell fallback only: returns the source column of the glyph under the pointer,
+        // not the nearest caret boundary. The proportional reader uses selection-like range rectangles.
         private TextPosition HitTestTextCharacter(double x, double y)
             => HitTestTextCharacter(x, y, out _, out _);
 
