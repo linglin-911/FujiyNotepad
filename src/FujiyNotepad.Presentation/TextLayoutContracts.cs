@@ -139,6 +139,7 @@ public interface ITextLayoutResult : IDisposable
 {
     string SourceText { get; }
     double LayoutWidth { get; }
+    /// <summary>Full vertical extent from the layout origin through its bottom edge, in renderer logical units.</summary>
     double LayoutHeight { get; }
     IReadOnlyList<TextLayoutVisualLine> VisualLines { get; }
 
