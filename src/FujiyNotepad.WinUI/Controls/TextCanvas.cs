@@ -521,7 +521,8 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 RefreshFont();
             }
-            else if (paletteChanged)
+
+            if (paletteChanged)
             {
                 ApplyReaderPalette();
             }
