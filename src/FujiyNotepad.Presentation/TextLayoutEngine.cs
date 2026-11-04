@@ -80,9 +80,9 @@ namespace FujiyNotepad.Presentation
     public readonly record struct SelectionStats(long Characters, int Lines);
 
     /// <summary>
-    /// One visible line's layout, in viewport pixels, ready for a renderer to paint. The
-    /// <see cref="TextLayoutEngine"/> computes these (pure math); the host only issues the corresponding
-    /// draw-text / fill-rectangle calls, so the non-trivial "what to draw" logic stays unit-testable.
+    /// One visible visual row's layout in viewport pixels, ready for a renderer to paint. The
+    /// <see cref="TextLayoutEngine"/> computes these from either the legacy cell model or source-indexed
+    /// proportional layout; the host only issues the corresponding draw and fill calls.
     /// </summary>
     public readonly struct VisibleLine
     {
@@ -259,7 +259,7 @@ namespace FujiyNotepad.Presentation
         /// <summary>The live viewport height in pixels (the host pushes <c>ActualHeight</c> here).</summary>
         public double ViewportHeight { get; set; }
 
-        /// <summary>Injects the monospace cell metrics (the host measures the font and pushes them here).</summary>
+        /// <summary>Injects font-probe metrics used by the legacy path and fixed-width gutter calculations.</summary>
         public void SetMetrics(double charWidthPx, double lineHeightPx)
         {
             charWidth = charWidthPx;
