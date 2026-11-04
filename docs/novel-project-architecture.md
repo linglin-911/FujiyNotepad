@@ -54,7 +54,7 @@ The small-annotation panel, chapter-annotation panel, chapter directory and big-
 
 ## External editing workflow
 
-The reader is read-only. Users export a working copy, edit it in a third-party editor, then select the edited file in FujiyNotepad for comparison. The project document remains untouched until the user reviews and applies the diff.
+The reader is read-only. Users can export a marked working copy, edit it in a third-party editor, then select the edited file in FujiyNotepad to validate marker integrity. The project document remains untouched. Full diff generation, review and apply are not implemented yet.
 
 Each export creates an immutable byte-for-byte baseline snapshot under `edit_sessions/<session-id>/baseline.txt`, plus a manifest containing project ID, document revision, byte length, SHA-256, export filename, source/export encoding IDs, and the expected marker identities. The edited file is kept outside the project until apply. Before any diff is applied, the app verifies that the active project document still matches the exported baseline. A stale session must be rejected and re-exported or explicitly reconciled; it must never be silently applied.
 
@@ -70,7 +70,7 @@ Each tracked range receives an independent start/end pair carrying a format vers
 
 Marker writing and scanning operate on TextReader/TextWriter buffers and UTF-16 document offsets, not on a whole-file string. The writer inserts all markers at a sorted list of offsets. The scanner reports each marker's offset in the marker-free text, malformed sequences, and then validation detects missing, duplicate, reversed, or unexpected pairs. A complete pair supplies the edited range directly; a damaged pair must be reviewed or reconciled using diff/context matching.
 
-The marker codec, planner, marked export path, expected-marker manifest persistence, and edited-copy marker validation are implemented in the Core layer with tests. The WinUI export/import UI is not yet wired to these APIs. Marker stripping, large-file diff generation, visual diff UI, re-anchoring changed quotes/context, and safe apply/recovery are still pending. Do not apply an edited file yet: marker validation alone does not compare or update the project document.
+The marker codec, planner, marked export path, expected-marker manifest persistence, and edited-copy marker validation are implemented in the Core layer with tests. The WinUI menu is wired for marked export and marker validation. Marker stripping, large-file diff generation, visual diff UI, re-anchoring changed quotes/context, and safe apply/recovery are still pending. Do not apply an edited file yet: marker validation alone does not compare or update the project document.
 
 ## Diff and anchor remapping
 
