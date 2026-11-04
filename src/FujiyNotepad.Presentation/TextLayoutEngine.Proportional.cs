@@ -354,6 +354,12 @@ public sealed partial class TextLayoutEngine
                 horizontalExtentPx = newExtent;
                 RaiseViewChanged();
             }
+
+            // A document edit, font change or wider viewport can shrink the measured extent. Never leave the
+            // reader horizontally scrolled beyond the new content edge.
+            double maximumOffset = Math.Max(0, horizontalExtentPx - ViewportWidth);
+            if (horizontalOffset > maximumOffset)
+                SetHorizontalOffset(maximumOffset);
         }
 
         PruneProportionalLayoutCache();
