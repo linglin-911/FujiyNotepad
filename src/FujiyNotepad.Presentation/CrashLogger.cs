@@ -38,6 +38,9 @@ namespace FujiyNotepad.Presentation
             return Write(error.GetType().FullName ?? nameof(Exception), error.Message, error.StackTrace);
         }
 
+        /// <summary>Appends a timestamped diagnostic milestone to the same log as crash reports.</summary>
+        public bool Trace(string message) => Write("Diagnostic", message, null);
+
         /// <summary>
         /// Appends a timestamped entry from already-extracted fields. Used by the handler (the WinUI event
         /// args can surface a null <see cref="Exception"/> but still carry a message) and by tests.
