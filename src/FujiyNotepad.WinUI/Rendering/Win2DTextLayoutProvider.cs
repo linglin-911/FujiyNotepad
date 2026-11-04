@@ -63,7 +63,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
             float layoutHeight = GetNativeLayoutHeight(sourceText, options);
 
             layout = new CanvasTextLayout(device, sourceText, format, layoutWidth, layoutHeight);
-            return new Win2DTextLayoutResult(sourceText, layout, format, options.FontSize);
+            return new Win2DTextLayoutResult(sourceText, layout, format, options.FontSize, options.LineSpacingMultiplier);
         }
         catch
         {
@@ -155,7 +155,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         string sourceText,
         CanvasTextLayout layout,
         CanvasTextFormat format,
-        double fontSize)
+        double fontSize,
+        double lineSpacingMultiplier)
     {
         SourceText = sourceText;
         this.layout = layout;
@@ -163,7 +164,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         boundaryMap = new TextElementBoundaryMap(sourceText);
 
         (TextLayoutVisualLine[] visualLines, int[] trailingCounts, double height) =
-            BuildVisualLineMap(sourceText, layout, fontSize);
+            BuildVisualLineMap(sourceText, layout, fontSize, lineSpacingMultiplier);
         VisualLines = Array.AsReadOnly(visualLines);
         trailingWhitespaceCounts = trailingCounts;
         LayoutHeight = height;
@@ -392,91 +393,217 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             : row.SourceEndIndex;
     }
 
+    private const float CaretRowChangeTolerance = 0.5f;
+
     private static (TextLayoutVisualLine[] Lines, int[] TrailingCounts, double Height) BuildVisualLineMap(
         string sourceText,
         CanvasTextLayout layout,
-        double fontSize)
+        double fontSize,
+        double lineSpacingMultiplier)
     {
-        CanvasLineMetrics[] metrics = layout.LineMetrics;
-        if (metrics.Length == 0)
+        // CanvasTextLayout.LineMetrics returns CanvasLineMetrics[], whose WinRT struct contains a Boolean
+        // field. The CsWinRT projection used by the current WinAppSDK cannot marshal this non-blittable
+        // struct array and throws NotSupportedException at runtime. Use scalar LineCount and
+        // GetCaretPosition calls instead; Vector2 is blittable and safe across this projection.
+        double fallbackHeight = Math.Max(1, fontSize * 1.2 * lineSpacingMultiplier);
+        int expectedLineCount = Math.Max(1, layout.LineCount);
+        var rowStarts = new List<(int SourceIndex, double Top)>(expectedLineCount);
+
+        if (sourceText.Length == 0)
         {
-            double fallbackHeight = Math.Max(1, fontSize * 1.2);
+            double emptyHeight = Math.Max(
+                fallbackHeight,
+                GetPositiveLayoutHeight(layout));
             return (
-                new[] { new TextLayoutVisualLine(0, sourceText.Length, 0, fallbackHeight * 0.8, fallbackHeight) },
-                new[] { CountTrailingWhitespace(sourceText) },
-                fallbackHeight);
+                new[] { new TextLayoutVisualLine(0, 0, 0, emptyHeight * 0.8, emptyHeight) },
+                new[] { 0 },
+                emptyHeight);
         }
 
-        var rows = new List<TextLayoutVisualLine>(metrics.Length);
-        var trailingCounts = new List<int>(metrics.Length);
-        int sourceOffset = 0;
-        double top = 0;
+        float firstTop = GetCharacterRowTop(layout, 0);
+        if (!float.IsFinite(firstTop))
+            firstTop = 0;
 
-        for (int i = 0; i < metrics.Length; i++)
+        rowStarts.Add((0, firstTop));
+
+        // Find each soft-wrap boundary with a binary search over valid Unicode text-element boundaries.
+        // Source order is monotonic in visual-row Y even when the glyph order within a row is bidirectional.
+        // This avoids one WinRT call per character for long (up to 64 KiB) source lines.
+        for (int row = 1; row < expectedLineCount; row++)
         {
-            CanvasLineMetrics metric = metrics[i];
-            int available = Math.Max(0, sourceText.Length - sourceOffset);
-            int contentLength = Math.Clamp(
-                metric.CharacterCount - metric.TerminalNewlineCount,
-                0,
-                available);
+            (int currentStart, double currentTop) = rowStarts[^1];
+            int nextStart = FindFirstBoundaryOnNextVisualRow(
+                sourceText, boundaryMap: new TextElementBoundaryMap(sourceText), layout,
+                currentStart, currentTop);
 
-            if (i == metrics.Length - 1 && sourceOffset + contentLength < sourceText.Length)
-                contentLength = available;
+            if (nextStart <= currentStart || nextStart >= sourceText.Length)
+                break;
 
-            int end = sourceOffset + contentLength;
-            double height = metric.Height > 0 && float.IsFinite(metric.Height)
-                ? metric.Height
-                : Math.Max(1, fontSize * 1.2);
-            double baseline = metric.Baseline > 0 && float.IsFinite(metric.Baseline)
-                ? metric.Baseline
-                : height * 0.8;
+            float nextTop = GetCharacterRowTop(layout, nextStart);
+            if (!float.IsFinite(nextTop) || nextTop <= currentTop + CaretRowChangeTolerance)
+                break;
 
-            rows.Add(new TextLayoutVisualLine(sourceOffset, end, top, top + baseline, height));
-            trailingCounts.Add(Math.Clamp(metric.TrailingWhitespaceCount, 0, contentLength));
+            rowStarts.Add((nextStart, nextTop));
+        }
 
-            sourceOffset = end;
-            top += height;
+        // Some DirectWrite caret positions at soft-wrap boundaries are ambiguous. If binary search did not
+        // recover the scalar LineCount, scan grapheme starts as a correctness fallback.
+        if (rowStarts.Count != expectedLineCount)
+        {
+            var scannedStarts = ScanVisualLineStarts(sourceText, layout, firstTop, expectedLineCount);
+            if (scannedStarts.Count > rowStarts.Count)
+                rowStarts = scannedStarts;
+        }
+
+        if (rowStarts.Count > expectedLineCount)
+            rowStarts.RemoveRange(expectedLineCount, rowStarts.Count - expectedLineCount);
+
+        double originTop = rowStarts[0].Top;
+        var rows = new List<TextLayoutVisualLine>(rowStarts.Count);
+        var trailingCounts = new List<int>(rowStarts.Count);
+
+        for (int i = 0; i < rowStarts.Count; i++)
+        {
+            (int sourceStart, double rawTop) = rowStarts[i];
+            int sourceEnd = i + 1 < rowStarts.Count
+                ? rowStarts[i + 1].SourceIndex
+                : sourceText.Length;
+            sourceEnd = Math.Clamp(sourceEnd, sourceStart, sourceText.Length);
+
+            double top = Math.Max(0, rawTop - originTop);
+            double height;
+            if (i + 1 < rowStarts.Count)
+            {
+                height = rowStarts[i + 1].Top - rawTop;
+            }
+            else if (i > 0)
+            {
+                // The final row has no following caret Y from which to derive its height. Reuse the
+                // preceding row's actual DirectWrite baseline distance; proportional spacing is uniform
+                // for the active format and source line.
+                height = rawTop - rowStarts[i - 1].Top;
+            }
+            else
+            {
+                height = Math.Max(fallbackHeight, GetPositiveLayoutHeight(layout));
+            }
+
+            if (!double.IsFinite(height) || height <= 0)
+                height = fallbackHeight;
+
+            rows.Add(new TextLayoutVisualLine(
+                sourceStart,
+                sourceEnd,
+                top,
+                top + height * 0.8,
+                height));
+            trailingCounts.Add(CountTrailingWhitespace(sourceText, sourceStart, sourceEnd - sourceStart));
         }
 
         if (rows.Count == 0)
         {
-            double fallbackHeight = Math.Max(1, fontSize * 1.2);
-            rows.Add(new TextLayoutVisualLine(0, sourceText.Length, 0, fallbackHeight * 0.8, fallbackHeight));
+            double height = Math.Max(fallbackHeight, GetPositiveLayoutHeight(layout));
+            rows.Add(new TextLayoutVisualLine(0, sourceText.Length, 0, height * 0.8, height));
             trailingCounts.Add(CountTrailingWhitespace(sourceText));
-            top = fallbackHeight;
-        }
-        else if (sourceOffset < sourceText.Length)
-        {
-            TextLayoutVisualLine last = rows[^1];
-            rows[^1] = new TextLayoutVisualLine(
-                last.SourceStartIndex,
-                sourceText.Length,
-                last.Top,
-                last.Baseline,
-                last.Height);
-            trailingCounts[^1] = Math.Min(
-                sourceText.Length - last.SourceStartIndex,
-                Math.Max(trailingCounts[^1], CountTrailingWhitespace(sourceText)));
         }
 
-        // DirectWrite normally returns a line metric for an empty line. Keep the contract deterministic even
-        // if a future backend/version reports no visual rows for an empty source string.
-        if (sourceText.Length == 0 && rows.Count == 0)
+        TextLayoutVisualLine last = rows[^1];
+        double totalHeight = last.Top + last.Height;
+        return (
+            rows.ToArray(),
+            trailingCounts.ToArray(),
+            Math.Max(totalHeight, GetPositiveLayoutHeight(layout)));
+    }
+
+    private static float GetCharacterRowTop(CanvasTextLayout layout, int sourceIndex)
+    {
+        // At a soft-wrap boundary DirectWrite may expose the previous row for one caret affinity.
+        // Taking the greater Y of the leading and trailing positions identifies the row containing
+        // the character at sourceIndex without requesting any WinRT struct arrays.
+        Vector2 leading = layout.GetCaretPosition(sourceIndex, trailingSideOfCharacter: false);
+        Vector2 trailing = layout.GetCaretPosition(sourceIndex, trailingSideOfCharacter: true);
+        return Math.Max(leading.Y, trailing.Y);
+    }
+
+    private static int FindFirstBoundaryOnNextVisualRow(
+        string sourceText,
+        TextElementBoundaryMap boundaryMap,
+        CanvasTextLayout layout,
+        int currentStart,
+        double currentTop)
+    {
+        int low = currentStart + 1;
+        int high = sourceText.Length - 1;
+        int result = -1;
+
+        while (low <= high)
         {
-            double fallbackHeight = Math.Max(1, fontSize * 1.2);
-            rows.Add(new TextLayoutVisualLine(0, 0, 0, fallbackHeight * 0.8, fallbackHeight));
-            trailingCounts.Add(0);
-            top = fallbackHeight;
+            int middle = low + ((high - low) / 2);
+            int candidate = boundaryMap.SnapToBoundaryAtOrAfter(middle);
+            if (candidate >= sourceText.Length)
+            {
+                high = middle - 1;
+                continue;
+            }
+
+            float candidateTop = GetCharacterRowTop(layout, candidate);
+            if (float.IsFinite(candidateTop) && candidateTop > currentTop + CaretRowChangeTolerance)
+            {
+                result = candidate;
+                high = middle - 1;
+            }
+            else
+            {
+                low = middle + 1;
+            }
         }
 
-        return (rows.ToArray(), trailingCounts.ToArray(), Math.Max(top, layout.LayoutBounds.Height));
+        return result;
+    }
+
+    private static List<(int SourceIndex, double Top)> ScanVisualLineStarts(
+        string sourceText,
+        CanvasTextLayout layout,
+        float firstTop,
+        int maximumRows)
+    {
+        var starts = new List<(int SourceIndex, double Top)>(maximumRows)
+        {
+            (0, float.IsFinite(firstTop) ? firstTop : 0)
+        };
+        var boundaryMap = new TextElementBoundaryMap(sourceText);
+
+        for (int index = boundaryMap.SnapToNextBoundary(0);
+             index < sourceText.Length && starts.Count < maximumRows;)
+        {
+            float top = GetCharacterRowTop(layout, index);
+            if (float.IsFinite(top) && top > starts[^1].Top + CaretRowChangeTolerance)
+                starts.Add((index, top));
+
+            int next = boundaryMap.SnapToNextBoundary(index);
+            if (next <= index)
+                break;
+            index = next;
+        }
+
+        return starts;
+    }
+
+    private static double GetPositiveLayoutHeight(CanvasTextLayout layout)
+    {
+        double height = layout.LayoutBoundsIncludingTrailingWhitespace.Height;
+        return double.IsFinite(height) && height > 0 ? height : 0;
     }
 
     private static int CountTrailingWhitespace(string sourceText)
     {
+        return CountTrailingWhitespace(sourceText, 0, sourceText.Length);
+    }
+
+    private static int CountTrailingWhitespace(string sourceText, int start, int length)
+    {
         int count = 0;
-        for (int i = sourceText.Length - 1; i >= 0 && char.IsWhiteSpace(sourceText[i]); i--)
+        for (int i = start + length - 1; i >= start && char.IsWhiteSpace(sourceText[i]); i--)
             count++;
         return count;
     }
