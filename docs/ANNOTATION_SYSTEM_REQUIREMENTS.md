@@ -8,6 +8,7 @@
 > 批注功能基线分支：`feature/novel-project-annotations`
 > 本轮代码审查基准 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`（2026-11-04 21:59，北京时间）
 > 最新诊断代码提交：`c08f1f9317451c2d0e85bc928ed21413098c0417`；新增诊断尚未经过用户本地编译和复测。
+> 最新无滚动条改造提交：`01dd4fb5f0fdcb864bd7d2612781924e9c3dd318`、`ae2d29702a9bd5820ee08c70ff1ebf2da3461f5d`、`a61b8514aac7233970f3d50ac469d1d0e46a81f1`、`fecf60405a3aaeec228b87c6b41f5cb4aa79dc59`；待用户本地构建复测。
 
 ## 1. 状态标记与维护规则
 
@@ -487,7 +488,7 @@ Phase 3 主要提交（当前代码仍待本地验收）：
 
 当前比例字体改造分支：feature/reader-proportional-font-layout；Phase 3 实现与对应文档均已推送。
 
-Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presentation.Tests 508/508 通过。Phase 3 已将比例布局接入 TextLayoutEngine 与 TextCanvas：真实视觉行/换行、命中测试、光标与方向键/翻页导航、水平/垂直滚动、选区/搜索/规则高亮、批注虚线、空白字符标记及光标覆盖层均使用同一套原文 UTF-16 布局坐标；增加 23 项引擎集成测试（包括鼠标拖选跨软换行/原文逻辑行、双击选择跨软换行的长单词、小批注选择矩形点击、交叠批注及章节右键空白区域定位），并修复跨视觉行高亮绘制顺序、按实测行高计算翻页/可视区、横向滚动范围收缩、同总行数原文刷新时的布局缓存失效；小批注标记查询按实际可视原文行范围执行。旧固定宽度路径仍保留为回退。Phase 3 代码已推送，但尚未经过用户本地 Release x64 构建、测试和实际阅读器视觉/交互验收；不得提前标记为完成。2026-11-04 22:34 日志确认首次空白 Canvas Draw 和索引完成，随后停在 `View.UpdateTotalLines` 调用前；已追加 TextCanvas 行数更新、ViewChanged/RedrawRequested、OnReaderViewChanged 和 SyncScrollBars 分阶段诊断，待用户构建复测。
+Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presentation.Tests 508/508 通过。Phase 3 已将比例布局接入 TextLayoutEngine 与 TextCanvas：真实视觉行/换行、命中测试、光标与方向键/翻页导航、水平/垂直滚动、选区/搜索/规则高亮、批注虚线、空白字符标记及光标覆盖层均使用同一套原文 UTF-16 布局坐标；增加 23 项引擎集成测试（包括鼠标拖选跨软换行/原文逻辑行、双击选择跨软换行的长单词、小批注选择矩形点击、交叠批注及章节右键空白区域定位），并修复跨视觉行高亮绘制顺序、按实测行高计算翻页/可视区、横向滚动范围收缩、同总行数原文刷新时的布局缓存失效；小批注标记查询按实际可视原文行范围执行。旧固定宽度路径仍保留为回退。Phase 3 代码已推送，但尚未经过用户本地 Release x64 构建、测试和实际阅读器视觉/交互验收；不得提前标记为完成。2026-11-04 22:45 日志进一步确认：`TextCanvas.UpdateTotalLines`、`Ready` 和缓存清理均完成，`TextLayoutEngine.UpdateTotalLines` 触发 `ViewChanged`；随后 `OnReaderViewChanged` 进入 `SyncScrollBars`，最后停在 `View.FullyVisibleLineCount` getter 附近，期间出现嵌套 `Ready`，未进入任何滚动条属性赋值。现已移除阅读区水平/垂直滚动条控件、同步方法、滚动事件处理及关联布局行列；保留鼠标滚轮、目录跳转、程序化滚动、视图恢复、光标自动可见和标记刻度。
 
 `d23e5776b3f76c1a42261a4489bda025affbd180`（纠正大批注参考资料区层级：目录树严格为“章节标题 → 批注”两层；小批/章批类型、对应分类和小批原文数量作为同一行平级标签；取消章节批注自身的折叠节点；小批与章批正文统一使用圆角淡色背景卡片；原文跳转返回按钮改为带左箭头的实色按钮，并通过动态预留左侧阅读栏位避免遮挡原文。）
 
@@ -512,6 +513,7 @@ Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presen
 | 2026-11-04 | 整体界面优化阶段首次仓库盘点：以 `feature/reader-proportional-font-layout` 为基准，核对远程分支、主窗口布局、阅读器和三种批注代码；新增功能归属、未完整验收、待改造、未开发及暂缓清单。对照上游基线纠正“阅读模式”的功能归属；更新大批注基本验收状态；明确外部编辑当前仅支持带标记副本导出与标记校验；修正 21:48 日志早于首次 Draw/IndexRefreshTimer 诊断埋点的时间关系。审查基准 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`。 |
 | 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 同时新增启动诊断日志：记录 App/Window 生命周期、项目恢复、文件打开、索引进度、首次内容绘制、未观察任务异常及 ProcessExit；TextCanvas.OnDraw 托管异常会记录后重新抛出。用户此前在诊断代码加入前确认 975/975 测试通过；本轮诊断代码及新增日志测试尚待本地编译和运行验证。 |
 | 2026-11-04 | 根据用户 22:34 新日志，首次空 Canvas Draw 已成功获取 DrawingSession 并清除背景；76MB 文件索引至 382,033 行；IndexRefreshTimer 首次 Tick 进入后，最后记录停在 `before View.UpdateTotalLines`，未记录首次内容绘制、托管异常、窗口关闭或 ProcessExit。新增 TextCanvas.UpdateTotalLines 的 Ready/缓存清理/引擎更新阶段日志、ViewChanged/RedrawRequested 回调日志、OnReaderViewChanged 和 SyncScrollBars 逐项日志（代码提交 `41d6e65cdd0ed72e3758d075b6238acd704de675`、`c08f1f9317451c2d0e85bc928ed21413098c0417`）。该修改仅增加诊断，不改变功能逻辑，尚待用户 Release x64 构建和复测。 |
+| 2026-11-04 | 根据用户 22:45 新日志，`TextCanvas.UpdateTotalLines` 已完成 Ready 与缓存清理并进入引擎行数更新；`ViewChanged` 回调进入 `OnReaderViewChanged` 后，最后停在原 `SyncScrollBars` 读取 `View.FullyVisibleLineCount` 附近，期间出现嵌套 `Ready`，未记录任何 ScrollBar 属性赋值。按用户确认，移除阅读区水平/垂直 ScrollBar 控件、同步方法、滚动事件处理、专用布局行列及仅供同步使用的 TextCanvas 视口属性；保留鼠标滚轮、目录/批注跳转、程序化滚动、视图恢复、光标自动可见和独立书签/查找标记刻度。待用户本地 Release x64 构建与复测。 |
 | 2026-11-04 | Phase 1 用户本地验收通过（Release x64、Presentation.Tests 501/501）；Phase 2 用户本地验收通过（Release x64、Presentation.Tests 508/508）。随后完成 Phase 3 比例布局引擎与 TextCanvas 接入：真实视觉行、命中/光标/导航、滚动、选区与高亮、批注标记和空白标记统一使用原文 UTF-16 布局坐标；新增 23 项引擎集成测试，并补充滚动范围、缓存失效、软换行绘制顺序、鼠标选区测试，以及按实际可视原文行范围刷新小批注标记。Phase 3 尚待用户本地 Release x64 构建、测试及真实阅读器视觉/交互验收，不能视为已验收。未修改 SQLite 批注结构、全文 UTF-16 偏移映射或大文件按需读取架构。 |
 | 2026-11-03 | 第一阶段底层实现已推送（`0d20a053668389d1b0e51dfdf3f827537f967668`，后续兼容性补充 `3bea79ad3d7fb05caa6e39151840224f50bfef3f`），待 Windows 构建/测试：NovelChapter 新增 BodyStartOffset、BodySha256；章节索引器在单次逐行扫描中增量计算正文 SHA-256，统一换行符为 LF；章节对比增加正文变化列表；SQLite Chapters 增加两列及旧项目增量迁移；打开项目时检测完整原文 SHA-256 是否与 project.json 一致，发现外部修改后提示重新识别，确认后提升文档版本并更新文件指纹。未拆分原文文件，未改阅读器滚动/渲染模型。 |
 | 2026-11-03 | 用户确认存储与阅读器架构：项目始终保留一个完整原文 TXT 副本，Chapters 仅在 SQLite 中逻辑划分；阅读器保持全文连续滚动和统一数据源，不创建逐章独立文本控件。用户同意跨章节连续选区不自动拆分，拒绝保存并提示分别选择；同一条小批注可通过多个独立锚点关联多个章节。 |
@@ -670,7 +672,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 显示和编码：空白字符显示、编码自动识别及手动切换、Tab 宽度设置。
 - 基础外观：原有五种等宽字体选择、Zoom 字号缩放、自动换行、System/Light/Dark 主题。
 
-**归属纠正：阅读模式不是原始上游继承功能。** 对照上游 `felipepessoto/FujiyNotepad` 的基线代码，原项目没有 `ReadingMode` 设置及对应菜单；专门的阅读模式由本项目的 `feature/novel-reading-mode` 分支提交 `b4352eaffee36f8f74d632a8a7cb68999691dac9` 加入。因此应归入本项目自主开发的阅读体验增强。阅读模式目前的行为是强制开启自动换行并隐藏水平、垂直滚动条，尚不等于完整的专业阅读排版系统。
+**归属纠正：阅读模式不是原始上游继承功能。** 对照上游 `felipepessoto/FujiyNotepad` 的基线代码，原项目没有 `ReadingMode` 设置及对应菜单；专门的阅读模式由本项目的 `feature/novel-reading-mode` 分支提交 `b4352eaffee36f8f74d632a8a7cb68999691dac9` 加入。因此应归入本项目自主开发的阅读体验增强。阅读模式目前强制开启自动换行；本轮改造将阅读区水平、垂直滚动条全局移除，阅读模式仍可单独控制标记刻度的显示，尚不等于完整的专业阅读排版系统。
 
 ### 13.3 本项目自主开发且已实现的功能
 
@@ -718,14 +720,14 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - **大批注：**用户已完成基本功能测试并确认通过；整体视觉统一、所有边界场景和完整回归尚未完成。
 - **章节变化检测：**原文指纹、章节正文指纹和章节结构变化处理已有代码；项目重开后的 Windows UI 场景仍待验收。段落级差异定位不在当前范围。
 - **外部编辑：**带标记工作副本导出和标记完整性校验的 Core API 与 WinUI 菜单入口均已实现；目前只检查标记完整性，不生成完整差异预览、不自动应用编辑结果，也不提供恢复流程。
-- **比例字体 Phase 3：**代码已接入 TextLayoutEngine 和 TextCanvas，已有 975/975 测试通过记录；用户 22:34 新日志将最后记录缩小到 `IndexRefreshTimer_Tick` 调用 `View.UpdateTotalLines` 之前，尚未证明根因。已追加该调用链内部及滚动条更新阶段诊断；端到端运行验收仍失败，不能将 Phase 3 标记为完成。
-- **新增诊断代码：**首次 Draw、首次内容绘制、首次 IndexRefreshTimer，以及 TextCanvas.UpdateTotalLines、ViewChanged/RedrawRequested、OnReaderViewChanged 和 SyncScrollBars 内部分阶段日志均已推送；尚无用户使用最新诊断代码完成 Release x64 构建和复测的记录。
+- **比例字体 Phase 3：**代码已接入 TextLayoutEngine 和 TextCanvas，已有 975/975 测试通过记录；用户 22:45 日志将最后记录缩小到 `OnReaderViewChanged → SyncScrollBars → View.FullyVisibleLineCount`，期间出现嵌套 `Ready`，未进入滚动条属性赋值。现已移除阅读区滚动条及同步链路，端到端运行验收仍待用户复测，不能将 Phase 3 标记为完成。
+- **新增诊断代码：**首次 Draw、首次内容绘制、首次 IndexRefreshTimer，以及 TextCanvas.UpdateTotalLines、ViewChanged/RedrawRequested 阶段日志已推送；已删除不再需要的 SyncScrollBars 诊断链路。最新无滚动条改造尚无用户本地 Release x64 构建和复测记录。
 
 ### 13.5 阅读器需要改造的功能
 
 - 专业阅读排版设置：支持普通中文比例字体及中英文混排字体；提供阅读器专用字体、字号、行距、正文宽度、背景色和文字颜色设置，并持久化。
 - 阅读区域布局：正文宽度限制、居中显示、合理留白，以及窗口大小变化时的布局响应。
-- 阅读模式：重新规划模式行为和视觉表现，不再只等同于“自动换行 + 隐藏滚动条”。
+- 阅读模式：重新规划模式行为和视觉表现，不再只等同于“自动换行 + 隐藏标记刻度”；阅读区本身不再提供水平、垂直滚动条。
 - 阅读器与批注面板：统一面板宽度、切换方式、显示状态和跳转/返回体验。
 - 主窗口：以阅读器为核心重新安排顶部菜单、项目操作入口、阅读区和批注工作区。
 - 原编辑器功能清理：先逐项评估保留、改造、删除或暂缓；未经讨论不得直接删除原功能。
@@ -750,7 +752,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - BUG-012：双击小批注卡片原文摘要区域打开统一详情弹窗。
 - C-032：章节内段落级差异定位。
 - 完整回归、所有边缘场景和长篇性能验收：按用户要求留到主要功能与界面完成后统一进行。
-- 垂直滚动条滑块尺寸优化：不是阅读器需求；主要导航采用鼠标滚轮连续滚动和目录/批注跳转，不再为滑块尺寸单独开发。
+- 阅读区滚动条：按用户确认，水平和垂直滚动条控件及其同步/事件代码已移除；主要导航采用鼠标滚轮连续滚动和目录/批注跳转。
 
 ### 13.8 当前主窗口布局与代码位置
 
@@ -758,7 +760,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 - 顶部菜单栏：File、Novel Project、Edit、View、Encoding、Help。
 - 菜单下方依次是查找栏和过滤栏，默认折叠。
-- 主工作区位于第三个内容行：中心是 TextCanvas 阅读器；右侧有垂直滚动条及书签/查找标记刻度；底部有水平滚动条。
+- 主工作区位于第三个内容行：中心是 TextCanvas 阅读器；右侧保留独立的书签/查找标记刻度；阅读区不显示水平或垂直滚动条，主要通过鼠标滚轮及目录跳转导航。
 - 小批注面板、章节批注面板和章节目录面板共用最右侧一列，均为折叠面板：小批注宽 360、章节批注宽 360、章节目录宽 320；不是三个并排区域。
 - 大批注工作区在主内容行中替换阅读器显示。编辑状态下左侧参考资料默认宽 460（最小 280），右侧正文区最小宽 360，中间分隔条可拖动。
 - 大批注跳转原文时，左侧独立预留返回按钮栏位；普通阅读器状态下该栏位宽度为 0。
