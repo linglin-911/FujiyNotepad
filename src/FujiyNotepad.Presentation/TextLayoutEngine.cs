@@ -691,16 +691,10 @@ namespace FujiyNotepad.Presentation
 
         public void UpdateTotalLines(int count)
         {
+            // This method is polled while indexing is in progress. An unchanged count means there is no
+            // viewport change; source-content refreshes use RefreshSourceContent() explicitly.
             if (count == totalLines)
-            {
-                // The source provider may have been refreshed in place without changing the line count.
-                // Drop both legacy column maps and native layouts so same-count edits cannot render stale text.
-                columnsCache.Clear();
-                ClearProportionalLayoutCache();
-                RaiseViewChanged();
-                RaiseRedraw();
                 return;
-            }
 
             totalLines = count;
             columnsCache.Clear();
@@ -709,6 +703,23 @@ namespace FujiyNotepad.Presentation
             {
                 firstVisibleLine = MaxFirstLine;
             }
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Invalidates cached text geometry after the existing line source has been refreshed in place
+        /// (for example, after a followed file grows without changing its currently visible line count).
+        /// Unlike <see cref="UpdateTotalLines"/>, this is an explicit content-change notification, not an
+        /// indexing-progress poll.
+        /// </summary>
+        public void RefreshSourceContent()
+        {
+            if (provider is null)
+                return;
+
+            columnsCache.Clear();
+            ClearProportionalLayoutCache();
             RaiseViewChanged();
             RaiseRedraw();
         }
