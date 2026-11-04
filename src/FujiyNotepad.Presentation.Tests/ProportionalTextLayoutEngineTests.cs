@@ -71,14 +71,15 @@ public sealed class ProportionalTextLayoutEngineTests
     [Fact]
     public void DoubleClickWordSelection_UsesProportionalHitTestSourcePosition()
     {
-        var engine = NewEngine(new FakeLines("hello world"), viewportWidth: 240, viewportHeight: 40);
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition clicked = engine.HitTest(40, 5);
+        // Click the middle visual row of a word that spans all three wrapped rows.
+        TextPosition clicked = engine.HitTest(25, 25);
         engine.SelectWordAt(clicked);
 
         Assert.Equal(new TextPosition(0, 0), engine.SelectionStart);
-        Assert.Equal(new TextPosition(0, 5), engine.SelectionEnd);
+        Assert.Equal(new TextPosition(0, 6), engine.SelectionEnd);
     }
 
     [Fact]
