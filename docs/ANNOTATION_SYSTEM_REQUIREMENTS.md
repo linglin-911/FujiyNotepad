@@ -471,6 +471,10 @@ Phase 3 主要提交（当前代码仍待本地验收）：
 - cd38b770378ed4ed39da67430374533d354b4446：修正旧比例布局测试与新接口设计冲突；分别验证行数不变的 UpdateTotalLines 不清理缓存、RefreshSourceContent 会清理缓存。
 - 8c17866963fb46861daee4fc0dca586aaa32c49b、fd7e0fb8f927b0d4e3d4a194111f82844984b6d7：移除 XAML 中 ToggleSwitch.IsOn 初始值，在 MainWindow.InitializeComponent 完成后再设置默认开启状态，避免控件构造期间触发切换事件。
 - b2f658d97e9fc08208c19fff53077ebd1a7f0974：OnLaunched 捕获同步窗口创建/激活异常，写入 crash.log 后重新抛出，不吞掉启动异常。
+- f06122a88dd87e77c4eb2fa32d96c28d4370656f、2dca4d23b2ea082f4459de9ec85d3c0b267e67da：CrashLogger 增加 Diagnostic 时间戳记录接口及测试。
+- 2b5b0bc20deda1082780a56118ce57b286e643df：记录 App 构造、XAML 初始化、OnLaunched、窗口激活、全局异常、未观察任务异常和 ProcessExit。
+- e65c1abc5d3c63fe251ec53a180d3ce3dba13e57：记录 MainWindow 构造、XAML Loaded、设置加载、最近项目恢复、文件打开、索引进度和章节索引初始化；异步启动任务异常写入 crash.log。
+- d329944b580b884fbd0638f377f36a3de45a5802：记录阅读画布首次内容绘制的进入/完成状态，并在 OnDraw 遇到托管异常时记录完整异常后重新抛出。
 - 32e439a77a81f268ade53bae4921e1595facf7ca、fee5956a98d18b768135e83154ec75e13b8d1a66、b510280e8cc9cd25dec36bb14def4d310b3dda65、4f31fc8026661dd8e3158627a76d9593c8c5cb7c：新增小批注范围矩形命中测试；点击按选择背景同源的原文区间矩形判断，不要求 glyph 像素命中；多个重叠矩形优先返回共同原文区间内的位置。
 - 47d105777686ff9d2a6593425cf6276cff4f86a4：右键章节批注改为最近原文插入位置命中，空白处点击仍可定位所属章节；小批注点击接入范围矩形命中。
 - ea46211d4e7527342bf1275447379da8b4e59836、9cf42a265bbc24562554c35d41fec74f8c0fadc5、3024943208cb75d992a3438262885aa22290bc53：新增 5 项测试，覆盖矩形内非字形区域、矩形外点击、跨软换行、重叠批注及章节右键空白区域定位。
@@ -502,7 +506,7 @@ Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presen
 
 | 日期 | 变更 |
 |---|---|
-| 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 |
+| 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 同时新增启动诊断日志：记录 App/Window 生命周期、项目恢复、文件打开、索引进度、首次内容绘制、未观察任务异常及 ProcessExit；TextCanvas.OnDraw 托管异常会记录后重新抛出。用户此前在诊断代码加入前确认 975/975 测试通过；本轮诊断代码及新增日志测试尚待本地编译和运行验证。 |
 | 2026-11-04 | Phase 1 用户本地验收通过（Release x64、Presentation.Tests 501/501）；Phase 2 用户本地验收通过（Release x64、Presentation.Tests 508/508）。随后完成 Phase 3 比例布局引擎与 TextCanvas 接入：真实视觉行、命中/光标/导航、滚动、选区与高亮、批注标记和空白标记统一使用原文 UTF-16 布局坐标；新增 23 项引擎集成测试，并补充滚动范围、缓存失效、软换行绘制顺序、鼠标选区测试，以及按实际可视原文行范围刷新小批注标记。Phase 3 尚待用户本地 Release x64 构建、测试及真实阅读器视觉/交互验收，不能视为已验收。未修改 SQLite 批注结构、全文 UTF-16 偏移映射或大文件按需读取架构。 |
 | 2026-11-03 | 第一阶段底层实现已推送（`0d20a053668389d1b0e51dfdf3f827537f967668`，后续兼容性补充 `3bea79ad3d7fb05caa6e39151840224f50bfef3f`），待 Windows 构建/测试：NovelChapter 新增 BodyStartOffset、BodySha256；章节索引器在单次逐行扫描中增量计算正文 SHA-256，统一换行符为 LF；章节对比增加正文变化列表；SQLite Chapters 增加两列及旧项目增量迁移；打开项目时检测完整原文 SHA-256 是否与 project.json 一致，发现外部修改后提示重新识别，确认后提升文档版本并更新文件指纹。未拆分原文文件，未改阅读器滚动/渲染模型。 |
 | 2026-11-03 | 用户确认存储与阅读器架构：项目始终保留一个完整原文 TXT 副本，Chapters 仅在 SQLite 中逻辑划分；阅读器保持全文连续滚动和统一数据源，不创建逐章独立文本控件。用户同意跨章节连续选区不自动拆分，拒绝保存并提示分别选择；同一条小批注可通过多个独立锚点关联多个章节。 |
@@ -610,8 +614,16 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 |---|---|---|
 | Phase 1 | 布局接口、UTF-16 坐标约定、契约测试、旧路径标记 | 用户验收通过：Release x64 编译成功，501/501 测试通过 |
 | Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 代码已实现，待本地编译及运行时验证；尚未接入阅读器 |
-| Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 未开始 |
+| Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；用户本地 975/975 测试通过，但启动后阅读区域空白并在约十余秒后退出，真实运行验收未通过；新增启动/索引/绘制诊断日志，待复测 |
 | Phase 4 | 阅读字体、字号、行距、正文宽度和主题设置 | 未开始 |
 | Phase 5 | 有界缓存、长行性能验证和旧代码清理 | 未开始 |
 
 当前不将普通中文比例字体的端到端阅读支持、独立行距或正文宽度设置标记为已完成；Phase 2 后端完成不等于 TextCanvas 已切换。
+
+### 12.7 启动与渲染诊断日志
+
+- 统一写入 `%LOCALAPPDATA%\\FujiyNotepad\\crash.log`，每条记录带本地时间戳。
+- 除未处理异常外，记录 App 启动、MainWindow 构造与 Loaded、最近项目恢复、文件打开、行索引进度、章节索引启动、阅读画布首次内容绘制和 ProcessExit。
+- `TextCanvas.OnDraw` 的托管异常记录完整堆栈后重新抛出；索引任务异常和启动异步任务异常也会留下记录。
+- 日志是诊断线索，不代表可以捕获所有原生崩溃或系统级强制终止；若日志突然中断且没有 ProcessExit，下一步使用 Windows Error Reporting LocalDumps 获取原生崩溃转储。
+- 当前新增诊断代码尚待用户本地 Release x64 编译及闪退复测。
