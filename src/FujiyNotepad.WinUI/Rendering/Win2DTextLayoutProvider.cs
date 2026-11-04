@@ -79,9 +79,13 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
             WordWrapping = CanvasWordWrapping.NoWrap,
         };
 
-        Vector2 start = spaceLayout.GetCaretPosition(0, trailingSideOfCharacter: false);
-        Vector2 end = spaceLayout.GetCaretPosition(1, trailingSideOfCharacter: false);
-        float advance = Math.Abs(end.X - start.X);
+        float advance = (float)spaceLayout.LayoutBoundsIncludingTrailingWhitespace.Width;
+        if (!float.IsFinite(advance) || advance <= 0)
+        {
+            Vector2 start = spaceLayout.GetCaretPosition(0, trailingSideOfCharacter: false);
+            Vector2 end = spaceLayout.GetCaretPosition(1, trailingSideOfCharacter: false);
+            advance = Math.Abs(end.X - start.X);
+        }
 
         if (!float.IsFinite(advance) || advance <= 0)
             return Math.Max(1f, format.FontSize * 0.25f);
