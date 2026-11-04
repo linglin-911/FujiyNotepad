@@ -3447,8 +3447,10 @@ namespace FujiyNotepad.WinUI
         {
             LblZoom.Text = $"{View.ZoomPercent}%";
             TickFontMenu(View.FontFamilyName);
-            settings.FontFamily = View.FontFamilyName;
+            settings.FontFamily = View.FontFamilyName; // keep legacy settings files compatible
             settings.FontSize = View.FontSizePoints;
+            settings.Reader.FontFamily = View.FontFamilyName;
+            settings.Reader.FontSizeDip = View.FontSizePoints;
             settingsStore.Save(settings);
         }
 
@@ -3568,9 +3570,10 @@ namespace FujiyNotepad.WinUI
             View.TabSize = tab;
             (tab switch { 2 => TabWidth2, 8 => TabWidth8, _ => TabWidth4 }).IsChecked = true;
 
-            // Font + zoom. (FontChanged isn't subscribed yet, so set the zoom label and Font menu directly.)
-            View.FontFamilyName = settings.FontFamily;
-            View.FontSizePoints = settings.FontSize;
+            // Reader font + zoom. (FontChanged isn't subscribed yet, so set the zoom label and Font menu directly.)
+            // ReaderSettings is canonical; the root fields remain only for old settings-file compatibility.
+            View.FontFamilyName = settings.Reader.FontFamily;
+            View.FontSizePoints = settings.Reader.FontSizeDip;
             TickFontMenu(View.FontFamilyName);
             LblZoom.Text = $"{View.ZoomPercent}%";
 
