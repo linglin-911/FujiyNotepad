@@ -334,6 +334,27 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void SetViewportAnchor_PreservesSourceColumnWhenWrappingChanges()
+    {
+        var provider = new FakeProportionalProvider();
+        var engine = new TextLayoutEngine { ViewportWidth = 120, ViewportHeight = 20 };
+        engine.SetMetrics(10, 20);
+        engine.ConfigureProportionalLayout(provider, "Test", 10);
+        engine.SetProvider(new FakeLines("abcdefghij"));
+
+        engine.SetViewportAnchor(new TextPosition(0, 6));
+        Assert.Equal(0, Assert.Single(engine.GetVisibleLines(hasFocus: false, caretVisible: false)).SourceStartIndex);
+
+        engine.ViewportWidth = 60;
+        engine.ConfigureProportionalLayout(provider, "Test", 10);
+        engine.SetViewportAnchor(new TextPosition(0, 6));
+
+        VisibleLine first = Assert.Single(engine.GetVisibleLines(hasFocus: false, caretVisible: false));
+        Assert.Equal(4, first.SourceStartIndex);
+        Assert.Equal(8, first.SourceEndIndex);
+    }
+
+    [Fact]
     public void ConfigureProportionalLayout_PassesLineSpacingMultiplierToProvider()
     {
         var provider = new FakeProportionalProvider();
