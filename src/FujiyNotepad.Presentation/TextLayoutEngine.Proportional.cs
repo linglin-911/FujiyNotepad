@@ -467,8 +467,8 @@ public sealed partial class TextLayoutEngine
 
     /// <summary>
     /// Hit-tests the source character under a point and reports whether the pointer actually landed on a
-    /// character region. The nearest-boundary position is still returned when it did not; callers that act
-    /// on a character (such as clicking an annotation marker) must check <paramref name="isInside"/>.
+    /// character region. The nearest-boundary position is still returned when it did not. Small-annotation
+    /// clicks use the separate selection-rectangle hit test below rather than requiring a glyph hit.
     /// </summary>
     public TextPosition HitTestCharacter(double x, double y, out bool isInside)
         => HitTestCharacter(x, y, out isInside, out _);
