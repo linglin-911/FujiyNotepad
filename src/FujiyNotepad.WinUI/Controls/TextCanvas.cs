@@ -1616,9 +1616,10 @@ namespace FujiyNotepad.WinUI.Controls
                 if (line.IsBookmarked)
                 {
                     // A small dot near the gutter's left edge (numbers are right-aligned, so this stays clear).
-                    float r = (float)Math.Min(lineHeight * 0.18, 4.0);
+                    double markerRowHeight = line.UsesProportionalLayout ? line.LayoutRowHeight : lineHeight;
+                    float r = (float)Math.Min(markerRowHeight * 0.18, 4.0);
                     float cx = r + 1.5f;
-                    float cy = (float)(line.Y + lineHeight / 2);
+                    float cy = (float)(line.Y + markerRowHeight / 2);
                     ds.FillEllipse(cx, cy, r, r, bookmarkColor);
                 }
 
