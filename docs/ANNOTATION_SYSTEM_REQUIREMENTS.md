@@ -623,7 +623,10 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 ### 12.7 启动与渲染诊断日志
 
 - 统一写入 `%LOCALAPPDATA%\\FujiyNotepad\\crash.log`，每条记录带本地时间戳。
-- 除未处理异常外，记录 App 启动、MainWindow 构造与 Loaded、最近项目恢复、文件打开、行索引进度、章节索引启动、阅读画布首次内容绘制和 ProcessExit。
+- 除未处理异常外，记录 App 启动、MainWindow 构造与 Loaded、最近项目恢复、文件打开、行索引进度、章节索引启动、阅读画布首次 Draw/首次内容绘制和 ProcessExit。
 - `TextCanvas.OnDraw` 的托管异常记录完整堆栈后重新抛出；索引任务异常和启动异步任务异常也会留下记录。
-- 日志是诊断线索，不代表可以捕获所有原生崩溃或系统级强制终止；若日志突然中断且没有 ProcessExit，下一步使用 Windows Error Reporting LocalDumps 获取原生崩溃转储。
-- 当前新增诊断代码尚待用户本地 Release x64 编译及闪退复测。
+- 用户 2026-11-04 21:48 上传的最新日志显示：窗口初始化与 RootGrid Loaded 成功；恢复项目并打开 76,114,107 字节的 `novel.txt`；LineProvider 成功挂接；索引完成 382,033 行并报告 100%。日志随后立即结束，没有 IndexRefreshTimer 首次 Tick、UI 观察到索引完成、Canvas 首次 Draw/内容绘制、托管异常或 ProcessExit 记录。
+- 该日志不能证明 Win2D 是故障根因；当前重点是用新增的一次性日志区分 DispatcherQueue 首次索引刷新与 CanvasControl 首次绘制/比例布局阶段。
+- 最新代码已增加：TextCanvas 首次 Draw（包括 engine 行数为 0 时）记录；首次内容绘制在 EnsureMetrics、SyncViewport、GetVisibleLines 前后的阶段记录；IndexRefreshTimer 首次 Tick 在 View.UpdateTotalLines、RefreshMarkerMargin、待处理导航前后的阶段记录。
+- 若新日志仍无异常且没有 ProcessExit，按 `docs/reader-crash-diagnostics.md` 配置 Windows Error Reporting LocalDumps，获取 `FujiyNotepad.WinUI.exe` 的完整用户态 dump，并结合 Application Error / Windows Error Reporting 事件定位原生崩溃。
+- 最新诊断改动已推送到 `feature/reader-proportional-font-layout`，提交 `be9f8a1b19c1048e0376a95345a17670bd991930`；尚未经过用户本地 Release x64 编译和复测。
