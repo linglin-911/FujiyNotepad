@@ -82,6 +82,7 @@ namespace FujiyNotepad.WinUI
         private CancellationTokenSource? stdinCts;
         private Task indexingTask = Task.CompletedTask;
         private bool syncingScroll;
+        private bool isUpdatingTotalLinesFromIndexRefresh;
 
         private readonly SettingsStore settingsStore = SettingsStore.Default();
         private AppSettings settings = new();
@@ -1404,7 +1405,17 @@ namespace FujiyNotepad.WinUI
             {
                 if (logFirstTick)
                     LogDiagnostic("IndexRefreshTimer: before View.UpdateTotalLines");
-                View.UpdateTotalLines(provider.LineCount);
+
+                isUpdatingTotalLinesFromIndexRefresh = logFirstTick;
+                try
+                {
+                    View.UpdateTotalLines(provider.LineCount);
+                }
+                finally
+                {
+                    isUpdatingTotalLinesFromIndexRefresh = false;
+                }
+
                 if (logFirstTick)
                     LogDiagnostic($"IndexRefreshTimer: after View.UpdateTotalLines; viewLines={View.TotalLines:N0}");
 
@@ -1495,49 +1506,98 @@ namespace FujiyNotepad.WinUI
 
         private void OnReaderViewChanged()
         {
-            SyncScrollBars();
+            bool logStages = isUpdatingTotalLinesFromIndexRefresh;
+            if (logStages)
+                LogDiagnostic("OnReaderViewChanged: entered during first index-refresh line-count update");
+
+            if (logStages)
+                LogDiagnostic("OnReaderViewChanged: before SyncScrollBars");
+            SyncScrollBars(logStages);
+            if (logStages)
+                LogDiagnostic("OnReaderViewChanged: after SyncScrollBars");
 
             if (activeAnnotationStore is null || activeNovelProject is null || filteredSource is not null)
             {
+                if (logStages)
+                    LogDiagnostic(
+                        $"OnReaderViewChanged: no active annotation workspace or filtered; " +
+                        $"storePresent={activeAnnotationStore is not null}; projectPresent={activeNovelProject is not null}; " +
+                        $"filtered={filteredSource is not null}");
+
                 annotationMarkerRefreshTimer.Stop();
                 annotationMarkerRefreshCancellation?.Cancel();
                 annotationMarkerRefreshCancellation = null;
                 if (activeAnnotationStore is null || filteredSource is not null)
+                {
+                    if (logStages)
+                        LogDiagnostic("OnReaderViewChanged: before clearing annotation markers");
                     View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
+                    if (logStages)
+                        LogDiagnostic("OnReaderViewChanged: annotation markers cleared");
+                }
                 return;
             }
 
+            if (logStages)
+                LogDiagnostic("OnReaderViewChanged: before starting annotation-marker refresh timer");
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshTimer.Start();
+            if (logStages)
+                LogDiagnostic("OnReaderViewChanged: annotation-marker refresh timer started");
         }
 
-        private void SyncScrollBars()
+        private void SyncScrollBars(bool logStages = false)
         {
             if (syncingScroll)
             {
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: skipped because a scrollbar sync is already active");
                 return;
             }
 
             syncingScroll = true;
             try
             {
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: before View.FullyVisibleLineCount");
                 int viewportLines = View.FullyVisibleLineCount;
-                VScroll.Maximum = View.MaxFirstLine;
+                if (logStages)
+                    LogDiagnostic($"SyncScrollBars: after View.FullyVisibleLineCount; value={viewportLines}");
+
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: before reading View.MaxFirstLine");
+                int maxFirstLine = View.MaxFirstLine;
+                if (logStages)
+                    LogDiagnostic($"SyncScrollBars: before VScroll.Maximum assignment; value={maxFirstLine}");
+                VScroll.Maximum = maxFirstLine;
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: after VScroll.Maximum assignment");
+
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: before VScroll viewport/change/value assignments");
                 VScroll.ViewportSize = viewportLines;
                 VScroll.LargeChange = viewportLines;
                 VScroll.SmallChange = 1;
                 VScroll.Value = View.FirstVisibleLine;
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: after VScroll assignments");
 
                 double viewportWidth = View.ViewportWidthPx;
+                if (logStages)
+                    LogDiagnostic($"SyncScrollBars: before HScroll assignments; viewportWidth={viewportWidth:F1}");
                 HScroll.Maximum = Math.Max(0, View.HorizontalExtentPx - viewportWidth);
                 HScroll.ViewportSize = viewportWidth;
                 HScroll.SmallChange = View.CharWidthPx > 0 ? View.CharWidthPx : 8;
                 HScroll.LargeChange = viewportWidth;
                 HScroll.Value = View.HorizontalOffset;
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: after HScroll assignments");
             }
             finally
             {
                 syncingScroll = false;
+                if (logStages)
+                    LogDiagnostic("SyncScrollBars: finished and syncingScroll reset");
             }
         }
 
