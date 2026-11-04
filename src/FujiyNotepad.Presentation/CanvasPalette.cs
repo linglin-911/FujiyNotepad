@@ -22,7 +22,8 @@ namespace FujiyNotepad.Presentation
         uint Bookmark,
         uint Whitespace,
         uint TrailingWhitespace,
-        uint ControlChar);
+        uint ControlChar,
+        uint AnnotationMarker);
 
     /// <summary>
     /// Selects the text-surface palette. In normal use it returns a curated light or dark editor palette
@@ -48,7 +49,8 @@ namespace FujiyNotepad.Presentation
             Bookmark: 0xFF1A7FD6u,
             Whitespace: 0xD25A5A5Au,
             TrailingWhitespace: 0xEBD03030u,
-            ControlChar: 0xEBD03030u);
+            ControlChar: 0xEBD03030u,
+            AnnotationMarker: 0xFFC57A20u);
 
         // Curated dark palette.
         private static readonly CanvasColors DarkPalette = new(
@@ -63,7 +65,8 @@ namespace FujiyNotepad.Presentation
             Bookmark: 0xFF4FA3E3u,
             Whitespace: 0xCDC8C8C8u,
             TrailingWhitespace: 0xEBF06A6Au,
-            ControlChar: 0xEBF06A6Au);
+            ControlChar: 0xEBF06A6Au,
+            AnnotationMarker: 0xFFE0A45Cu);
 
         /// <summary>The curated light palette (exposed for tests).</summary>
         public static CanvasColors Light => LightPalette;
@@ -92,7 +95,8 @@ namespace FujiyNotepad.Presentation
                     Bookmark: highContrast.Hotlight,
                     Whitespace: highContrast.GrayText,
                     TrailingWhitespace: highContrast.Hotlight,
-                    ControlChar: highContrast.Hotlight);
+                    ControlChar: highContrast.Hotlight,
+                    AnnotationMarker: highContrast.Hotlight);
             }
 
             return isDark ? DarkPalette : LightPalette;
