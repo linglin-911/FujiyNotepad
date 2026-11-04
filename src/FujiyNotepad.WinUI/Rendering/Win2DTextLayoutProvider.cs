@@ -13,6 +13,7 @@ namespace FujiyNotepad.WinUI.Rendering;
 internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 {
     private const double MaxNativeLayoutDimension = 10_000_000;
+    private readonly Dictionary<(string FontFamily, float FontSize), float> spaceAdvanceCache = new();
 
     public ITextLayoutResult CreateLayout(string sourceText, TextLayoutOptions options)
     {
