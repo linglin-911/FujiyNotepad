@@ -34,6 +34,14 @@ namespace FujiyNotepad.Presentation.Tests
                     WordWrap = true,
                     ReadingMode = true,
                     HighlightSelectionOccurrences = false,
+                    Reader = new ReaderSettings
+                    {
+                        FontFamily = "SimSun",
+                        FontSizeDip = 20,
+                        LineSpacingMultiplier = 1.6,
+                        ContentWidthDip = 1024,
+                        Theme = "Warm",
+                    },
                 };
 
                 store.Save(saved);
@@ -56,6 +64,11 @@ namespace FujiyNotepad.Presentation.Tests
                 Assert.True(loaded.WordWrap);
                 Assert.True(loaded.ReadingMode);
                 Assert.False(loaded.HighlightSelectionOccurrences);
+                Assert.Equal("SimSun", loaded.Reader.FontFamily);
+                Assert.Equal(20, loaded.Reader.FontSizeDip);
+                Assert.Equal(1.6, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(1024, loaded.Reader.ContentWidthDip);
+                Assert.Equal("Warm", loaded.Reader.Theme);
             }
             finally
             {
@@ -77,6 +90,108 @@ namespace FujiyNotepad.Presentation.Tests
             Assert.True(s.HighlightSelectionOccurrences); // selection-occurrence highlighting is on by default
             Assert.Equal("", s.LastSessionFilePath);
             Assert.Equal("", s.LastSessionProjectFolderPath);
+            Assert.Equal(ReaderSettings.DefaultFontFamily, s.Reader.FontFamily);
+            Assert.Equal(ReaderSettings.DefaultFontSizeDip, s.Reader.FontSizeDip);
+            Assert.Equal(ReaderSettings.DefaultLineSpacingMultiplier, s.Reader.LineSpacingMultiplier);
+            Assert.Equal(ReaderSettings.DefaultContentWidthDip, s.Reader.ContentWidthDip);
+            Assert.Equal(ReaderSettings.DefaultTheme, s.Reader.Theme);
+        }
+
+        [Fact]
+        public void Load_LegacyTextViewSettings_MigratesToReaderSettingsAndPersists()
+        {
+            string path = TempPath();
+            File.WriteAllText(path, """
+                {
+                  "FontFamily": "Cascadia Code",
+                  "FontSize": 22,
+                  "Theme": "Dark"
+                }
+                """);
+            try
+            {
+                var store = new SettingsStore(path);
+
+                AppSettings loaded = store.Load();
+
+                Assert.Equal("Cascadia Code", loaded.Reader.FontFamily);
+                Assert.Equal(22, loaded.Reader.FontSizeDip);
+                Assert.Equal(ReaderSettings.DefaultLineSpacingMultiplier, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(ReaderSettings.DefaultContentWidthDip, loaded.Reader.ContentWidthDip);
+                Assert.Equal(ReaderSettings.DefaultTheme, loaded.Reader.Theme);
+                Assert.Equal("Dark", loaded.Theme);
+
+                using JsonDocument migrated = JsonDocument.Parse(File.ReadAllText(path));
+                Assert.Equal(JsonValueKind.Object, migrated.RootElement.GetProperty("Reader").ValueKind);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Load_ExplicitReaderSettings_TakePrecedenceOverLegacyFontValues()
+        {
+            string path = TempPath();
+            File.WriteAllText(path, """
+                {
+                  "FontFamily": "Courier New",
+                  "FontSize": 12,
+                  "Reader": {
+                    "FontFamily": "Microsoft YaHei",
+                    "FontSizeDip": 19,
+                    "LineSpacingMultiplier": 1.5,
+                    "ContentWidthDip": 1100,
+                    "Theme": "Night"
+                  }
+                }
+                """);
+            try
+            {
+                AppSettings loaded = new SettingsStore(path).Load();
+
+                Assert.Equal("Microsoft YaHei", loaded.Reader.FontFamily);
+                Assert.Equal(19, loaded.Reader.FontSizeDip);
+                Assert.Equal(1.5, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(1100, loaded.Reader.ContentWidthDip);
+                Assert.Equal("Night", loaded.Reader.Theme);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Load_InvalidReaderSettings_NormalizesEachFieldToSafeDefaults()
+        {
+            string path = TempPath();
+            File.WriteAllText(path, """
+                {
+                  "Reader": {
+                    "FontFamily": " ",
+                    "FontSizeDip": 1000,
+                    "LineSpacingMultiplier": 0,
+                    "ContentWidthDip": -50,
+                    "Theme": "FollowApp"
+                  }
+                }
+                """);
+            try
+            {
+                AppSettings loaded = new SettingsStore(path).Load();
+
+                Assert.Equal(ReaderSettings.DefaultFontFamily, loaded.Reader.FontFamily);
+                Assert.Equal(ReaderSettings.DefaultFontSizeDip, loaded.Reader.FontSizeDip);
+                Assert.Equal(ReaderSettings.DefaultLineSpacingMultiplier, loaded.Reader.LineSpacingMultiplier);
+                Assert.Equal(ReaderSettings.DefaultContentWidthDip, loaded.Reader.ContentWidthDip);
+                Assert.Equal(ReaderSettings.DefaultTheme, loaded.Reader.Theme);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
         }
 
         [Fact]
