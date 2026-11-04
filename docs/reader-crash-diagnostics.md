@@ -53,7 +53,7 @@ Log path:
 
 The 22:45 log confirms that the line-count update reached `TextLayoutEngine.UpdateTotalLines` and entered `OnReaderViewChanged`, then stopped in the former scrollbar-sync path while reading `View.FullyVisibleLineCount`. The reader ScrollBar controls and that synchronization path have since been removed. Build and run the latest branch to test this change before pursuing native dumps.
 
-Before changing rendering code, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
+Before making further rendering changes, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
 
 ```powershell
 git status --short --branch
