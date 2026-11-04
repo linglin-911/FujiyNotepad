@@ -568,6 +568,9 @@ public sealed partial class TextLayoutEngine
         TextLayoutHitTestResult pointerHit = layout.HitTest(localX, localY);
         int nearestCaret = Math.Clamp(pointerHit.CaretIndex, 0, layout.SourceText.Length);
 
+        int intersectStart = 0;
+        int intersectEnd = layout.SourceText.Length;
+        bool foundRectangle = false;
         int fallbackColumn = -1;
         int fallbackDistance = int.MaxValue;
         foreach (TextAnnotationMarker marker in markers)
@@ -594,14 +597,12 @@ public sealed partial class TextLayoutEngine
                     continue;
                 }
 
+                foundRectangle = true;
+                intersectStart = Math.Max(intersectStart, start);
+                intersectEnd = Math.Min(intersectEnd, end);
+
                 int lastCaret = Math.Max(start, layout.GetPreviousCaretIndex(end));
                 int candidateColumn = Math.Clamp(nearestCaret, start, lastCaret);
-                if (nearestCaret >= start && nearestCaret < end)
-                {
-                    position = new TextPosition(hitRow.LineIndex, nearestCaret);
-                    return true;
-                }
-
                 int distance = Math.Abs(candidateColumn - nearestCaret);
                 if (distance < fallbackDistance)
                 {
@@ -609,6 +610,21 @@ public sealed partial class TextLayoutEngine
                     fallbackColumn = candidateColumn;
                 }
             }
+        }
+
+        if (!foundRectangle)
+            return false;
+
+        // If the pointer is inside multiple overlapping marker rectangles, prefer a source offset in
+        // their common range so the host can reveal all of the overlapping annotations in one click.
+        if (intersectEnd > intersectStart)
+        {
+            int lastCommonCaret = Math.Max(
+                intersectStart, layout.GetPreviousCaretIndex(intersectEnd));
+            position = new TextPosition(
+                hitRow.LineIndex,
+                Math.Clamp(nearestCaret, intersectStart, lastCommonCaret));
+            return true;
         }
 
         if (fallbackColumn < 0)
