@@ -11,7 +11,7 @@ The latest user-provided `crash.log` records:
 - Background indexing completed at 382,033 lines and reported 100% progress.
 - The log ends immediately after the final indexing progress entries.
 
-There is no `TextCanvas` first-content-draw entry, `IndexRefreshTimer` completion entry, managed exception, `MainWindow Closed`, or `ProcessExit` entry. This does not identify the cause. It narrows the next investigation to the first UI index-refresh tick, the first Win2D draw, or a process/native failure that bypasses managed handlers.
+The log contains no managed exception, `MainWindow Closed`, or `ProcessExit` entry. It also has no `TextCanvas` first-content-draw or `IndexRefreshTimer` milestone entries, but this log was generated before those milestone logs were added to the application. Their absence is therefore not evidence that the corresponding events did not fire. The log confirms the last recorded startup milestones but does not identify the exact failure point.
 
 ## Temporary application diagnostics
 
@@ -27,6 +27,30 @@ Log path:
 ```text
 %LOCALAPPDATA%\FujiyNotepad\crash.log
 ```
+
+## Rebuild and interpret the next diagnostic run
+
+The first-Draw and first-IndexRefreshTimer milestone logging was added after the user's 21:48 log. It is present on `feature/reader-proportional-font-layout`, but has not yet been confirmed by a user-side build/run.
+
+Before changing rendering code, build and launch the latest branch:
+
+```powershell
+git status --short --branch
+git switch feature/reader-proportional-font-layout
+git pull --ff-only origin feature/reader-proportional-font-layout
+dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64
+```
+
+Reproduce the blank-screen exit once, then inspect the new `crash.log`.
+
+Interpret the last milestone as follows:
+
+- `IndexRefreshTimer: first tick entered` but no `after View.UpdateTotalLines`: inspect the reader engine's line-count update path.
+- `after View.UpdateTotalLines` but no `after RefreshMarkerMargin`: inspect marker-margin invalidation/drawing.
+- The first timer tick completes but no `TextCanvas: first Draw event entered`: inspect CanvasControl lifecycle, visibility and the reader visual tree.
+- A first Draw entry exists but the content-draw milestones stop: inspect the exact last stage (metrics, viewport sync, `GetVisibleLines`, or drawing).
+- A `TextCanvas.OnDraw: FAILED` entry with a managed stack trace identifies a managed drawing failure.
+- If the process still exits without an exception or ProcessExit entry, use Windows Error Reporting LocalDumps below; do not assume Win2D is the cause solely from a truncated log.
 
 ## Capture a Windows Error Reporting full dump
 
