@@ -421,6 +421,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 - 大批注数据层：新增独立大批注主体表、分类表和 ChapterId 关联表；CRUD 与分类管理独立于小批注/章节批注；创建或调整章节范围时在事务内验证至少两个连续活动章节。
 - 大批注参考资料查询：按所选章节读取小批注锚点和章节批注；同一小批注跨多个所选章节时只返回一条记录，同时返回全部匹配位置；分类和搜索在数据库查询阶段完成。
 - 大批注 UI：大批注管理列表、新建/编辑/删除、分类管理、连续章节范围选择；左右分栏写作工作区，左侧按章节分组并支持展开/折叠、完整内容查看、分类筛选、搜索、原文/章节跳转，右侧编辑标题/分类/正文；分隔条可拖动调整宽度。用户已完成基本功能测试并确认通过；完整回归和最终视觉统一暂缓至整体界面优化阶段后期。
+- Phase 4.1：新增全局 ReaderSettings 嵌套模型及参数归一化；SettingsStore 支持旧 settings.json 的 FontFamily/FontSize 迁移并持久化；现有字体菜单/Zoom 快捷操作已改为以 ReaderSettings 为主数据，同时同步旧字段兼容旧版本。新增设置往返、默认值、旧 JSON 迁移、显式 Reader 优先级和非法值归一化测试。尚未完成本地 x64 构建/测试，且尚未接入独立阅读调色板、行距、正文宽度和设置窗口。
 
 - `DocumentTextOffsetMap`：行列与全文 UTF-16 偏移转换，支持 LF/CRLF 和稀疏检查点。
 - 小批注、分类、原文锚点的 SQLite 表和基础 CRUD。
@@ -535,6 +536,7 @@ Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presen
 
 | 日期 | 变更 |
 |---|---|
+| 2026-11-05 | Phase 4.1 首轮实现：新增全局 ReaderSettings（字体、DIP 字号、行距倍数、正文宽度、Paper/Warm/Night 主题）及独立参数归一化；AppSettings 增加嵌套 Reader；SettingsStore 检测旧 JSON 并将旧文本视图 FontFamily/FontSize 迁移至 Reader，归一化后持久化；MainWindow 启动与现有字体/Zoom 快捷操作改为以 ReaderSettings 为主数据，同时同步旧字段兼容。新增 Reader 往返、默认值、旧 JSON 迁移、显式 Reader 优先级和非法值测试。代码提交：`e2fcfb5955c99d15140fab41d1448868b7561b11`、`0f677049f64ac22d31a3f710be9099d158a179fa`、`75461d04287cfbbcc0ed9c9cb02ccd3843799bea`、`6cdc6948b5787450c8d7283661afc5e1248e0597`、`c0cc5f4eb0dab7f6123e0947d6f3644f55835a78`、`0fcc5853c1d69422b16e3053344e780c22638689`。文档提交：`d448360f6b33d19d2810d6b6b84bd0246ebc6e4b`、`54e3e13c469dba2b727e7608d4847c62e942e81b`、`e531611353bdfbfedb8b4599f74da39c8640d46a`。当前无 .NET SDK/Windows App SDK 执行环境，尚未运行构建和测试，不宣称通过。 |
 | 2026-11-05 | 用户确认比例阅读器文字重叠问题已在独立分支 `fix/reader-proportional-line-overlap` 修复；检查实际代码后，确定 Phase 4 必须使用全局嵌套 `ReaderSettings`，与主界面外观完全隔离：全局 settings.json 持久化、独立 ReaderPalette、Reader-only 字体/字号/行距/正文宽度/主题、旧设置 JSON 兼容迁移、全宽背景+居中正文容器；主界面不新增字体/字号/背景设置。创建 `feature/reader-settings-phase4`，基于已修复的 Phase 3 分支；架构同步至 `reader-text-layout-architecture.md` 和本需求文档。代码实现尚未开始。 |
 | 2026-11-04 | 整体界面优化阶段首次仓库盘点：以 `feature/reader-proportional-font-layout` 为基准，核对远程分支、主窗口布局、阅读器和三种批注代码；新增功能归属、未完整验收、待改造、未开发及暂缓清单。对照上游基线纠正“阅读模式”的功能归属；更新大批注基本验收状态；明确外部编辑当前仅支持带标记副本导出与标记校验；修正 21:48 日志早于首次 Draw/IndexRefreshTimer 诊断埋点的时间关系。审查基准 HEAD：`c854b8b0946580cb80edd8b7669bc48af1293443`。 |
 | 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 同时新增启动诊断日志：记录 App/Window 生命周期、项目恢复、文件打开、索引进度、首次内容绘制、未观察任务异常及 ProcessExit；TextCanvas.OnDraw 托管异常会记录后重新抛出。用户此前在诊断代码加入前确认 975/975 测试通过；本轮诊断代码及新增日志测试尚待本地编译和运行验证。 |
@@ -856,12 +858,14 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 #### 13.9.4 开发分片与验收
 
-1. 4.1：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；不改变可见 UI。
+1. 4.1（代码已提交，待构建/测试）：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；现有字体/Zoom 快捷操作已以 ReaderSettings 为主数据，不改变可见 UI。
 2. 4.2：接通比例布局字体/字号/行距，新增独立 ReaderPalette，排版变化时恢复原文视口锚点。
 3. 4.3：增加全宽阅读背景视口和居中最大宽度正文容器，保持标记刻度对齐。
 4. 4.4：增加统一阅读设置窗口，完成系统字体选择、控件、应用/取消和持久化。
 5. 4.5：显式 x64 构建、Core/Presentation 测试及 Windows 冒烟测试，覆盖设置即时应用、项目切换、重启持久化、批注显示和 70MB 以上小说。
 
 **禁止事项：** 不增加主界面字体/字号/背景设置；不让阅读主题驱动应用主题；不新增项目级阅读设置；不改 SQLite/锚点模型；不因修改设置而全文同步重排；Phase 4 不顺便重做主窗口整体视觉风格。
+
+4.1 已提交代码：ReaderSettings.cs、AppSettings.cs、SettingsStore.cs、MainWindow.xaml.cs、SettingsStoreTests.cs。用户尚未运行本轮新增测试或 x64 构建，不能标记为验收通过。
 
 详细架构见 `docs/reader-text-layout-architecture.md` 的“Phase 4 — global reader settings architecture”。
