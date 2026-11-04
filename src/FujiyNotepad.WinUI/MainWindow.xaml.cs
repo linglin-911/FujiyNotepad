@@ -1415,11 +1415,7 @@ namespace FujiyNotepad.WinUI
             syncingScroll = true;
             try
             {
-                // The scrollbar's value is expressed in original source-line indexes, not wrapped
-                // visual rows. A long source line can occupy several viewport rows, so using
-                // FullyVisibleLineCount here would mix two different units and distort the thumb size.
-                (int firstVisibleSourceLine, int lastVisibleSourceLine) = View.GetVisibleSourceLineRange();
-                int viewportLines = Math.Max(1, lastVisibleSourceLine - firstVisibleSourceLine + 1);
+                int viewportLines = View.FullyVisibleLineCount;
                 VScroll.Maximum = View.MaxFirstLine;
                 VScroll.ViewportSize = viewportLines;
                 VScroll.LargeChange = viewportLines;
