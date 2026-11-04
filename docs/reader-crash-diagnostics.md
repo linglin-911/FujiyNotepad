@@ -2,7 +2,7 @@
 
 ## Current reproduction (2026-11-04)
 
-Three user-provided runs are available: the original 21:48 run and the later 22:34 and 22:45 runs.
+Four user-provided runs are available: 21:48, 22:34, 22:45 and 23:01. The 23:01 run is the first one to reach actual proportional text layout and record a managed exception.
 
 ### 21:48 run
 
@@ -30,8 +30,20 @@ Three user-provided runs are available: the original 21:48 run and the later 22:
 
 This is strong evidence that the failure occurs during the scrollbar synchronization path while reading the viewport-line-count property, with a re-entrant `Ready` call. It does not prove whether the underlying trigger is the property getter, its nested metrics/viewport work, or an exception/termination elsewhere on that call stack. It does show that the failure occurs before either scrollbar receives a value assignment.
 
-The reader's visible vertical and horizontal ScrollBar controls, their synchronization method, event handlers, and associated layout row/column have now been removed. Mouse-wheel scrolling, programmatic navigation, saved view restoration, caret visibility, and the independent bookmark/find overview ruler remain. The next local run will test whether removing this synchronization path resolves startup.
+The reader's visible vertical and horizontal ScrollBar controls, their synchronization method, event handlers, and associated layout row/column were removed after this run. The later 23:01 run confirms that the line-count update and first content draw now proceed beyond this former path.
 
+### 23:01 run — first content-draw exception
+
+- MainWindow/XAML initialization, project restoration, 76,114,107-byte file open and indexing to 382,033 lines completed.
+- The first `IndexRefreshTimer` tick completed `View.UpdateTotalLines`, marker refresh and pending-navigation updates. `EnsureChapterIndex` also completed.
+- The first content draw entered `GetVisibleLines`; proportional layout creation reached `Win2DTextLayoutResult.BuildVisualLineMap`.
+- `Win2DTextLayoutProvider.cs:400` read `layout.LineMetrics`, which attempted to marshal a `CanvasLineMetrics[]`.
+- The runtime threw `System.NotSupportedException: Cannot handle array marshalling for non blittable type 'Microsoft.Graphics.Canvas.Text.CanvasLineMetrics'.`
+- `Application.UnhandledException` recorded the same exception and stack. This is a confirmed managed crash, not an unobserved native exit and not a scrollbar failure.
+
+The failing API is the Win2D `CanvasTextLayout.LineMetrics` array. `CanvasLineMetrics` includes an `IsTrimmed` Boolean field, making the struct non-blittable; the current CsWinRT projection rejects marshalling that array. The stack ends in `BuildVisualLineMap`, before any actual novel text is rendered.
+
+A code fix has been pushed: remove all use of `layout.LineMetrics`; use scalar `layout.LineCount` and `GetCaretPosition` (`Vector2`) calls to reconstruct visual-row source boundaries. It locates wrapped-row boundaries by binary search over grapheme boundaries and falls back to a full grapheme-boundary scan if the scalar row count is not recovered. Per-row height comes from adjacent caret Y positions; single/final-row height uses the layout bounds or previous row spacing. This change has not yet been built or runtime-tested by the user.
 ## Temporary application diagnostics
 
 The current diagnostic build records:
@@ -51,7 +63,7 @@ Log path:
 
 ## Rebuild and interpret the next diagnostic run
 
-The 22:45 log confirms that the line-count update reached `TextLayoutEngine.UpdateTotalLines` and entered `OnReaderViewChanged`, then stopped in the former scrollbar-sync path while reading `View.FullyVisibleLineCount`. The reader ScrollBar controls and that synchronization path have since been removed. Build and run the latest branch to test this change before pursuing native dumps.
+The 23:01 log confirms the scrollbar-removal change passed line-count update, marker refresh and chapter indexing. The actual crash is the `CanvasTextLayout.LineMetrics` array marshalling in `BuildVisualLineMap`. The latest code replaces that array with scalar line-count/caret-position queries. Build and test this new change before doing any more native-dump work; WER dumps are not needed for the already captured managed exception.
 
 Before making further rendering changes, build and launch the latest branch. First inspect the working tree; if it contains uncommitted changes, preserve them by committing or safely stashing before switching. Do not discard local work. If already on the target branch, the switch command can be skipped:
 
@@ -74,7 +86,7 @@ Interpret the last milestone as follows:
 - `after View.UpdateTotalLines` appears but no `after RefreshMarkerMargin`: inspect marker-margin invalidation/drawing.
 - The first timer tick completes but no `TextCanvas: first Draw event entered`: inspect CanvasControl lifecycle, visibility and the reader visual tree.
 - A first Draw entry exists but the content-draw milestones stop: inspect the exact last stage (metrics, viewport sync, `GetVisibleLines`, or drawing).
-- A `TextCanvas.OnDraw: FAILED` entry with a managed stack trace identifies a managed drawing failure.
+- A `TextCanvas.OnDraw: FAILED` entry with a managed stack trace identifies a managed drawing failure. In the 23:01 run, the stack identifies unsupported WinRT array marshalling for `CanvasLineMetrics[]` in `BuildVisualLineMap`; the latest fix removes this array access.
 - If the process still exits without an exception or ProcessExit entry, use Windows Error Reporting LocalDumps below; do not assume Win2D is the cause solely from a truncated log.
 
 ## Capture a Windows Error Reporting full dump
