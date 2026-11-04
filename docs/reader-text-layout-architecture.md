@@ -1,15 +1,16 @@
 # Reader proportional-font text layout architecture
 
-Status: Phase 1 accepted; Phase 2 Win2D/DirectWrite provider implemented and awaiting local validation on
-feature/reader-proportional-font-layout. The existing renderer remains active until the new backend
-is integrated and verified.
+Status: Phase 1 and Phase 2 accepted by local build/test; Phase 3 engine and TextCanvas integration code is in place and awaiting local validation on
+feature/reader-proportional-font-layout.
 
 ## Current implementation status (2026-11-04)
 
-- **Phase 1 — accepted:** the user completed a Release x64 solution build and the Presentation test project passed all 501 tests (0 failed, 0 skipped).
-- **Phase 2 — backend code implemented, local validation pending:** the WinUI layer now contains a Win2D/DirectWrite provider. It uses real font shaping and line metrics, measured space advances for tab stops, native hit-testing/caret positions, character-region geometry and trailing-whitespace advances. UTF-16 indexes are normalized to Unicode text-element boundaries.
-- The Phase 2 provider is not yet wired into TextCanvas or TextLayoutEngine. The current reader therefore keeps its existing visual behaviour; no claim of end-to-end proportional-font support is made yet.
-- The new provider rejects embedded CR/LF because its contract is one logical source line. The existing LineProvider remains responsible for separating line terminators.
+- **Phase 1 — accepted:** Release x64 solution build succeeded and all 501 original Presentation tests passed.
+- **Phase 2 — accepted:** the user rebuilt the full Release x64 solution after the DirectWrite provider was added; Presentation.Tests passed 508/508 (0 failed, 0 skipped).
+- **Phase 3 — integration code implemented, local validation pending:** TextLayoutEngine now has a source-indexed proportional path for visual-row generation, wrapping, caret movement, horizontal/vertical scrolling, hit testing, selection ranges, find highlights and persistent rule highlights. TextCanvas draws each complete source-line layout once and uses layout-derived geometry for selection, annotation underlines, whitespace markers and the caret. The previous fixed-cell path remains in the engine as a fallback.
+- The reader currently uses the proportional backend with its existing default font family (Consolas). User-facing font family selection, persisted font/size/line-spacing/content-width settings and reading themes remain Phase 4 work.
+- Phase 3 has not yet been accepted: the new engine/rendering integration must first pass the user's local Release x64 build/tests and a real-reader visual/interaction check.
+- The provider rejects embedded CR/LF because its contract is one logical source line. The existing LineProvider remains responsible for separating line terminators.
 
 ## Phase 2 backend details
 
