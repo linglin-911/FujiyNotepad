@@ -309,8 +309,7 @@ public sealed class ProportionalTextLayoutEngineTests
 
         VisibleLine lastRowOfFirstLine = Assert.Single(
             rows.Where(row => row.LineIndex == 0 && row.SourceEndIndex == 6));
-        VisibleLine firstRowOfNextLine = Assert.Single(
-            rows.Where(row => row.LineIndex == 1).Take(1));
+        VisibleLine firstRowOfNextLine = rows.First(row => row.LineIndex == 1);
 
         Assert.Equal(48, lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight);
         Assert.Equal(48, firstRowOfNextLine.Y);
@@ -417,8 +416,15 @@ public sealed class ProportionalTextLayoutEngineTests
         return engine;
     }
 
-    private sealed class FakeProportionalProvider(double additionalLayoutHeight = 0) : ITextLayoutProvider
+    private sealed class FakeProportionalProvider : ITextLayoutProvider
     {
+        private readonly double additionalLayoutHeight;
+
+        public FakeProportionalProvider(double additionalLayoutHeight = 0)
+        {
+            this.additionalLayoutHeight = additionalLayoutHeight;
+        }
+
         public List<FakeProportionalResult> Results { get; } = new();
 
         public ITextLayoutResult CreateLayout(string sourceText, TextLayoutOptions options)
