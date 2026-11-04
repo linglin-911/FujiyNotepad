@@ -311,8 +311,10 @@ public sealed class ProportionalTextLayoutEngineTests
             rows.Where(row => row.LineIndex == 0 && row.SourceEndIndex == 6));
         VisibleLine firstRowOfNextLine = rows.First(row => row.LineIndex == 1);
 
-        Assert.Equal(48d, lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight);
-        Assert.Equal(48d, firstRowOfNextLine.Y);
+        Assert.Equal(28d, lastRowOfFirstLine.LayoutRowHeight);
+        Assert.Equal(
+            lastRowOfFirstLine.Y + lastRowOfFirstLine.LayoutRowHeight,
+            firstRowOfNextLine.Y);
     }
 
     [Fact]
