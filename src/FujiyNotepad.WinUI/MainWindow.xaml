@@ -168,6 +168,7 @@
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
                 <MenuFlyoutSubItem x:Uid="FontSubMenu" Text="Font">
+                    <RadioMenuFlyoutItem x:Name="FontMicrosoftYaHei" Text="Microsoft YaHei" GroupName="Font" Tag="Microsoft YaHei" Click="Font_Click" />
                     <RadioMenuFlyoutItem x:Name="FontConsolas" Text="Consolas" GroupName="Font" Tag="Consolas" Click="Font_Click" />
                     <RadioMenuFlyoutItem x:Name="FontCascadiaMono" Text="Cascadia Mono" GroupName="Font" Tag="Cascadia Mono" Click="Font_Click" />
                     <RadioMenuFlyoutItem x:Name="FontCascadiaCode" Text="Cascadia Code" GroupName="Font" Tag="Cascadia Code" Click="Font_Click" />
