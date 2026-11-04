@@ -40,8 +40,7 @@ The current diagnostic build records:
 - First content draw milestones before/after metrics, viewport synchronization and `GetVisibleLines`.
 - The first `IndexRefreshTimer_Tick`, with before/after markers around `View.UpdateTotalLines`, marker refresh and pending navigation.
 - The first `TextCanvas.UpdateTotalLines` call: before/after `Ready`, `ClearTextLayoutCache`, and `TextLayoutEngine.UpdateTotalLines`.
-- The `TextLayoutEngine.ViewChanged` and `RedrawRequested` callbacks while the first line-count update is active.
-- The `TextCanvas` line-count update, `ViewChanged` and `RedrawRequested` callbacks.
+- The `TextCanvas` `ViewChanged` and `RedrawRequested` callbacks while the first line-count update is active.
 - The existing managed exception and process-exit diagnostics remain enabled. The reader ScrollBar controls and synchronization path have been removed; annotation-marker refresh remains attached to `OnReaderViewChanged`.
 
 Log path:
