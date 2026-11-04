@@ -10,7 +10,7 @@ namespace FujiyNotepad.WinUI.Rendering;
 /// Win2D/DirectWrite implementation of the reader's proportional text-layout contract.
 /// Create, query and dispose instances on the UI thread. A result owns its native layout and text format.
 /// </summary>
-public sealed class Win2DTextLayoutProvider : ITextLayoutProvider
+internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 {
     private const double MaxNativeLayoutDimension = 10_000_000;
 
@@ -118,7 +118,7 @@ public sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 /// A source-index-preserving wrapper around one native CanvasTextLayout. It is intentionally separate from
 /// TextCanvas so the layout backend can be verified before the engine and reader rendering path are migrated.
 /// </summary>
-public sealed class Win2DTextLayoutResult : ITextLayoutResult
+internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 {
     private readonly CanvasTextLayout layout;
     private readonly CanvasTextFormat format;
@@ -148,7 +148,7 @@ public sealed class Win2DTextLayoutResult : ITextLayoutResult
     }
 
     /// <summary>The native layout used by the Win2D renderer. Valid until this result is disposed.</summary>
-    public CanvasTextLayout NativeLayout
+    internal CanvasTextLayout NativeLayout
     {
         get
         {
