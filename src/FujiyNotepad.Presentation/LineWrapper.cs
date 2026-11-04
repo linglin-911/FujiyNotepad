@@ -5,8 +5,8 @@ namespace FujiyNotepad.Presentation
     /// <summary>
     /// Legacy fixed-cell word wrapper (issue #31). It splits a source line by the display-column values in
     /// <see cref="LineColumns"/> and is retained while the current TextLayoutEngine is migrated.
-    /// It is not suitable for proportional-font measurement: the future ITextLayoutProvider must use the
-    /// active font's real shaping/layout result and return visual-row ranges in source UTF-16 coordinates.
+    /// It is not suitable for proportional-font measurement: the WinUI ITextLayoutProvider implementation
+    /// uses the active font's real shaping/layout result and returns visual-row ranges in source UTF-16 coordinates.
     ///
     /// This helper remains pure and device-free so the old monospace path and its tests stay available during migration.
     /// </summary>
