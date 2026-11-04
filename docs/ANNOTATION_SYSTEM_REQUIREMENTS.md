@@ -6,9 +6,9 @@
 > 当前仓库：`linglin-911/FujiyNotepad`
 > 当前开发分支：`feature/reader-proportional-font-layout`（比例字体阅读器改造分支）
 > 批注功能基线分支：`feature/novel-project-annotations`
-> 最新功能代码提交：`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`（Win2D `CanvasLineMetrics[]` 封送异常修复；其后仅追加需求/诊断/架构文档记录；待用户本地验收）
-> 最新诊断代码提交：`c08f1f9317451c2d0e85bc928ed21413098c0417`；新增诊断尚未经过用户本地编译和复测。
-> 最新无滚动条改造提交：`01dd4fb5f0fdcb864bd7d2612781924e9c3dd318`、`ae2d29702a9bd5820ee08c70ff1ebf2da3461f5d`、`a61b8514aac7233970f3d50ac469d1d0e46a81f1`、`fecf60405a3aaeec228b87c6b41f5cb4aa79dc59`；遗漏调用修复：`b6fb8798a1a515099823d277eba91c3ff909db88`；待用户本地重新构建复测。
+> 本轮交接前分支 HEAD：`294bc3cd2f749f9392575ebcad77c4bffa060a2a`
+> 最新功能修复提交：`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`（移除 Win2D `CanvasLineMetrics[]` 封送异常路径，改用标量行数/光标位置查询和 grapheme 边界映射）
+> 用户最新运行反馈：更新后软件已能正常显示正文，不再闪退；首屏正文绘制链路已通过基本运行验证。Phase 3 的完整鼠标交互、批注定位和混排字体验收仍待完成。
 
 ## 1. 状态标记与维护规则
 
@@ -26,6 +26,31 @@
 4. 功能完成后，只有在构建、自动化测试或用户实际验收达到对应要求后，才能将状态改为“已完成”。仅提交代码不能视为已验收。
 5. 每次交接时更新“当前进度”“已知问题”“下一步”，并记录最新提交。
 6. 不得为了实现一种批注而将三种批注合并成同一种实体，也不得擅自修改已经正常工作的阅读器功能。
+
+### 1.1 新功能的整体架构文档要求（强制）
+
+本项目不能只记录“增加了某按钮/某功能”或“代码已完成”。每次开发新功能、扩展现有功能或改变跨模块行为，都必须把**整体开发框架和设计思路**同步写入本需求文档，保证新对话或新开发者不依赖聊天记录也能理解原有方案。
+
+每项中型及以上功能，至少记录以下内容；简单局部修复可按实际情况精简，但必须说明它属于哪个既有模块、调用哪个既有接口：
+
+1. **目标与边界：**要解决什么问题、用户如何使用、包含什么、不包含什么。
+2. **现有架构与复用关系：**改动前的模块结构、所在层、已有服务/接口，以及为什么复用它们；明确禁止另起一套重复系统的部分。
+3. **整体模块划分：**各层/各类/各组件的职责、所有权、依赖方向和关键代码文件。
+4. **核心数据模型：**数据实体、字段含义、持久化位置、主外键/关联关系、生命周期；若不改变数据结构，也要明确写出沿用什么结构、为什么不改。
+5. **关键数据流与调用流程：**从用户操作入口开始，经过哪些 UI、控制器/引擎、服务、Repository/数据库或渲染层，最后如何反馈到界面；必要时用时序图或流程图。
+6. **接口与坐标/状态契约：**跨层参数、返回值、索引/坐标语义、事件、线程要求、资源释放规则，以及与现有模块的契约。
+7. **交互和状态管理：**入口、成功/失败、加载/空状态、编辑/只读、取消、项目切换、异步重入等行为。
+8. **性能、兼容和安全约束：**大文件内存策略、缓存边界、数据库迁移、旧项目兼容、并发/线程、错误恢复等。
+9. **设计决策与非目标：**重要方案选择、未选方案及原因、暂缓项、不得破坏的既有行为。
+10. **测试和验收：**自动化测试覆盖什么、构建命令、用户冒烟测试路径、已知缺口，以及“代码已实现/自动化测试通过/用户已验收”的分别状态。
+
+执行流程：
+
+- **开发前：**先检查当前分支最新代码和本文档，梳理现有调用链；先把拟采用的架构、模块职责、数据流和数据契约写入本文档，再开始实现。涉及数据模型、核心接口、跨模块依赖或整体交互方式的变更，必须先与用户讨论确认。
+- **开发中：**若实际实现与原设计不同，立即修正文档，不保留已经失效的架构描述。
+- **开发后：**同步更新实际代码位置、真实调用流程、数据结构、状态、测试结果、用户验收情况、已知问题和后续步骤；在版本记录中记录提交 SHA。
+- **文档组织：**复杂功能可以另建 `docs/<feature>-architecture.md` 记录详细设计，但本需求文档必须保留该功能的架构摘要、关键约束、状态和详细文档链接。不能只把架构放在聊天记录、交接提示词或独立文档而不在需求文档中建立入口。
+- **交接前：**确认需求文档中的当前架构与最新代码一致，清理已过时的“待验收/未实现”描述，保留历史记录但明确标为历史状态。交接提示词必须以需求文档为准并指出最新分支、HEAD、功能提交和下一步。
 
 ## 2. 产品目标与总体原则
 
@@ -514,7 +539,8 @@ Phase 2 已由用户本地验收：Release x64 解决方案构建成功，Presen
 | 2026-11-04 | 修正比例布局编译错误及鼠标交互：右键章节批注使用最近原文插入位置，小批注左键按原文选择矩形命中，覆盖矩形内空白、软换行及交叠批注；新增比例布局测试。随后拆分行数更新与同数量原文刷新：索引轮询遇到相同行数不再清理缓存或触发 ViewChanged；文件跟随模式实际刷新原文源时调用独立 RefreshSourceContent。根据用户最新测试结果，修正旧测试，使其分别验证 UpdateTotalLines 不清缓存、RefreshSourceContent 清缓存。针对旧 crash.log 中的 ToggleSwitch.IsOn XAML 初始化异常，移除 XAML 初始值，改在 InitializeComponent 完成后设置；OnLaunched 增加同步启动异常日志并继续抛出。以上修改待用户本地 Release x64 构建、测试和启动复测；Phase 3 尚未验收。 同时新增启动诊断日志：记录 App/Window 生命周期、项目恢复、文件打开、索引进度、首次内容绘制、未观察任务异常及 ProcessExit；TextCanvas.OnDraw 托管异常会记录后重新抛出。用户此前在诊断代码加入前确认 975/975 测试通过；本轮诊断代码及新增日志测试尚待本地编译和运行验证。 |
 | 2026-11-04 | 根据用户 22:34 新日志，首次空 Canvas Draw 已成功获取 DrawingSession 并清除背景；76MB 文件索引至 382,033 行；IndexRefreshTimer 首次 Tick 进入后，最后记录停在 `before View.UpdateTotalLines`，未记录首次内容绘制、托管异常、窗口关闭或 ProcessExit。新增 TextCanvas.UpdateTotalLines 的 Ready/缓存清理/引擎更新阶段日志、ViewChanged/RedrawRequested 回调日志、OnReaderViewChanged 和 SyncScrollBars 逐项日志（代码提交 `41d6e65cdd0ed72e3758d075b6238acd704de675`、`c08f1f9317451c2d0e85bc928ed21413098c0417`）。该修改仅增加诊断，不改变功能逻辑，尚待用户 Release x64 构建和复测。 |
 | 2026-11-04 | 根据用户 22:45 新日志，`TextCanvas.UpdateTotalLines` 已完成 Ready 与缓存清理并进入引擎行数更新；`ViewChanged` 回调进入 `OnReaderViewChanged` 后，最后停在原 `SyncScrollBars` 读取 `View.FullyVisibleLineCount` 附近，期间出现嵌套 `Ready`，未记录任何 ScrollBar 属性赋值。按用户确认，移除阅读区水平/垂直 ScrollBar 控件、同步方法、滚动事件处理、专用布局行列及仅供同步使用的 TextCanvas 视口属性；保留鼠标滚轮、目录/批注跳转、程序化滚动、视图恢复、光标自动可见和独立书签/查找标记刻度。随后用户首次编译发现 `MainWindow.SmallAnnotations.cs` 仍有两处 `SyncScrollBars()` 调用，已删除这两个残留调用（提交 `b6fb8798a1a515099823d277eba91c3ff909db88`）；GitHub 全仓代码搜索确认不再存在 `SyncScrollBars` 引用。截图中的 `WMC1509` 与 `TextCanvas` 未知类型发生在这两处 C# 编译错误同时存在时，需在修复后重新构建确认是否为级联错误。该版本随后已由用户成功编译。23:01 新日志证明滚动条同步不是最终根因，真正异常为 `CanvasLineMetrics[]` 非 blittable 数组封送失败；最新代码改为标量 `LineCount`/`GetCaretPosition` 和 grapheme 边界查找，待用户本地构建、测试和运行复测。 |
-| 2026-11-04 | 根据用户上传的 `crash(5).log`（23:01 运行），确认索引、`View.UpdateTotalLines`、标记刷新和章节索引均已完成；首次比例布局在 `Win2DTextLayoutResult.BuildVisualLineMap` 访问 `CanvasTextLayout.LineMetrics` 时抛出 `NotSupportedException`：当前 CsWinRT 无法封送含 Boolean 字段的非 blittable `CanvasLineMetrics[]`。修复为使用标量 `layout.LineCount` 与 `GetCaretPosition` 重建视觉行起点，按 grapheme 边界二分查找并在行数不匹配时全量扫描；增加 `SnapToBoundaryAtOrAfter` 及 Unicode 边界测试。代码提交：`a202bfd60787849e68463148123ed8b6e3724bbf`、`bd27f53173bf57bd6edf8de59aea17d3b4d04224`、`f87018efb0fcd0bbdb9de58632b7303fa1302727`、`4878b5aac3ad849542e617bad42e40902d789228`、`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`。尚未经过用户本地构建、测试和运行验收。 |
+| 2026-11-04 | 根据用户上传的 `crash(5).log`（23:01 运行），确认索引、`View.UpdateTotalLines`、标记刷新和章节索引均已完成；首次比例布局在 `Win2DTextLayoutResult.BuildVisualLineMap` 访问 `CanvasTextLayout.LineMetrics` 时抛出 `NotSupportedException`：当前 CsWinRT 无法封送含 Boolean 字段的非 blittable `CanvasLineMetrics[]`。修复为使用标量 `layout.LineCount` 与 `GetCaretPosition` 重建视觉行起点，按 grapheme 边界二分查找并在行数不匹配时全量扫描；增加 `SnapToBoundaryAtOrAfter` 及 Unicode 边界测试。代码提交：`a202bfd60787849e68463148123ed8b6e3724bbf`、`bd27f53173bf57bd6edf8de59aea17d3b4d04224`、`f87018efb0fcd0bbdb9de58632b7303fa1302727`、`4878b5aac3ad849542e617bad42e40902d789228`、`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`。用户随后确认更新后的软件已能正常显示正文、不再闪退；首屏正文绘制已通过基本运行验证，新增边界测试和完整交互验收仍待确认。 | |
+| 2026-11-04 | 用户确认比例字体渲染修复后，软件已能正常显示正文且不再闪退。更新本需求文档：将 Phase 3 状态改为“首屏正文绘制已通过、完整交互待验收”；新增每项功能必须先写整体架构、模块职责、数据模型、数据流、接口契约、交互状态、性能兼容和验收方案，再实施并同步维护文档的强制流程。 |
 | 2026-11-04 | Phase 1 用户本地验收通过（Release x64、Presentation.Tests 501/501）；Phase 2 用户本地验收通过（Release x64、Presentation.Tests 508/508）。随后完成 Phase 3 比例布局引擎与 TextCanvas 接入：真实视觉行、命中/光标/导航、滚动、选区与高亮、批注标记和空白标记统一使用原文 UTF-16 布局坐标；新增 23 项引擎集成测试，并补充滚动范围、缓存失效、软换行绘制顺序、鼠标选区测试，以及按实际可视原文行范围刷新小批注标记。Phase 3 尚待用户本地 Release x64 构建、测试及真实阅读器视觉/交互验收，不能视为已验收。未修改 SQLite 批注结构、全文 UTF-16 偏移映射或大文件按需读取架构。 |
 | 2026-11-03 | 第一阶段底层实现已推送（`0d20a053668389d1b0e51dfdf3f827537f967668`，后续兼容性补充 `3bea79ad3d7fb05caa6e39151840224f50bfef3f`），待 Windows 构建/测试：NovelChapter 新增 BodyStartOffset、BodySha256；章节索引器在单次逐行扫描中增量计算正文 SHA-256，统一换行符为 LF；章节对比增加正文变化列表；SQLite Chapters 增加两列及旧项目增量迁移；打开项目时检测完整原文 SHA-256 是否与 project.json 一致，发现外部修改后提示重新识别，确认后提升文档版本并更新文件指纹。未拆分原文文件，未改阅读器滚动/渲染模型。 |
 | 2026-11-03 | 用户确认存储与阅读器架构：项目始终保留一个完整原文 TXT 副本，Chapters 仅在 SQLite 中逻辑划分；阅读器保持全文连续滚动和统一数据源，不创建逐章独立文本控件。用户同意跨章节连续选区不自动拆分，拒绝保存并提示分别选择；同一条小批注可通过多个独立锚点关联多个章节。 |
@@ -622,24 +648,27 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 |---|---|---|
 | Phase 1 | 布局接口、UTF-16 坐标约定、契约测试、旧路径标记 | 用户验收通过：Release x64 编译成功，501/501 测试通过 |
 | Phase 2 | Win2D/DirectWrite 比例字体布局后端 | 用户验收通过：Release x64 编译成功，Presentation.Tests 508/508 通过；后续已接入 Phase 3 |
-| Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；用户本地 975/975 测试通过，但启动后阅读区域空白并在约十余秒后退出，真实运行验收未通过；新增启动/索引/绘制诊断日志，待复测 |
+| Phase 3 | TextLayoutEngine 换行、导航、命中和渲染模型迁移 | 已接入 TextCanvas；原有 975/975 测试通过。修复 Win2D 行指标数组封送异常后，用户已确认软件正常显示正文且不再闪退，首屏正文绘制冒烟测试通过；最终新增 grapheme 边界测试的执行结果未单独确认，鼠标/批注/混排等交互冒烟测试仍待完成 |
 | Phase 4 | 阅读字体、字号、行距、正文宽度和主题设置 | 未开始 |
 | Phase 5 | 有界缓存、长行性能验证和旧代码清理 | 未开始 |
 
-当前不将普通中文比例字体的端到端阅读支持、独立行距或正文宽度设置标记为已完成；Phase 2 后端完成不等于 TextCanvas 已切换。
+当前已确认比例布局能够完成首次正文绘制并正常显示，但尚未完成普通中文比例字体/中英文混排、连续滚轮、目录跳转、选区、光标、小批注矩形命中和章节批注右键定位等 Phase 3 交互验收。阅读器专用字体、字号、独立行距、正文宽度和阅读主题设置仍属于 Phase 4，不能因为原项目已有字体切换或 Zoom 就标记为完成。
 
-### 12.7 启动与渲染诊断日志
+### 12.7 启动与渲染诊断日志及已解决故障
 
-- 统一写入 `%LOCALAPPDATA%\\FujiyNotepad\\crash.log`，每条记录带本地时间戳。
-- 除未处理异常外，记录 App 启动、MainWindow 构造与 Loaded、最近项目恢复、文件打开、行索引进度、章节索引启动、阅读画布首次 Draw/首次内容绘制和 ProcessExit。
-- `TextCanvas.OnDraw` 的托管异常记录完整堆栈后重新抛出；索引任务异常和启动异步任务异常也会留下记录。
-- 用户 2026-11-04 21:48 上传的 `crash(2).log` 显示：窗口初始化与 RootGrid Loaded 成功；恢复项目并打开 76,114,107 字节的 `novel.txt`；LineProvider 成功挂接；索引完成 382,033 行并报告 100%。日志随后结束，没有记录托管异常、MainWindow Closed 或 ProcessExit。
-- 重要限制：这份日志生成于首次 Canvas Draw 和 IndexRefreshTimer 阶段日志加入之前，因此缺少这些日志项不能证明对应事件没有发生，也不能据此断定故障发生在索引完成后的哪一个具体步骤。
-- 该日志不能证明 Win2D 是故障根因；需要先用最新分支新增的一次性阶段日志定位，再决定是否需要 WER dump。
-- 最新代码已增加：TextCanvas 首次 Draw（包括 engine 行数为 0 时）记录；首次内容绘制在 EnsureMetrics、SyncViewport、GetVisibleLines 前后的阶段记录；IndexRefreshTimer 首次 Tick 在 View.UpdateTotalLines、RefreshMarkerMargin、待处理导航前后的阶段记录。
-- 若新日志仍无异常且没有 ProcessExit，按 `docs/reader-crash-diagnostics.md` 配置 Windows Error Reporting LocalDumps，获取 `FujiyNotepad.WinUI.exe` 的完整用户态 dump，并结合 Application Error / Windows Error Reporting 事件定位原生崩溃。
-- 最新诊断代码已推送到 `feature/reader-proportional-font-layout`：TextCanvas 首次 Draw/首次内容绘制阶段日志、IndexRefreshTimer 首次 Tick 阶段日志及 WER 诊断说明均已提交。审查基准 HEAD 为 `c854b8b0946580cb80edd8b7669bc48af1293443`；以上新增诊断代码尚未获得用户本地 Release x64 编译和复测结果。
+诊断日志位置：`%LOCALAPPDATA%\\FujiyNotepad\\crash.log`，每条记录带本地时间戳。
 
+诊断代码记录 App/MainWindow 生命周期、最近项目恢复、文件打开、行索引进度、章节索引、首次 Canvas Draw、首次内容绘制、IndexRefreshTimer、行数更新、未处理异常和 ProcessExit。`TextCanvas.OnDraw` 的托管异常会记录完整堆栈后重新抛出。
+
+**2026-11-04 首屏闪退的最终根因与处理：**
+
+- 用户的 23:01 日志证明：76,114,107 字节的 `novel.txt` 成功索引为 382,033 行；行数更新、标记刷新和章节索引均完成，崩溃发生在首次正文绘制。
+- 调用栈定位到 `Win2DTextLayoutResult.BuildVisualLineMap` 读取 `CanvasTextLayout.LineMetrics`。WinRT/CsWinRT 无法封送包含非 blittable 字段的 `CanvasLineMetrics[]`，抛出 `System.NotSupportedException`。
+- 功能修复提交：`4569dd9e65f2ee0c5d5c6b389d315827ea9ec5d1`。已移除 `layout.LineMetrics` 数组访问，改用标量 `layout.LineCount` 和 `GetCaretPosition()` 获取视觉行信息；通过 Unicode grapheme 边界二分查找软换行起点，必要时回退扫描；根据相邻行 caret Y 计算行距。
+- 用户最新确认：应用现在能够正常显示正文，不再闪退。因此本次已知首屏崩溃问题视为已解决，不再继续配置 WER dump 或重复排查旧调用栈。
+- 目前只有在未来再次出现新的闪退，且日志没有托管异常/ProcessExit 证据时，才按 `docs/reader-crash-diagnostics.md` 启用 WER LocalDumps。不要把历史诊断步骤当作当前待办。
+
+本次修复后的新 grapheme 边界测试是否全部执行通过，尚未收到独立测试结果；不得擅自补写测试通过数量。
 ## 13. 整体界面优化阶段：仓库盘点与功能归属
 
 本节依据 2026-11-04 对远程 GitHub 分支和实际代码的检查建立。功能归属以原始上游代码与本项目开发提交的差异为准；功能状态以代码、已有自动化测试和用户实际反馈分别标记，不因“代码存在”自动视为“已验收”。
@@ -721,8 +750,8 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - **大批注：**用户已完成基本功能测试并确认通过；整体视觉统一、所有边界场景和完整回归尚未完成。
 - **章节变化检测：**原文指纹、章节正文指纹和章节结构变化处理已有代码；项目重开后的 Windows UI 场景仍待验收。段落级差异定位不在当前范围。
 - **外部编辑：**带标记工作副本导出和标记完整性校验的 Core API 与 WinUI 菜单入口均已实现；目前只检查标记完整性，不生成完整差异预览、不自动应用编辑结果，也不提供恢复流程。
-- **比例字体 Phase 3：**此前 975/975 测试通过；用户 23:01 日志已定位真实崩溃为 Win2D `CanvasTextLayout.LineMetrics` 的 `CanvasLineMetrics[]` 非 blittable 数组封送异常。最新代码已移除该数组依赖，改用标量行数/光标位置构建视觉行；新增 grapheme 边界查找测试尚待运行。用户本地 Release x64 构建、完整测试、首次正文绘制及真实阅读交互仍待验收，不能将 Phase 3 标记为完成。
-- **诊断结论：**23:01 日志已记录 `TextCanvas.OnDraw: FAILED` 和 `Application.UnhandledException` 的完整托管堆栈，定位到 `Win2DTextLayoutProvider.cs` 的 `layout.LineMetrics`。当前不需要配置 WER dump；只有未来再次出现无托管异常/无 ProcessExit 的退出时才启用。
+- **比例字体 Phase 3：**此前 975/975 测试通过；23:01 的 `CanvasLineMetrics[]` 非 blittable 数组封送异常已通过标量 `LineCount`/`GetCaretPosition` 和 grapheme 边界映射修复。用户最新已确认软件能正常显示正文且不再闪退，首屏正文绘制运行冒烟通过；最终新增边界测试结果未单独确认，真实阅读交互仍待针对性冒烟验收。
+- **诊断结论：**23:01 日志中的 `CanvasTextLayout.LineMetrics` 封送异常已修复，用户已确认不再闪退。保留诊断日志作为后续故障定位工具；当前没有启用 WER dump 的必要。
 
 ### 13.5 阅读器需要改造的功能
 
