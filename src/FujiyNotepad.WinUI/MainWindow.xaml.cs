@@ -123,7 +123,10 @@ namespace FujiyNotepad.WinUI
 
         public MainWindow()
         {
+            LogDiagnostic("MainWindow: constructor entered");
             this.InitializeComponent();
+            LogDiagnostic("MainWindow: InitializeComponent completed");
+            RootGrid.Loaded += (_, _) => LogDiagnostic("MainWindow: RootGrid Loaded");
 
             // Set the initial states only after all XAML controls have been created. This avoids
             // firing ToggleSwitch.Toggled while InitializeComponent is still constructing sibling controls.
@@ -141,7 +144,9 @@ namespace FujiyNotepad.WinUI
             }
 
             settings = settingsStore.Load();
+            LogDiagnostic($"MainWindow: settings loaded; RestoreLastSession={settings.RestoreLastSession}");
             ApplyStartupSettings();
+            LogDiagnostic("MainWindow: startup settings applied");
 
             View.ViewChanged += OnReaderViewChanged;
             View.CaretChanged += UpdateCursorStatus;
@@ -174,6 +179,7 @@ namespace FujiyNotepad.WinUI
 
             Closed += (_, _) =>
             {
+                LogDiagnostic("MainWindow: Closed event entered");
                 SaveWindowState();
                 StopWatchingFile();
                 followTailTimer.Stop();
@@ -196,7 +202,10 @@ namespace FujiyNotepad.WinUI
             if (cli.Path is { } cliPath && File.Exists(cliPath))
             {
                 int? cliLine = cli.Line, cliColumn = cli.Column;
-                DispatcherQueue.TryEnqueue(() => { _ = OpenFileAt(cliPath, cliLine, cliColumn); });
+                LogDiagnostic($"MainWindow: command-line open requested; file={Path.GetFileName(cliPath)}");
+                bool queued = DispatcherQueue.TryEnqueue(() =>
+                    _ = RunDiagnosticTaskAsync("CommandLineOpen", () => OpenFileAt(cliPath, cliLine, cliColumn)));
+                LogDiagnostic($"MainWindow: command-line open queued={queued}");
             }
             else
             {
@@ -206,7 +215,10 @@ namespace FujiyNotepad.WinUI
                 Stream? stdinStream = cli.Path is null ? TryOpenRedirectedStdin() : null;
                 if (cli.Stdin || stdinStream is not null)
                 {
-                    DispatcherQueue.TryEnqueue(() => { _ = OpenFromStdinAsync(stdinStream); });
+                    LogDiagnostic("MainWindow: redirected stdin open requested");
+                    bool queued = DispatcherQueue.TryEnqueue(() =>
+                        _ = RunDiagnosticTaskAsync("OpenFromStdin", () => OpenFromStdinAsync(stdinStream)));
+                    LogDiagnostic($"MainWindow: stdin open queued={queued}");
                 }
                 else if (settings.RestoreLastSession
                          && settings.LastSessionFilePath is { Length: > 0 } lastPath
@@ -216,11 +228,63 @@ namespace FujiyNotepad.WinUI
                     int caretLine = Math.Max(0, settings.LastSessionCaretLine);
                     int caretColumn = Math.Max(0, settings.LastSessionCaretColumn);
                     string? lastProjectFolder = settings.LastSessionProjectFolderPath;
-                    DispatcherQueue.TryEnqueue(() =>
+                    LogDiagnostic($"MainWindow: restore last session requested; file={Path.GetFileName(lastPath)}; projectFolderPresent={!string.IsNullOrWhiteSpace(lastProjectFolder)}");
+                    bool queued = DispatcherQueue.TryEnqueue(() =>
                     {
-                        _ = RestoreSessionAsync(lastPath, first, caretLine, caretColumn, lastProjectFolder);
+                        _ = RunDiagnosticTaskAsync(
+                            "RestoreLastSession",
+                            () => RestoreSessionAsync(lastPath, first, caretLine, caretColumn, lastProjectFolder));
                     });
+                    LogDiagnostic($"MainWindow: restore last session queued={queued}");
                 }
+                else
+                {
+                    LogDiagnostic("MainWindow: no startup file restore requested");
+                }
+            }
+        }
+
+        private static void LogDiagnostic(string message)
+        {
+            try
+            {
+                CrashLogger.Default().Trace(message);
+            }
+            catch
+            {
+                // Diagnostics must never interfere with normal application behavior.
+            }
+        }
+
+        private static void LogDiagnosticException(string operation, Exception exception)
+        {
+            try
+            {
+                CrashLogger logger = CrashLogger.Default();
+                logger.Trace($"{operation}: FAILED");
+                logger.Log(exception);
+            }
+            catch
+            {
+                // Diagnostics must never interfere with normal application behavior.
+            }
+        }
+
+        private async Task RunDiagnosticTaskAsync(string operation, Func<Task> action)
+        {
+            LogDiagnostic($"{operation}: started");
+            try
+            {
+                await action();
+                LogDiagnostic($"{operation}: completed");
+            }
+            catch (OperationCanceledException)
+            {
+                LogDiagnostic($"{operation}: cancelled");
+            }
+            catch (Exception ex)
+            {
+                LogDiagnosticException(operation, ex);
             }
         }
 
@@ -805,12 +869,14 @@ namespace FujiyNotepad.WinUI
 
         private async Task OpenFile(string path, bool addToRecent = true, TextEncoding? forcedEncoding = null, bool preserveView = false)
         {
+            LogDiagnostic($"OpenFile: begin; file={Path.GetFileName(path)}; preserveView={preserveView}");
             // Open the new file before tearing down the current one, so a failure (missing/locked/denied
             // file) leaves the already-open file intact instead of half-closing it.
             FileByteSource newSource;
             try
             {
                 newSource = new FileByteSource(path);
+                LogDiagnostic($"OpenFile: byte source opened; length={newSource.Length:N0} bytes");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
@@ -862,6 +928,7 @@ namespace FujiyNotepad.WinUI
             ResetFilter();
 
             View.SetProvider(provider);
+            LogDiagnostic($"OpenFile: line provider attached; initialLineCount={provider.LineCount:N0}");
             RefreshMarkerMargin(); // clear any previous file's bookmark ticks
             // Restore the scroll position (Reload) or start at the top (a new file); the index tick keeps
             // nudging toward the saved line until the rebuilt index reaches it.
@@ -877,7 +944,7 @@ namespace FujiyNotepad.WinUI
             Title = LocalizedStrings.Format("WindowTitleWithFile", Path.GetFileName(path));
             SetFileCommandsEnabled(true);
             UpdateEncodingUi();
-            _ = RefreshCharacterCountAsync();
+            _ = RunDiagnosticTaskAsync("RefreshCharacterCount", RefreshCharacterCountAsync);
             UpdateLineEndingLabel();
             StartWatchingFile(path);
 
@@ -889,9 +956,12 @@ namespace FujiyNotepad.WinUI
             }
 
             indexRefreshTimer.Start();
+            LogDiagnostic("OpenFile: index refresh timer started");
             StartIndexing();
+            LogDiagnostic("OpenFile: StartIndexing returned");
             SyncScrollBars();
             View.FocusCanvas();
+            LogDiagnostic("OpenFile: reader focused; open sequence completed");
         }
 
         // Reloads the currently-open file (F5 / File > Reload / the "file changed" status-bar hint): re-detects
@@ -1260,20 +1330,33 @@ namespace FujiyNotepad.WinUI
             StopIndexingItem.IsEnabled = true;
             cancelIndexing = new CancellationTokenSource();
             CancellationToken token = cancelIndexing.Token;
+            int lastLoggedProgress = -10;
             var progress = new Progress<int>(p =>
             {
                 LblStatus.Text = StatusText.IndexProgress(p);
                 SetStatusProgress(true, p);
+                if (p >= 100 || p >= lastLoggedProgress + 10)
+                {
+                    lastLoggedProgress = p;
+                    LogDiagnostic($"Indexing: progress={p}%; indexedLines={provider?.LineCount ?? 0:N0}");
+                }
             });
+            LogDiagnostic($"Indexing: task starting; file={Path.GetFileName(currentFilePath ?? string.Empty)}");
             indexingTask = Task.Run(async () =>
             {
                 try
                 {
                     await LineIndexer.StartTaskToIndexLines(token, progress);
+                    LogDiagnostic($"Indexing: task completed; indexedLines={provider?.LineCount ?? 0:N0}");
                 }
                 catch (OperationCanceledException)
                 {
-                    // Cancelled because another file is being opened or the window is closing.
+                    LogDiagnostic("Indexing: task cancelled");
+                }
+                catch (Exception ex)
+                {
+                    LogDiagnosticException("Indexing task", ex);
+                    throw;
                 }
             }, token);
         }
@@ -1337,6 +1420,7 @@ namespace FujiyNotepad.WinUI
 
             if (LineIndexer.IsCompleted)
             {
+                LogDiagnostic($"Indexing: UI refresh observed completion; indexedLines={provider.LineCount:N0}");
                 indexRefreshTimer.Stop();
                 StopIndexingItem.IsEnabled = false;
                 SetStatusProgress(false);
@@ -1344,7 +1428,7 @@ namespace FujiyNotepad.WinUI
                 {
                     SetLineCountStatus();
                 }
-                _ = EnsureChapterIndexAsync();
+                _ = RunDiagnosticTaskAsync("EnsureChapterIndex", EnsureChapterIndexAsync);
             }
         }
 
@@ -1576,6 +1660,7 @@ namespace FujiyNotepad.WinUI
         private async Task RestoreSessionAsync(
             string path, int firstVisibleLine, int caretLine, int caretColumn, string? projectFolderPath)
         {
+            LogDiagnostic($"RestoreSessionAsync: entered; file={Path.GetFileName(path)}");
             bool restoredProject = false;
             if (!string.IsNullOrWhiteSpace(projectFolderPath) && Directory.Exists(projectFolderPath))
             {
@@ -1604,6 +1689,7 @@ namespace FujiyNotepad.WinUI
             if (!restoredProject)
                 await OpenFile(path); // OpenFile resets the pending-session state, so set it afterwards
 
+            LogDiagnostic($"RestoreSessionAsync: file/project open complete; restoredProject={restoredProject}");
             pendingSessionFirstLine = firstVisibleLine;
             pendingSessionCaretLine = caretLine;
             pendingSessionCaretColumn = caretColumn;
