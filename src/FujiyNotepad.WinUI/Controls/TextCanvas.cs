@@ -671,8 +671,8 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (isClick)
             {
-                TextPosition position = HitTestTextCharacter(released.X, released.Y);
-                if (HasAnnotationMarkerAt(position))
+                TextPosition position = HitTestTextCharacter(released.X, released.Y, out bool hitCharacter);
+                if (hitCharacter && HasAnnotationMarkerAt(position))
                     AnnotationMarkerClicked?.Invoke(position);
             }
         }
@@ -1509,13 +1509,21 @@ namespace FujiyNotepad.WinUI.Controls
         // Annotation anchors are half-open ranges, so this avoids treating the character immediately after
         // an anchor as part of it when DirectWrite reports a trailing caret position.
         private TextPosition HitTestTextCharacter(double x, double y)
+            => HitTestTextCharacter(x, y, out _);
+
+        // Marker activation is stricter than context-menu positioning: a nearest-boundary result from a
+        // click in the blank area before/after a line must not activate an annotation on the boundary glyph.
+        private TextPosition HitTestTextCharacter(double x, double y, out bool hitCharacter)
         {
             if (engine.UsesProportionalLayout)
-                return engine.HitTestCharacter(x, y);
+                return engine.HitTestCharacter(x, y, out hitCharacter);
 
             IReadOnlyList<VisibleLine> lines = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
             if (lines.Count == 0)
+            {
+                hitCharacter = false;
                 return engine.HitTest(x, y);
+            }
 
             VisibleLine hitLine = lines[0];
             foreach (VisibleLine candidate in lines)
@@ -1532,18 +1540,23 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (hitLine.Display.Length == 0)
             {
+                hitCharacter = false;
                 return engine.PositionFromDisplayIndex(
                     hitLine.LineIndex, hitLine.DisplayStartIndex, trailing: false);
             }
 
             CanvasTextLayout? layout = GetTextLayout(hitLine);
             if (layout is null)
+            {
+                hitCharacter = false;
                 return HitTestText(x, y);
+            }
 
             float localX = (float)(x - hitLine.TextX);
             float localY = (float)Math.Max(0, lineHeight / 2.0);
             if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out _))
             {
+                hitCharacter = true;
                 int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
                 int characterCount = Math.Max(1, region.CharacterCount);
                 return engine.PositionFromDisplayIndex(
@@ -1553,6 +1566,7 @@ namespace FujiyNotepad.WinUI.Controls
                     displayCharacterCount: characterCount);
             }
 
+            hitCharacter = false;
             int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
                 ? 0
                 : hitLine.Display.Length;
