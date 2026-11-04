@@ -496,9 +496,20 @@ namespace FujiyNotepad.WinUI.Controls
 
         public void UpdateTotalLines(int count)
         {
+            if (count == engine.TotalLines)
+                return;
+
             Ready();
             ClearTextLayoutCache();
             engine.UpdateTotalLines(count);
+        }
+
+        /// <summary>Notifies the reader that the existing line source changed without a line-count change.</summary>
+        public void RefreshSourceContent()
+        {
+            Ready();
+            ClearTextLayoutCache();
+            engine.RefreshSourceContent();
         }
 
         public void GoToLine(int lineIndex)
