@@ -204,7 +204,8 @@ public sealed partial class TextLayoutEngine
                 for (int rowIndex = firstRow; rowIndex < visualRows.Count && y < ViewportHeight; rowIndex++)
                 {
                     TextLayoutVisualLine row = visualRows[rowIndex];
-                    double rowHeight = GetSafeRowHeight(row);
+                    double rowHeight = GetEffectiveRowHeight(
+                        layout, row, isLastRow: rowIndex == visualRows.Count - 1);
                     int selectedStart = 0;
                     int selectedLength = 0;
                     bool rowHasSelection = false;
@@ -286,7 +287,7 @@ public sealed partial class TextLayoutEngine
                 TextLayoutVisualLine row = layout.VisualLines.Count > 0
                     ? layout.VisualLines[0]
                     : new TextLayoutVisualLine(0, layout.SourceText.Length, 0, lineHeight * 0.8, lineHeight);
-                double rowHeight = GetSafeRowHeight(row);
+                double rowHeight = GetEffectiveRowHeight(layout, row, isLastRow: true);
                 string source = layout.SourceText;
                 IReadOnlyList<(int Start, int Length)> lineMatches =
                     highlighter?.Find(source) ?? Array.Empty<(int Start, int Length)>();
@@ -369,6 +370,28 @@ public sealed partial class TextLayoutEngine
 
     private static double GetSafeRowHeight(TextLayoutVisualLine row)
         => double.IsFinite(row.Height) && row.Height > 0 ? row.Height : 1;
+
+    // The native layout can extend below the baseline interval represented by the visual rows (for example,
+    // when fallback glyph metrics or trailing layout bounds are taller than the measured caret-row spacing).
+    // Reserve that remaining extent on the final row so the next logical source line never starts inside it.
+    private static double GetEffectiveRowHeight(
+        ITextLayoutResult layout,
+        TextLayoutVisualLine row,
+        bool isLastRow)
+    {
+        double rowHeight = GetSafeRowHeight(row);
+        if (!isLastRow || !double.IsFinite(row.Top))
+            return rowHeight;
+
+        double layoutHeight = layout.LayoutHeight;
+        if (!double.IsFinite(layoutHeight) || layoutHeight <= 0)
+            return rowHeight;
+
+        double remainingLayoutHeight = layoutHeight - row.Top;
+        return double.IsFinite(remainingLayoutHeight) && remainingLayoutHeight > rowHeight
+            ? remainingLayoutHeight
+            : rowHeight;
+    }
 
     private static int FindVisualRowForCaret(IReadOnlyList<TextLayoutVisualLine> rows, int sourceIndex)
     {
