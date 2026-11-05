@@ -236,6 +236,9 @@ namespace FujiyNotepad.Presentation
 
         private TextPosition caret;
         private TextPosition anchor;
+        private TextPosition pointerAnchorStart;
+        private TextPosition pointerAnchorEnd;
+        private bool pointerAnchorIsCharacter;
         private int desiredColumn = -1;
 
         /// <summary>Raised when the scroll position or horizontal extent changes (host re-syncs scrollbars).</summary>
@@ -970,6 +973,9 @@ namespace FujiyNotepad.Presentation
             }
 
             pos = ClampPosition(pos);
+            pointerAnchorIsCharacter = false;
+            pointerAnchorStart = pos;
+            pointerAnchorEnd = pos;
             if (!shift)
             {
                 anchor = pos;
@@ -980,6 +986,130 @@ namespace FujiyNotepad.Presentation
             RaiseBlinkReset();
             RaiseCaretChanged();
             RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Starts a drag selection from the complete source character or shaping cluster under the pointer.
+        /// The character is included if either endpoint of the drag lands inside its text rectangle.
+        /// </summary>
+        public void PointerPressCharacter(TextPosition position, int sourceLength, bool shift)
+        {
+            if (provider is null || totalLines == 0 || sourceLength <= 0)
+                return;
+
+            position = ClampPosition(position);
+            TextPosition characterEnd = EndOfHitCharacter(position, sourceLength);
+            if (characterEnd <= position)
+                return;
+
+            if (shift)
+            {
+                pointerAnchorIsCharacter = false;
+                caret = position < anchor ? position : characterEnd;
+            }
+            else
+            {
+                pointerAnchorStart = position;
+                pointerAnchorEnd = characterEnd;
+                pointerAnchorIsCharacter = true;
+                anchor = pointerAnchorStart;
+                caret = pointerAnchorStart;
+            }
+
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>Extends a pointer selection to include the complete character under the pointer.</summary>
+        public void PointerDragCharacter(TextPosition position, int sourceLength)
+        {
+            if (provider is null || totalLines == 0 || sourceLength <= 0)
+                return;
+
+            position = ClampPosition(position);
+            TextPosition characterEnd = EndOfHitCharacter(position, sourceLength);
+            if (characterEnd <= position)
+            {
+                PointerDragBoundary(position);
+                return;
+            }
+
+            if (pointerAnchorIsCharacter)
+            {
+                if (position < pointerAnchorStart)
+                {
+                    anchor = pointerAnchorEnd;
+                    caret = position;
+                }
+                else
+                {
+                    anchor = pointerAnchorStart;
+                    caret = characterEnd;
+                }
+            }
+            else
+            {
+                caret = position < anchor ? position : characterEnd;
+            }
+
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Extends a drag to a row boundary when the pointer has left the text rectangle, such as when it
+        /// travels through the vertical spacing between two visual rows.
+        /// </summary>
+        public void PointerDragBoundary(TextPosition position)
+        {
+            if (provider is null || totalLines == 0)
+                return;
+
+            position = ClampPosition(position);
+            if (pointerAnchorIsCharacter)
+            {
+                if (position < pointerAnchorStart)
+                {
+                    anchor = pointerAnchorEnd;
+                    caret = position;
+                }
+                else
+                {
+                    anchor = pointerAnchorStart;
+                    caret = position;
+                }
+            }
+            else
+            {
+                caret = position;
+            }
+
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        private TextPosition EndOfHitCharacter(TextPosition position, int sourceLength)
+        {
+            int endColumn = Math.Clamp(
+                position.Column + Math.Max(1, sourceLength),
+                position.Column,
+                LineLength(position.Line));
+
+            if (UsesProportionalLayout)
+            {
+                int nextBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(position.Column);
+                if (nextBoundary > position.Column)
+                    endColumn = nextBoundary;
+            }
+
+            return new TextPosition(position.Line, endColumn);
         }
 
         /// <summary>Selects the whole word (or run of same-class characters) under a double-clicked point.</summary>
