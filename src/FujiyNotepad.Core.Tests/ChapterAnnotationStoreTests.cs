@@ -141,6 +141,8 @@ public sealed class ChapterAnnotationStoreTests
                 await store.GetChapterAnnotationSummariesAsync(searchText: "主动布局");
             IReadOnlyList<ChapterAnnotationSummary> chapterSearch =
                 await store.GetChapterAnnotationSummariesAsync(searchText: "第15章");
+            IReadOnlyList<ChapterAnnotationSummary> hiddenTitleSearch =
+                await store.GetChapterAnnotationSummariesAsync(searchText: "本章概括");
             IReadOnlyList<AnnotationCategory> smallCategories = await store.GetCategoriesAsync();
             IReadOnlyList<ChapterAnnotationCategory> chapterCategories =
                 await store.GetChapterAnnotationCategoriesAsync();
@@ -154,6 +156,7 @@ public sealed class ChapterAnnotationStoreTests
             Assert.Single(search);
             Assert.Equal(characterId, search[0].Annotation.Id);
             Assert.Equal(2, chapterSearch.Count);
+            Assert.Empty(hiddenTitleSearch);
             Assert.NotEqual(smallCategory, chapterCategory);
         }
         finally
