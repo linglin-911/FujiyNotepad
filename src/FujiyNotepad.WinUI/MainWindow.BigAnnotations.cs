@@ -1057,12 +1057,10 @@ public sealed partial class MainWindow
 
     private Border BuildBigAnnotationSmallReferenceCard(BigAnnotationSmallReference reference)
     {
-        string? title = string.IsNullOrWhiteSpace(reference.Annotation.Title)
-            ? null : reference.Annotation.Title.Trim();
         string category = reference.Category?.Name ?? "未分类";
         var panel = new StackPanel { Spacing = 5, Margin = new Thickness(12, 2, 0, 5) };
 
-        panel.Children.Add(BuildBigAnnotationContentCard(title, reference.Annotation.Content));
+        panel.Children.Add(BuildBigAnnotationContentCard(null, reference.Annotation.Content));
 
         var metadata = new StackPanel
         {
@@ -1125,13 +1123,11 @@ public sealed partial class MainWindow
 
     private Border BuildBigAnnotationChapterReferenceCard(ChapterAnnotationSummary reference)
     {
-        string? title = string.IsNullOrWhiteSpace(reference.Annotation.Title)
-            ? null : reference.Annotation.Title.Trim();
         string category = reference.Category?.Name ?? "未分类";
         var panel = new StackPanel { Spacing = 5, Margin = new Thickness(12, 2, 0, 5) };
 
         // A chapter annotation is a normal second-level annotation item, never a collapsible sub-tree.
-        panel.Children.Add(BuildBigAnnotationContentCard(title, reference.Annotation.Content));
+        panel.Children.Add(BuildBigAnnotationContentCard(null, reference.Annotation.Content));
 
         var metadata = new StackPanel
         {
