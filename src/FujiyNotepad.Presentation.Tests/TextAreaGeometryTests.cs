@@ -16,8 +16,14 @@ public sealed class TextAreaGeometryTests
         Assert.Equal(39.5, geometry.GlyphBottom);
         Assert.Equal(22.5, geometry.SelectionTop);
         Assert.Equal(18.5, geometry.SelectionHeight);
-        Assert.Equal(40.25, geometry.AnnotationUnderlineY);
+        Assert.Equal(40.375, geometry.AnnotationUnderlineY);
         Assert.Equal(1.25, geometry.AnnotationUnderlineThickness);
+        Assert.True(
+            geometry.AnnotationUnderlineY - geometry.AnnotationUnderlineThickness / 2
+            > geometry.GlyphBottom);
+        Assert.True(
+            geometry.AnnotationUnderlineY + geometry.AnnotationUnderlineThickness / 2
+            <= row.Top + row.Height);
     }
 
     [Fact]
@@ -50,12 +56,8 @@ public sealed class TextAreaGeometryTests
         Assert.Equal(29.5, geometry.GlyphBottom);
         Assert.Equal(10, geometry.SelectionTop);
         Assert.Equal(20, geometry.SelectionHeight);
-        Assert.Equal(0.5, geometry.AnnotationUnderlineThickness);
-        Assert.Equal(29.75, geometry.AnnotationUnderlineY);
-        Assert.True(geometry.AnnotationUnderlineY - geometry.AnnotationUnderlineThickness / 2
-                    >= geometry.GlyphBottom);
-        Assert.True(geometry.AnnotationUnderlineY + geometry.AnnotationUnderlineThickness / 2
-                    <= row.Top + row.Height);
+        Assert.Equal(0, geometry.AnnotationUnderlineThickness);
+        Assert.False(geometry.HasAnnotationUnderline);
     }
 
     [Fact]

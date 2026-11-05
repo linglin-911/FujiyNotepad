@@ -8,7 +8,9 @@ namespace FujiyNotepad.Presentation;
 public static class TextAreaGeometry
 {
     public const double SelectionPaddingDip = 1.5;
+    public const double AnnotationUnderlineGapDip = 0.25;
     public const double MaximumAnnotationUnderlineThicknessDip = 1.25;
+    public const double MinimumAnnotationUnderlineThicknessDip = 0.5;
 
     public static TextLayoutVerticalGeometry FromDrawBounds(
         TextLayoutVisualLine row,
@@ -49,9 +51,14 @@ public static class TextAreaGeometry
 
         // Place the annotation stroke in the center of the available lower padding. If there is no room,
         // omit the stroke instead of drawing through glyph ink or into the next visual row.
-        double underlineThickness = Math.Min(MaximumAnnotationUnderlineThicknessDip, bottomPadding);
+        double underlineThickness = Math.Min(
+            MaximumAnnotationUnderlineThicknessDip,
+            Math.Max(0, bottomPadding - AnnotationUnderlineGapDip));
+        if (underlineThickness < MinimumAnnotationUnderlineThicknessDip)
+            underlineThickness = 0;
+
         double underlineY = underlineThickness > 0
-            ? glyphBottom + bottomPadding / 2
+            ? glyphBottom + AnnotationUnderlineGapDip + underlineThickness / 2
             : double.NaN;
 
         return new TextLayoutVerticalGeometry(

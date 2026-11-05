@@ -314,6 +314,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)
     {
         ThrowIfDisposed();
+        if (VisualLines.Count == 0)
+            return new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
+
         int rowIndex = FindVisualLineIndexForCaret(sourceUtf16Index);
         return GetTextAreaVerticalBounds(VisualLines[rowIndex], rowIndex);
     }

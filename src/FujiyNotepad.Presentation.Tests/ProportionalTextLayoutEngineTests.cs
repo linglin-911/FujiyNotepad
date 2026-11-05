@@ -365,6 +365,23 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PointerDragCharacter_IncludesTheStartingCharacterWhenDraggingLeftAcrossItsMidpoint()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(
+            new TextPosition(0, 2), sourceLength: 1, isTrailingHit: true, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 2), sourceLength: 1, isTrailingHit: false);
+        Assert.Equal(new TextPosition(0, 2), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 3), engine.SelectionEnd);
+
+        engine.PointerDragCharacter(
+            new TextPosition(0, 2), sourceLength: 1, isTrailingHit: true);
+        Assert.False(engine.HasSelection);
+    }
+
+    [Fact]
     public void PointerDragCharacter_PreservesTheReportedShapingClusterLength()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
