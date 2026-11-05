@@ -82,6 +82,7 @@ namespace FujiyNotepad.WinUI.Controls
 
         private bool isSelecting;
         private bool hasStartedDragSelection;
+        private bool hasSelectionAnchor;
         private bool isReaderInteractionPassive;
         private const double DragSelectionThresholdDip = 4d;
         private Point lastPointer;
@@ -804,14 +805,16 @@ namespace FujiyNotepad.WinUI.Controls
             TextPosition hit = HitTestTextCharacter(
                 lastPointer.X, lastPointer.Y,
                 out bool hitCharacter, out int hitSourceLength, out bool isTrailingHit);
-            if (!hitCharacter || hitSourceLength <= 0)
+
+            hasSelectionAnchor = hitCharacter && hitSourceLength > 0;
+            if (hasSelectionAnchor)
             {
-                e.Handled = true;
-                return;
+                bool shift = IsDown(VirtualKey.Shift);
+                engine.PointerPressCharacter(hit, hitSourceLength, isTrailingHit, shift);
             }
 
-            bool shift = IsDown(VirtualKey.Shift);
-            engine.PointerPressCharacter(hit, hitSourceLength, isTrailingHit, shift);
+            // Capture even when the initial point is blank. If a later drag segment first enters a text
+            // rectangle, that rectangle boundary becomes the effective selection anchor.
             hasStartedDragSelection = false;
             isSelecting = true;
             CapturePointer(e.Pointer);
@@ -824,6 +827,7 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 return;
             }
+            Point previousPointer = lastPointer;
             lastPointer = e.GetCurrentPoint(this).Position;
             if (!hasStartedDragSelection)
             {
@@ -835,12 +839,31 @@ namespace FujiyNotepad.WinUI.Controls
                     return;
                 }
 
-                // A mouse-down is only a pending character anchor. Do not create a selection until
-                // the pointer has moved far enough to represent an intentional drag.
                 hasStartedDragSelection = true;
             }
 
             Ready();
+            if (!hasSelectionAnchor)
+            {
+                if (!engine.TryHitTestTextRectangleEntry(
+                        previousPointer.X, previousPointer.Y,
+                        lastPointer.X, lastPointer.Y,
+                        out TextPosition entry,
+                        out int entrySourceLength,
+                        out bool entryTrailingHit,
+                        out _, out _))
+                {
+                    // Do not create an anchor from blank space. Keep waiting until the pointer trajectory
+                    // crosses a real text rectangle; the engine returns the first boundary point A.
+                    UpdateAutoScroll();
+                    return;
+                }
+
+                engine.PointerPressCharacter(
+                    entry, entrySourceLength, entryTrailingHit, shift: false);
+                hasSelectionAnchor = true;
+            }
+
             engine.ScrollForPointer(lastPointer.Y);
             TextPosition hit = HitTestTextCharacter(
                 lastPointer.X, lastPointer.Y,
@@ -858,16 +881,18 @@ namespace FujiyNotepad.WinUI.Controls
                 return;
 
             Point released = e.GetCurrentPoint(this).Position;
+            bool hadSelectionAnchor = hasSelectionAnchor;
             bool isClick = !hasStartedDragSelection
                            && Math.Abs(released.X - pointerDownPosition.X) <= DragSelectionThresholdDip
                            && Math.Abs(released.Y - pointerDownPosition.Y) <= DragSelectionThresholdDip;
 
             isSelecting = false;
             hasStartedDragSelection = false;
+            hasSelectionAnchor = false;
             autoScrollTimer.Stop();
             ReleasePointerCapture(e.Pointer);
 
-            if (isClick)
+            if (isClick && hadSelectionAnchor)
             {
                 Ready();
                 if (engine.TryHitTestAnnotationMarkers(
@@ -944,7 +969,7 @@ namespace FujiyNotepad.WinUI.Controls
         // extending the selection) on a timer even if the pointer stops moving.
         private void UpdateAutoScroll()
         {
-            if (isSelecting && hasStartedDragSelection
+            if (isSelecting && hasStartedDragSelection && hasSelectionAnchor
                 && (lastPointer.Y < 0 || lastPointer.Y > ActualHeight))
             {
                 autoScrollTimer.Start();
@@ -957,7 +982,7 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void AutoScrollTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
         {
-            if (!isSelecting || !hasStartedDragSelection
+            if (!isSelecting || !hasStartedDragSelection || !hasSelectionAnchor
                 || (lastPointer.Y >= 0 && lastPointer.Y <= ActualHeight))
             {
                 autoScrollTimer.Stop();
@@ -1518,8 +1543,7 @@ namespace FujiyNotepad.WinUI.Controls
                 if (!vertical.HasAnnotationUnderline)
                     continue;
 
-                // The layout origin was already snapped for DrawTextLayout. Preserve the exact relative
-                // DrawBounds offset instead of independently snapping the underline a second time.
+                // The underline is anchored to the same baseline-derived text band used by selection and hit-testing.
                 float y = layoutTop + (float)vertical.AnnotationUnderlineY;
                 float strokeThickness = (float)vertical.AnnotationUnderlineThickness;
 

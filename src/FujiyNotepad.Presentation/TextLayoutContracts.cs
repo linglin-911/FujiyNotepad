@@ -118,19 +118,22 @@ public readonly record struct TextCaretGeometry(double X, double Y, double Heigh
 public readonly record struct TextLayoutRect(double X, double Y, double Width, double Height);
 
 /// <summary>
-/// Shared vertical geometry for one visual row. TextTop/TextBottom come from the original layout's
-/// LayoutBounds; SelectionTop/SelectionHeight add only the padding available inside that visual row.
-/// The annotation underline is placed below the text band and omitted when no safe space exists.
+/// The one vertical text band shared by selection painting, pointer hit-testing and annotation markers.
+/// TextTop/TextBottom are baseline-derived and therefore exclude the additional leading introduced by
+/// proportional line spacing. The underline is anchored to the bottom edge of this same band.
 /// </summary>
 public readonly record struct TextLayoutVerticalGeometry(
     double TextTop,
     double TextBottom,
-    double SelectionTop,
-    double SelectionHeight,
     double AnnotationUnderlineY,
     double AnnotationUnderlineThickness)
 {
+    public double TextHeight => Math.Max(0, TextBottom - TextTop);
+
     public bool HasAnnotationUnderline =>
+        double.IsFinite(TextTop) &&
+        double.IsFinite(TextBottom) &&
+        TextBottom > TextTop &&
         double.IsFinite(AnnotationUnderlineY) &&
         double.IsFinite(AnnotationUnderlineThickness) &&
         AnnotationUnderlineThickness > 0;
@@ -177,15 +180,15 @@ public interface ITextLayoutResult : IDisposable
     TextLayoutHitTestResult HitTest(double x, double y);
 
     /// <summary>
-    /// Returns padded rectangles for an original-source UTF-16 range. Advance whitespace is included,
-    /// so selection backgrounds and annotation markers cover spaces as well as visible text.
-    /// The vertical band is shared with GetVisualRowVerticalGeometry for the corresponding visual row.
+    /// Returns the exact text rectangles for an original-source UTF-16 range. The same rectangles are used
+    /// for selection backgrounds, pointer hit-testing and annotation-marker hit-testing; no selection-only
+    /// padding is added. Advance whitespace inside the source range is retained.
     /// </summary>
     IReadOnlyList<TextLayoutRect> GetRangeGeometry(int sourceUtf16Start, int sourceUtf16Length);
 
     /// <summary>
-    /// Returns the unpadded text-layout band, padded selection band and safe annotation underline position
-    /// for the visual row containing the supplied original-source UTF-16 index.
+    /// Returns the single baseline-derived text band and its annotation underline position for the visual
+    /// row containing the supplied original-source UTF-16 index.
     /// </summary>
     TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index);
 

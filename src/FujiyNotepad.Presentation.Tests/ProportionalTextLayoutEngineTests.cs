@@ -138,7 +138,7 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
-    public void AnnotationMarkerHitTest_StillAcceptsThePaddedVerticalTextRectangle()
+    public void AnnotationMarkerHitTest_UsesTheExactTextBandWithoutVerticalPadding()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
         var markers = new Dictionary<int, List<TextAnnotationMarker>>
@@ -146,10 +146,87 @@ public sealed class ProportionalTextLayoutEngineTests
             [0] = new() { new TextAnnotationMarker(0, 1, 4) },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(25, 1.5, markers, out TextPosition position);
+        bool inside = engine.TryHitTestAnnotationMarkers(25, 6.5, markers, out TextPosition position);
+        bool above = engine.TryHitTestAnnotationMarkers(25, 5.5, markers, out _);
+
+        Assert.True(inside);
+        Assert.Equal(new TextPosition(0, 2), position);
+        Assert.False(above);
+    }
+
+    [Fact]
+    public void TextDragEntry_FromBlankSpaceUsesTheFirstTextRectangleBoundaryAsAnchor()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        bool hit = engine.TryHitTestTextRectangleEntry(
+            25, 0, 25, 10,
+            out TextPosition position,
+            out int sourceLength,
+            out bool isTrailingHit,
+            out double entryX,
+            out double entryY);
 
         Assert.True(hit);
-        Assert.Equal(new TextPosition(0, 2), position);
+        Assert.Equal(new TextPosition(0, 1), position);
+        Assert.Equal(1, sourceLength);
+        Assert.True(isTrailingHit);
+        Assert.Equal(25, entryX);
+        Assert.Equal(6, entryY);
+    }
+
+    [Fact]
+    public void TextDragEntry_FromHorizontalBlankUsesTheFirstTextRectangleEdge()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        bool hit = engine.TryHitTestTextRectangleEntry(
+            0, 10, 25, 10,
+            out TextPosition position,
+            out int sourceLength,
+            out bool isTrailingHit,
+            out double entryX,
+            out double entryY);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.Equal(1, sourceLength);
+        Assert.False(isTrailingHit);
+        Assert.Equal(8, entryX);
+        Assert.Equal(10, entryY);
+    }
+
+    [Fact]
+    public void TextDragEntry_FromInterlineBlankStartsAtTheNextRowBoundary()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
+        engine.WordWrap = true;
+
+        bool hit = engine.TryHitTestTextRectangleEntry(
+            25, 18, 25, 30,
+            out TextPosition position,
+            out int sourceLength,
+            out _,
+            out double entryX,
+            out double entryY);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 3), position);
+        Assert.Equal(1, sourceLength);
+        Assert.Equal(25, entryX);
+        Assert.Equal(26, entryY);
+    }
+
+    [Fact]
+    public void TextDragEntry_DoesNotCreateAnAnchorWhenTheSegmentMissesEveryTextRectangle()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        bool hit = engine.TryHitTestTextRectangleEntry(
+            0, 0, 5, 0,
+            out _, out _, out _, out _, out _);
+
+        Assert.False(hit);
     }
 
     [Fact]
@@ -181,14 +258,17 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
-    public void HitTestCharacter_IncludesTheSmallHorizontalTextAreaCushion()
+    public void HitTestCharacter_UsesTheExactHorizontalTextRectangleWithoutPadding()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        TextPosition position = engine.HitTestCharacter(7.5, 10, out bool hitCharacter);
+        TextPosition outside = engine.HitTestCharacter(7.5, 10, out bool outsideHit);
+        TextPosition inside = engine.HitTestCharacter(8.5, 10, out bool insideHit);
 
-        Assert.True(hitCharacter);
-        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.False(outsideHit);
+        Assert.True(insideHit);
+        Assert.Equal(new TextPosition(0, 0), inside);
+        Assert.Equal(new TextPosition(0, 0), outside);
     }
 
     [Fact]
@@ -794,8 +874,7 @@ public sealed class ProportionalTextLayoutEngineTests
         public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)
         {
             TextLayoutVisualLine row = FindRow(boundaries.SnapToNearestBoundary(sourceUtf16Index));
-            return TextAreaGeometry.FromLayoutBounds(
-                row, layoutBoundsTop: row.Top + 2.5, layoutBoundsHeight: 15);
+            return TextAreaGeometry.FromBaseline(row, fontSize: 10);
         }
 
         public TextLayoutHitTestResult HitTest(double x, double y)
@@ -807,9 +886,10 @@ public sealed class ProportionalTextLayoutEngineTests
             else if (y >= rows[^1].Top + rows[^1].Height)
                 row = rows[^1];
 
-            // Simulate DirectWrite returning a glyph hit only inside the text band. The surrounding
-            // baseline/line-spacing area is deliberately not part of the text hit rectangle.
-            if (x < 0 || y < row.Top + 2.5 || y >= row.Top + 17.5)
+            TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromBaseline(row, fontSize: 10);
+            // Simulate DirectWrite returning a glyph hit only inside the same exact text band used by
+            // selection painting and annotation hit-testing.
+            if (x < 0 || y < vertical.TextTop || y >= vertical.TextBottom)
             {
                 return new TextLayoutHitTestResult(row.SourceStartIndex, 0, false, false);
             }
@@ -835,13 +915,12 @@ public sealed class ProportionalTextLayoutEngineTests
                 int overlapEnd = Math.Min(end, row.SourceEndIndex);
                 if (overlapEnd > overlapStart)
                 {
-                    TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromLayoutBounds(
-                        row, layoutBoundsTop: row.Top + 2.5, layoutBoundsHeight: 15);
+                    TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromBaseline(row, fontSize: 10);
                     result.Add(new TextLayoutRect(
-                        (overlapStart - row.SourceStartIndex) * 10 - 0.75,
-                        vertical.SelectionTop,
-                        (overlapEnd - overlapStart) * 10 + 1.5,
-                        vertical.SelectionHeight));
+                        (overlapStart - row.SourceStartIndex) * 10,
+                        vertical.TextTop,
+                        (overlapEnd - overlapStart) * 10,
+                        vertical.TextHeight));
                 }
             }
             return result;

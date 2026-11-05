@@ -1,69 +1,59 @@
 namespace FujiyNotepad.Presentation;
 
 /// <summary>
-/// Converts a visual row's original CanvasTextLayout.LayoutBounds into separate text-hit, selection and
-/// annotation geometry. LayoutBounds are already expressed in the source layout's DIP coordinate space.
+/// Builds the reader's single authoritative text rectangle band from a visual row's baseline.
+/// The band is intentionally independent of line spacing: line spacing controls the distance between
+/// baselines, not the height of the selectable text rectangle.
 /// </summary>
 public static class TextAreaGeometry
 {
-    public const double SelectionPaddingDip = 1.5;
-    public const double AnnotationUnderlineGapDip = 0.25;
-    public const double MaximumAnnotationUnderlineThicknessDip = 1.25;
-    public const double MinimumAnnotationUnderlineThicknessDip = 0.5;
+    // Matches the proven Win2D reader approach used by Uviewer: a compact band around the text baseline,
+    // rather than the full LayoutBounds line box (which expands with line spacing).
+    public const double TextBandHeightEm = 1.05;
+    public const double TextBandTopOffsetEm = 0.90;
 
-    public static TextLayoutVerticalGeometry FromLayoutBounds(
+    public const double AnnotationUnderlineOffsetDip = 0.75;
+    public const double AnnotationUnderlineThicknessDip = 1.0;
+
+    public static TextLayoutVerticalGeometry FromBaseline(
         TextLayoutVisualLine row,
-        double layoutBoundsTop,
-        double layoutBoundsHeight)
+        double fontSize)
     {
         if (!double.IsFinite(row.Top) ||
+            !double.IsFinite(row.Baseline) ||
             !double.IsFinite(row.Height) ||
             row.Height <= 0 ||
-            !double.IsFinite(layoutBoundsTop) ||
-            !double.IsFinite(layoutBoundsHeight) ||
-            layoutBoundsHeight <= 0)
+            !double.IsFinite(fontSize) ||
+            fontSize <= 0)
         {
-            return new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
+            return new TextLayoutVerticalGeometry(0, 0, double.NaN, 0);
         }
 
-        // LayoutBounds are relative to the original CanvasTextLayout. Do not translate them using caret
-        // coordinates or a temporary layout: those values have different semantic roles.
-        double textTop = layoutBoundsTop;
-        double textBottom = textTop + layoutBoundsHeight;
+        double textTop = row.Baseline - fontSize * TextBandTopOffsetEm;
+        double textHeight = fontSize * TextBandHeightEm;
+        double textBottom = textTop + textHeight;
         double rowBottom = row.Top + row.Height;
         if (!double.IsFinite(textTop) ||
             !double.IsFinite(textBottom) ||
             !double.IsFinite(rowBottom) ||
             textBottom <= textTop)
         {
-            return new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
+            return new TextLayoutVerticalGeometry(0, 0, double.NaN, 0);
         }
 
-        // Preserve the complete text layout band. Only decorative padding is constrained to the available
-        // space inside this visual row, so selection does not spill into the configured line spacing.
-        double topPadding = Math.Min(SelectionPaddingDip, Math.Max(0, textTop - row.Top));
-        double bottomPadding = Math.Min(SelectionPaddingDip, Math.Max(0, rowBottom - textBottom));
-        double selectionTop = textTop - topPadding;
-        double selectionBottom = textBottom + bottomPadding;
-
-        // The annotation stroke sits below the text layout band, inside the remaining lower padding.
-        // If the row has insufficient room, omit it rather than drawing through text or into the next row.
-        double underlineThickness = Math.Min(
-            MaximumAnnotationUnderlineThicknessDip,
-            Math.Max(0, bottomPadding - AnnotationUnderlineGapDip));
-        if (underlineThickness < MinimumAnnotationUnderlineThicknessDip)
-            underlineThickness = 0;
-
-        double underlineY = underlineThickness > 0
-            ? textBottom + AnnotationUnderlineGapDip + underlineThickness / 2
-            : double.NaN;
+        // Prefer the small gap below the text band. When tight line spacing leaves no room, keep the
+        // underline visible at the band's lower edge instead of silently suppressing the annotation.
+        double availableLowerGap = Math.Max(0, rowBottom - textBottom);
+        double underlineY = availableLowerGap >= AnnotationUnderlineThicknessDip
+            ? textBottom + Math.Min(
+                AnnotationUnderlineOffsetDip,
+                availableLowerGap / 2)
+            : textBottom - AnnotationUnderlineThicknessDip / 2;
 
         return new TextLayoutVerticalGeometry(
             textTop,
             textBottom,
-            selectionTop,
-            Math.Max(0, selectionBottom - selectionTop),
             underlineY,
-            underlineThickness);
+            AnnotationUnderlineThicknessDip);
     }
 }

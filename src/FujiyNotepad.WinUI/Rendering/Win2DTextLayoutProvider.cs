@@ -153,8 +153,6 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     private readonly double lineSpacingMultiplier;
     private readonly int[] trailingWhitespaceCounts;
     private readonly Dictionary<int, TextLayoutVerticalGeometry> rowVerticalGeometryCache = new();
-    private Rect? fallbackTextLayoutBoundsRelativeToCaret;
-    private double fallbackTextCaretTop;
     private bool disposed;
 
     internal Win2DTextLayoutResult(
@@ -248,11 +246,10 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (end <= start)
             return Array.Empty<TextLayoutRect>();
 
-        const double horizontalPadding = 1.25;
         var rectangles = new List<TextLayoutRect>();
 
-        // DirectWrite can return one region per glyph, shaping cluster or visual run. LayoutBounds are already
-        // in the original layout's DIP coordinate space; normalize every region in a row to its shared band.
+        // DirectWrite can return one region per glyph, shaping cluster or visual run. Use LayoutBounds only
+        // for horizontal advances; every region in the same visual row receives the shared baseline text band.
         foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(start, end - start))
         {
             Rect bounds = region.LayoutBounds;
@@ -263,17 +260,17 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             TextLayoutVisualLine row = VisualLines[rowIndex];
             TextLayoutVerticalGeometry vertical = GetTextAreaVerticalBounds(row, rowIndex);
 
-            double left = bounds.X - horizontalPadding;
-            double width = bounds.Width + horizontalPadding * 2;
-            if (width > 0 && vertical.SelectionHeight > 0)
+            double left = bounds.X;
+            double width = bounds.Width;
+            if (width > 0 && vertical.TextHeight > 0)
             {
                 rectangles.Add(new TextLayoutRect(
-                    left, vertical.SelectionTop, width, vertical.SelectionHeight));
+                    left, vertical.TextTop, width, vertical.TextHeight));
             }
         }
 
         // DirectWrite's character-region bounds omit trailing whitespace. Add its advance using the same
-        // text-only vertical bounds as visible characters on that row; never use the full line-spacing height.
+        // exact baseline-derived text band as visible characters on that row.
         int firstRow = FindFirstVisualLineEndingAfter(start);
         for (int i = firstRow; i < VisualLines.Count; i++)
         {
@@ -301,10 +298,10 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
                 TextLayoutVerticalGeometry vertical = GetTextAreaVerticalBounds(row, i);
 
                 rectangles.Add(new TextLayoutRect(
-                    left - horizontalPadding,
-                    vertical.SelectionTop,
-                    width + horizontalPadding * 2,
-                    vertical.SelectionHeight));
+                    left,
+                    vertical.TextTop,
+                    width,
+                    vertical.TextHeight));
             }
         }
 
@@ -328,96 +325,10 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (rowVerticalGeometryCache.TryGetValue(rowIndex, out TextLayoutVerticalGeometry cached))
             return cached;
 
-        Rect textBounds = GetVisualRowLayoutBounds(row, rowIndex);
-        TextLayoutVerticalGeometry geometry = textBounds.Height > 0 &&
-                                              double.IsFinite(textBounds.Y) &&
-                                              double.IsFinite(textBounds.Height)
-            ? TextAreaGeometry.FromLayoutBounds(row, textBounds.Y, textBounds.Height)
-            : new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
-
+        TextLayoutVerticalGeometry geometry = TextAreaGeometry.FromBaseline(row, fontSize);
         rowVerticalGeometryCache[rowIndex] = geometry;
         return geometry;
-    }
-
-    private Rect GetVisualRowLayoutBounds(TextLayoutVisualLine row, int rowIndex)
-    {
-        // LayoutBounds from the original layout already use the same coordinates as DrawTextLayout. A single
-        // non-whitespace text element is sufficient: DirectWrite aligns layout bounds to the visual-row band.
-        int visibleEnd = Math.Max(
-            row.SourceStartIndex,
-            row.SourceEndIndex - trailingWhitespaceCounts[rowIndex]);
-        int sampleStart = row.SourceStartIndex;
-        while (sampleStart < visibleEnd)
-        {
-            int next = boundaryMap.SnapToNextBoundary(sampleStart);
-            if (next <= sampleStart)
-                break;
-
-            if (!char.IsWhiteSpace(SourceText[sampleStart]))
-            {
-                foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(
-                             sampleStart, next - sampleStart))
-                {
-                    Rect bounds = region.LayoutBounds;
-                    if (bounds.Height > 0 &&
-                        double.IsFinite(bounds.Y) &&
-                        double.IsFinite(bounds.Height))
-                    {
-                        return bounds;
-                    }
-                }
-            }
-
-            sampleStart = next;
-        }
-
-        // Empty and whitespace-only rows have no character LayoutBounds. Use a representative glyph only
-        // for this fallback case, then align it to the original row's caret origin. Visible text rows never
-        // pass through this temporary-layout conversion.
-        if (!fallbackTextLayoutBoundsRelativeToCaret.HasValue)
-        {
-            using CanvasTextLayout sampleLayout = CreateSingleRowMeasurementLayout("中M");
-            Rect sampleBounds = sampleLayout.LayoutBounds;
-            if (sampleBounds.Height > 0 &&
-                double.IsFinite(sampleBounds.Y) &&
-                double.IsFinite(sampleBounds.Height))
-            {
-                fallbackTextCaretTop = GetCharacterRowTop(sampleLayout, 0);
-                fallbackTextLayoutBoundsRelativeToCaret = new Rect(
-                    sampleBounds.X,
-                    sampleBounds.Y - fallbackTextCaretTop,
-                    sampleBounds.Width,
-                    sampleBounds.Height);
-            }
-        }
-
-        if (!fallbackTextLayoutBoundsRelativeToCaret.HasValue)
-            return default;
-
-        Rect fallback = fallbackTextLayoutBoundsRelativeToCaret.Value;
-        return new Rect(
-            fallback.X,
-            row.Top + fallback.Y,
-            fallback.Width,
-            fallback.Height);
-    }
-
-    private CanvasTextLayout CreateSingleRowMeasurementLayout(string text)
-    {
-        double estimatedWidth = Math.Max(
-            layout.RequestedSize.Width,
-            (text.Length + 1d) * fontSize * 2d + 64d);
-        float width = (float)Math.Clamp(estimatedWidth, 1d, MaxNativeLayoutDimension);
-        double estimatedHeight = Math.Max(64d, fontSize * 4d * lineSpacingMultiplier);
-        float height = (float)Math.Clamp(estimatedHeight, 64d, MaxNativeLayoutDimension);
-
-        return new CanvasTextLayout(layout.Device, text, format, width, height)
-        {
-            WordWrapping = CanvasWordWrapping.NoWrap,
-        };
-    }
-
-    private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
+    }    private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
         List<TextLayoutRect> rectangles)
     {
         if (rectangles.Count <= 1)
@@ -429,8 +340,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             return vertical != 0 ? vertical : left.X.CompareTo(right.X);
         });
 
-        const double verticalTolerance = 0.75;
-        const double horizontalJoinTolerance = 1.5;
+        const double verticalTolerance = 0.25;
+        const double horizontalJoinTolerance = 0.25;
         var merged = new List<TextLayoutRect>(rectangles.Count);
 
         foreach (TextLayoutRect rectangle in rectangles)

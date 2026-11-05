@@ -519,6 +519,191 @@ public sealed partial class TextLayoutEngine
             x, y, returnCharacter: true, out isInside, out sourceLength, out isTrailingHit);
     }
 
+    /// <summary>
+    /// Finds the first exact text-rectangle boundary crossed by a drag segment that began outside the text.
+    /// The returned entry point is the gesture's effective anchor; it is deliberately not the original
+    /// mouse-down point in blank space.
+    /// </summary>
+    public bool TryHitTestTextRectangleEntry(
+        double fromX,
+        double fromY,
+        double toX,
+        double toY,
+        out TextPosition position,
+        out int sourceLength,
+        out bool isTrailingHit,
+        out double entryX,
+        out double entryY)
+    {
+        position = default;
+        sourceLength = 0;
+        isTrailingHit = false;
+        entryX = double.NaN;
+        entryY = double.NaN;
+
+        if (!UsesProportionalLayout ||
+            !double.IsFinite(fromX) ||
+            !double.IsFinite(fromY) ||
+            !double.IsFinite(toX) ||
+            !double.IsFinite(toY))
+        {
+            return false;
+        }
+
+        IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(
+            hasFocus: false, caretVisible: false);
+        if (visible.Count == 0)
+            return false;
+
+        double dx = toX - fromX;
+        double dy = toY - fromY;
+        double segmentLength = Math.Sqrt(dx * dx + dy * dy);
+        double bestEnter = double.PositiveInfinity;
+        double bestExit = 0;
+        ITextLayoutResult? bestLayout = null;
+        VisibleLine bestRow = default;
+        double bestLayoutTop = 0;
+
+        foreach (VisibleLine row in visible)
+        {
+            int rowLength = row.SourceEndIndex - row.SourceStartIndex;
+            if (rowLength <= 0)
+                continue;
+
+            ITextLayoutResult layout = GetProportionalLayout(row.LineIndex);
+            double layoutTop = row.Y - row.LayoutRowTop;
+            foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(
+                         row.SourceStartIndex, rowLength))
+            {
+                var screenRectangle = new TextLayoutRect(
+                    row.TextX + rectangle.X,
+                    layoutTop + rectangle.Y,
+                    rectangle.Width,
+                    rectangle.Height);
+
+                if (!TryGetSegmentRectangleInterval(
+                        fromX, fromY, toX, toY, screenRectangle,
+                        out double enter, out double exit))
+                {
+                    continue;
+                }
+
+                if (enter < bestEnter)
+                {
+                    bestEnter = enter;
+                    bestExit = exit;
+                    bestLayout = layout;
+                    bestRow = row;
+                    bestLayoutTop = layoutTop;
+                }
+            }
+        }
+
+        if (bestLayout is null || !double.IsFinite(bestEnter))
+            return false;
+
+        entryX = fromX + dx * bestEnter;
+        entryY = fromY + dy * bestEnter;
+
+        // Sample just inside the first rectangle so DirectWrite resolves the character at A, not at the
+        // original blank-space mouse-down point. Keep the sample very close to A to avoid skipping a glyph.
+        double sampleT = bestEnter;
+        if (segmentLength > 0.001 && bestExit > bestEnter)
+        {
+            double step = Math.Min(0.25 / segmentLength, (bestExit - bestEnter) / 2);
+            sampleT = Math.Min(bestExit, bestEnter + step);
+        }
+
+        double sampleX = fromX + dx * sampleT;
+        double sampleY = fromY + dy * sampleT;
+        double localX = sampleX - bestRow.TextX;
+        double localY = sampleY - bestLayoutTop;
+        TextLayoutHitTestResult hit = bestLayout.HitTest(localX, localY);
+
+        if (!hit.IsInside ||
+            hit.SourceLength <= 0 ||
+            !IsInsideTextRangeGeometry(
+                bestLayout, hit.SourceStartIndex, hit.SourceLength, localX, localY))
+        {
+            // If the segment ends exactly on the rectangle edge, try A itself. A true edge touch is valid;
+            // a tangent that never enters a text rectangle will still fail the exact-range verification.
+            localX = entryX - bestRow.TextX;
+            localY = entryY - bestLayoutTop;
+            hit = bestLayout.HitTest(localX, localY);
+            if (!hit.IsInside ||
+                hit.SourceLength <= 0 ||
+                !IsInsideTextRangeGeometry(
+                    bestLayout, hit.SourceStartIndex, hit.SourceLength, localX, localY))
+            {
+                position = new TextPosition(
+                    bestRow.LineIndex,
+                    Math.Clamp(hit.CaretIndex, bestRow.SourceStartIndex, bestRow.SourceEndIndex));
+                return false;
+            }
+        }
+
+        int hitStart = Math.Clamp(
+            hit.SourceStartIndex, bestRow.SourceStartIndex, bestRow.SourceEndIndex);
+        int hitEnd = Math.Clamp(
+            hit.SourceStartIndex + hit.SourceLength, hitStart, bestRow.SourceEndIndex);
+        sourceLength = hitEnd - hitStart;
+        if (sourceLength <= 0)
+            return false;
+
+        position = new TextPosition(bestRow.LineIndex, hitStart);
+        isTrailingHit = hit.IsTrailingHit;
+        return true;
+    }
+
+    private static bool TryGetSegmentRectangleInterval(
+        double fromX,
+        double fromY,
+        double toX,
+        double toY,
+        TextLayoutRect rectangle,
+        out double enter,
+        out double exit)
+    {
+        enter = 0;
+        exit = 1;
+        if (rectangle.Width <= 0 ||
+            rectangle.Height <= 0 ||
+            !double.IsFinite(rectangle.X) ||
+            !double.IsFinite(rectangle.Y))
+        {
+            return false;
+        }
+
+        double dx = toX - fromX;
+        double dy = toY - fromY;
+        return ClipSegmentAxis(fromX, dx, rectangle.X, rectangle.X + rectangle.Width, ref enter, ref exit) &&
+               ClipSegmentAxis(fromY, dy, rectangle.Y, rectangle.Y + rectangle.Height, ref enter, ref exit) &&
+               exit >= 0 &&
+               enter <= 1 &&
+               enter <= exit;
+    }
+
+    private static bool ClipSegmentAxis(
+        double origin,
+        double delta,
+        double minimum,
+        double maximum,
+        ref double enter,
+        ref double exit)
+    {
+        if (Math.Abs(delta) < 1e-9)
+            return origin >= minimum && origin <= maximum;
+
+        double first = (minimum - origin) / delta;
+        double second = (maximum - origin) / delta;
+        if (first > second)
+            (first, second) = (second, first);
+
+        enter = Math.Max(enter, first);
+        exit = Math.Min(exit, second);
+        return enter <= exit;
+    }
+
     private TextPosition HitTestProportional(
         double x, double y, bool returnCharacter,
         out bool isInside, out int sourceLength, out bool isTrailingHit)
@@ -637,15 +822,7 @@ public sealed partial class TextLayoutEngine
         double x,
         double y)
     {
-        const double tolerance = 0.25;
-        TextLayoutVerticalGeometry vertical = layout.GetVisualRowVerticalGeometry(sourceStart);
-        if (!double.IsFinite(vertical.TextTop) ||
-            !double.IsFinite(vertical.TextBottom) ||
-            vertical.TextBottom <= vertical.TextTop)
-        {
-            return false;
-        }
-
+        const double tolerance = 0.01;
         foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
         {
             if (rectangle.Width <= 0 || rectangle.Height <= 0)
@@ -653,8 +830,8 @@ public sealed partial class TextLayoutEngine
 
             if (x >= rectangle.X - tolerance &&
                 x <= rectangle.X + rectangle.Width + tolerance &&
-                y >= vertical.TextTop - tolerance &&
-                y <= vertical.TextBottom + tolerance)
+                y >= rectangle.Y - tolerance &&
+                y <= rectangle.Y + rectangle.Height + tolerance)
             {
                 return true;
             }
