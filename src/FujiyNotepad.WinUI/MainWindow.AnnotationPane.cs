@@ -40,6 +40,17 @@ public sealed partial class MainWindow
             : Visibility.Collapsed;
         SmallAnnotationTabButton.IsChecked = !showChapterAnnotations;
         ChapterAnnotationTabButton.IsChecked = showChapterAnnotations;
+        SmallAnnotationCount.Visibility = showChapterAnnotations
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        ChapterAnnotationCount.Visibility = showChapterAnnotations
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RebuildChapterIndexButton.Visibility = showChapterAnnotations
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ChapterAnnotationListView.Visibility = Visibility.Visible;
+        ChapterAnnotationEditorView.Visibility = Visibility.Collapsed;
         SmallAnnotationsItem.IsChecked = !showChapterAnnotations;
         ChapterAnnotationsItem.IsChecked = showChapterAnnotations;
         UpdateReaderToolsRailVisibility();
