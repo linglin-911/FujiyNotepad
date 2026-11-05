@@ -1801,29 +1801,16 @@ namespace FujiyNotepad.WinUI.Controls
                     x, y, out hitCharacter, out hitSourceLength, out isTrailingHit);
                 if (!hitCharacter &&
                     engine.TryHitTestAnnotationMarkers(
-                        x, y, annotationMarkersByLine, out TextPosition markerPosition,
+                        x, y, annotationMarkersByLine,
+                        out TextPosition markerPosition,
+                        out int markerSourceLength,
                         out bool markerTrailingHit))
                 {
-                    ITextLayoutResult? annotationLayout = engine.GetLayoutForLine(markerPosition.Line);
-                    if (annotationLayout is not null)
-                    {
-                        int next = annotationLayout.GetNextCaretIndex(markerPosition.Column);
-                        if (next <= markerPosition.Column && markerPosition.Column > 0)
-                        {
-                            int previous = annotationLayout.GetPreviousCaretIndex(markerPosition.Column);
-                            hitSourceLength = markerPosition.Column - previous;
-                            markerPosition = new TextPosition(markerPosition.Line, previous);
-                        }
-                        else
-                        {
-                            hitSourceLength = next - markerPosition.Column;
-                        }
-
-                        hitCharacter = hitSourceLength > 0;
-                        isTrailingHit = markerTrailingHit;
-                        if (hitCharacter)
-                            return markerPosition;
-                    }
+                    hitSourceLength = markerSourceLength;
+                    hitCharacter = hitSourceLength > 0;
+                    isTrailingHit = markerTrailingHit;
+                    if (hitCharacter)
+                        return markerPosition;
                 }
 
                 return position;

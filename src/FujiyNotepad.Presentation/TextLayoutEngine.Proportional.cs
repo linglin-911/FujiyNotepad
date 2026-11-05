@@ -750,7 +750,7 @@ public sealed partial class TextLayoutEngine
         double y,
         IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
         out TextPosition position)
-        => TryHitTestAnnotationMarkers(x, y, markersByLine, out position, out _);
+        => TryHitTestAnnotationMarkers(x, y, markersByLine, out position, out _, out _);
 
     public bool TryHitTestAnnotationMarkers(
         double x,
@@ -758,8 +758,18 @@ public sealed partial class TextLayoutEngine
         IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
         out TextPosition position,
         out bool isTrailingHit)
+        => TryHitTestAnnotationMarkers(x, y, markersByLine, out position, out _, out isTrailingHit);
+
+    public bool TryHitTestAnnotationMarkers(
+        double x,
+        double y,
+        IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
+        out TextPosition position,
+        out int sourceLength,
+        out bool isTrailingHit)
     {
         position = default;
+        sourceLength = 0;
         isTrailingHit = false;
         if (!UsesProportionalLayout || markersByLine.Count == 0
             || !double.IsFinite(x) || !double.IsFinite(y))
@@ -857,10 +867,26 @@ public sealed partial class TextLayoutEngine
                 : nearestCaret;
             int selectedColumn = Math.Clamp(preferredColumn, intersectStart, lastCommonCaret);
             position = new TextPosition(hitRow.LineIndex, selectedColumn);
-            isTrailingHit = pointerHit.IsInside && pointerHit.SourceLength > 0
-                            && selectedColumn == pointerHit.SourceStartIndex
-                ? pointerHit.IsTrailingHit
-                : IsTrailingHalfOfCharacter(layout, selectedColumn, localX);
+            if (pointerHit.IsInside && pointerHit.SourceLength > 0
+                && selectedColumn == pointerHit.SourceStartIndex)
+            {
+                sourceLength = pointerHit.SourceLength;
+                isTrailingHit = pointerHit.IsTrailingHit;
+            }
+            else
+            {
+                int characterEnd = layout.GetNextCaretIndex(selectedColumn);
+                if (characterEnd <= selectedColumn && selectedColumn > 0)
+                {
+                    selectedColumn = layout.GetPreviousCaretIndex(selectedColumn);
+                    position = new TextPosition(hitRow.LineIndex, selectedColumn);
+                    characterEnd = layout.GetNextCaretIndex(selectedColumn);
+                }
+
+                sourceLength = Math.Max(0, characterEnd - selectedColumn);
+                isTrailingHit = IsTrailingHalfOfCharacter(layout, selectedColumn, localX);
+            }
+
             return true;
         }
 
@@ -868,10 +894,26 @@ public sealed partial class TextLayoutEngine
             return false;
 
         position = new TextPosition(hitRow.LineIndex, fallbackColumn);
-        isTrailingHit = pointerHit.IsInside && pointerHit.SourceLength > 0
-                        && fallbackColumn == pointerHit.SourceStartIndex
-            ? pointerHit.IsTrailingHit
-            : IsTrailingHalfOfCharacter(layout, fallbackColumn, localX);
+        if (pointerHit.IsInside && pointerHit.SourceLength > 0
+            && fallbackColumn == pointerHit.SourceStartIndex)
+        {
+            sourceLength = pointerHit.SourceLength;
+            isTrailingHit = pointerHit.IsTrailingHit;
+        }
+        else
+        {
+            int characterEnd = layout.GetNextCaretIndex(fallbackColumn);
+            if (characterEnd <= fallbackColumn && fallbackColumn > 0)
+            {
+                fallbackColumn = layout.GetPreviousCaretIndex(fallbackColumn);
+                position = new TextPosition(hitRow.LineIndex, fallbackColumn);
+                characterEnd = layout.GetNextCaretIndex(fallbackColumn);
+            }
+
+            sourceLength = Math.Max(0, characterEnd - fallbackColumn);
+            isTrailingHit = IsTrailingHalfOfCharacter(layout, fallbackColumn, localX);
+        }
+
         return true;
     }
 

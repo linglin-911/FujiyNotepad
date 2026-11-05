@@ -119,6 +119,25 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void AnnotationMarkerHitTest_PreservesTheFullShapingClusterAndHitSide()
+    {
+        var engine = NewEngine(new FakeLines("fi"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 0, 2) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(
+            8, 10, markers, out TextPosition position,
+            out int sourceLength, out bool isTrailingHit);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.Equal(2, sourceLength);
+        Assert.True(isTrailingHit);
+    }
+
+    [Fact]
     public void AnnotationMarkerHitTest_DoesNotHitOutsideTheAnnotatedRectangle()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
