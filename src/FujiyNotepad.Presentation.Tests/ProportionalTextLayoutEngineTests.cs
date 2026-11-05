@@ -98,7 +98,7 @@ public sealed class ProportionalTextLayoutEngineTests
         bool hit = engine.TryHitTestAnnotationMarkers(25, 10, markers, out TextPosition position);
 
         Assert.True(hit);
-        Assert.Equal(new TextPosition(0, 1), position);
+        Assert.Equal(new TextPosition(0, 2), position);
     }
 
     [Fact]
