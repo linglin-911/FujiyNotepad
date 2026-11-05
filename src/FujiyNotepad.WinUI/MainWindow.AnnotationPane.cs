@@ -224,11 +224,18 @@ public sealed partial class MainWindow
             Orientation = Orientation.Horizontal,
             Spacing = 6,
         };
+        var copyContent = new StackPanel
+        {
+            Spacing = 3,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        copyContent.Children.Add(new SymbolIcon(Symbol.Copy));
+        copyContent.Children.Add(new TextBlock { Text = "复制", FontSize = 12 });
         var copyButton = new Button
         {
-            Content = "复制",
-            MinWidth = 76,
-            Padding = new Thickness(14, 8, 14, 8),
+            Content = copyContent,
+            MinWidth = 68,
+            Padding = new Thickness(10, 7, 10, 7),
         };
         copyButton.Click += (_, _) =>
         {
@@ -236,11 +243,18 @@ public sealed partial class MainWindow
             selectionActionsFlyout?.Hide();
         };
 
+        var smallContent = new StackPanel
+        {
+            Spacing = 3,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        smallContent.Children.Add(new SymbolIcon(Symbol.Edit));
+        smallContent.Children.Add(new TextBlock { Text = "小批", FontSize = 12 });
         var smallButton = new Button
         {
-            Content = "小批",
-            MinWidth = 76,
-            Padding = new Thickness(14, 8, 14, 8),
+            Content = smallContent,
+            MinWidth = 68,
+            Padding = new Thickness(10, 7, 10, 7),
         };
         smallButton.Click += (_, _) =>
         {
@@ -269,7 +283,7 @@ public sealed partial class MainWindow
         });
     }
 
-    private async Task OpenSmallAnnotationComposerAsync(
+    private Task OpenSmallAnnotationComposerAsync(
         (long StartOffset, long EndOffset, string Quote) selected)
     {
         if (activeAnnotationStore is not { } store || activeNovelProject is not { } project)
@@ -376,7 +390,7 @@ public sealed partial class MainWindow
             Placement = FlyoutPlacementMode.Bottom,
         });
         contentBox.Focus(FocusState.Programmatic);
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task SaveSmallAnnotationComposerAsync()
