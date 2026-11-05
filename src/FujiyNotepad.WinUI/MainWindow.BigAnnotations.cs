@@ -62,6 +62,8 @@ public sealed partial class MainWindow
         CloseReaderSettingsPanel();
         SetBigAnnotationReturnButtonVisible(false);
         CancelSmallAnnotationCardSingleTap();
+        AnnotationPane.Visibility = Visibility.Collapsed;
+        annotationPaneChapterManuallySelected = false;
         SmallAnnotationsItem.IsChecked = false;
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
         ChapterAnnotationsItem.IsChecked = false;
