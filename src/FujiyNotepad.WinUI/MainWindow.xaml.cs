@@ -3376,41 +3376,89 @@ namespace FujiyNotepad.WinUI
 
         private async void ReaderSettings_Click(object sender, RoutedEventArgs e)
         {
-            ReaderSettings original = CloneReaderSettings(settings.Reader);
+            ReaderSettings? original = null;
             ReaderSettingsDialog? dialog = null;
+            string stage = "click event";
+
+            LogDiagnostic("ReaderSettings: menu click event received");
 
             try
             {
+                stage = "copy current reader settings";
+                original = CloneReaderSettings(settings.Reader);
+
+                // Let the MenuFlyout finish closing before opening a ContentDialog.
+                await Task.Yield();
+
+                stage = "resolve dialog XamlRoot";
+                var xamlRoot = RootGrid.XamlRoot ?? Content.XamlRoot;
+                if (xamlRoot is null)
+                    throw new InvalidOperationException("The main window XamlRoot is not available.");
+
+                stage = "construct ReaderSettingsDialog";
                 dialog = new ReaderSettingsDialog(original)
                 {
-                    XamlRoot = RootGrid.XamlRoot,
+                    XamlRoot = xamlRoot,
                 };
                 dialog.PreviewChanged += PreviewReaderSettings;
+                LogDiagnostic("ReaderSettings: dialog constructed");
 
+                stage = "show ReaderSettingsDialog";
                 ContentDialogResult result = await dialog.ShowAsync();
+                LogDiagnostic($"ReaderSettings: dialog closed with result {result}");
+
                 if (result == ContentDialogResult.Primary)
                 {
+                    stage = "read selected reader settings";
                     ReaderSettings applied = dialog.GetSelectedSettings();
 
                     // Finish applying the validated draft before changing the persisted settings object.
                     // If the reader rejects a setting, the catch path can still restore the untouched snapshot.
+                    stage = "apply selected reader settings";
                     PreviewReaderSettings(applied);
 
+                    stage = "save reader settings";
                     settings.Reader = applied;
                     settings.FontFamily = applied.FontFamily; // keep legacy settings files compatible
                     settings.FontSize = applied.FontSizeDip;
                     settingsStore.Save(settings);
+                    LogDiagnostic("ReaderSettings: settings applied and saved");
                 }
                 else
                 {
                     // Cancel, ESC and the dialog close button all restore the pre-dialog snapshot.
+                    stage = "restore original reader settings";
                     PreviewReaderSettings(original);
+                    LogDiagnostic("ReaderSettings: original settings restored");
                 }
             }
             catch (Exception ex)
             {
-                PreviewReaderSettings(original);
-                LogDiagnostic($"Reader settings dialog failed: {ex}");
+                LogDiagnosticException($"ReaderSettings: failed at stage '{stage}'", ex);
+
+                if (original is not null)
+                {
+                    try
+                    {
+                        PreviewReaderSettings(original);
+                    }
+                    catch (Exception restoreException)
+                    {
+                        LogDiagnosticException("ReaderSettings: failed to restore original settings", restoreException);
+                    }
+                }
+
+                // Do not silently swallow a dialog-construction or display failure.
+                try
+                {
+                    await ShowMessageAsync(
+                        "Reader Settings",
+                        $"The reader settings window could not be opened.\n\nStage: {stage}\n\n{ex.Message}");
+                }
+                catch (Exception messageException)
+                {
+                    LogDiagnosticException("ReaderSettings: failed to display error message", messageException);
+                }
             }
             finally
             {
