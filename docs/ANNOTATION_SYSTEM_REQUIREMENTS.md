@@ -419,7 +419,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 - Phase 4.1 已验收：全局 ReaderSettings、旧 settings.json 迁移、参数归一化和设置持久化已完成；用户曾确认 Release x64 build 成功、983/983 测试通过。
 - Phase 4.2 已由用户测试通过：ReaderPalette 的 Paper/Warm/Night 独立配色、Windows High Contrast 覆盖、字体/字号/行距接入现有比例布局、排版变化后恢复原文视口锚点均已接入。用户反馈拉取当前代码后测试正常、软件运行正常，未发现问题。用户未提供本轮测试数量和警告摘要，不记录推测数字。
 - Phase 4.3 代码已实现并提交到 `feature/reader-settings-phase4`：全宽阅读背景、居中正文容器、ContentWidthDip 接入、窗口宽度变化时恢复原文视口锚点，以及 Night 对软件全局 Dark 主题的临时联动。当前等待用户拉取后执行 Windows x64 build/test 和必要冒烟测试；用户验收前不标记为已验收。
-- Phase 4.4 尚未开发：统一阅读设置窗口，提供字体、字号、行距、正文宽度和 Paper/Warm/Night 主题的设置入口及应用/取消行为。
+- Phase 4.4 已获用户确认并进入开发：从 View 菜单打开统一阅读设置窗口，提供系统字体、字号、行距、正文宽度/自适应、Paper/Warm/Night 阅读背景、预览、应用和取消。Phase 4.3 的 Windows x64 build/test 与冒烟验收仍待用户执行；开始 4.4 不代表 4.3 已验收。
 - Phase 4.5 为 Phase 4 整体验收；应在 4.3、4.4 完成后执行。
 
 ### 当前 Git 状态
@@ -432,11 +432,12 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 下一步开发顺序
 
-1. 开始 Phase 4.3 前，检查当前分支最新代码和本文件、`docs/reader-text-layout-architecture.md`，梳理 MainWindow、阅读器宿主、TextCanvas、比例布局和批注标记刻度的真实布局关系。
-2. 先提出全宽背景 + 居中正文容器的具体实现方案，重点说明布局容器归属、宽度计算、窗口缩放行为、标记刻度对齐和视口锚点保持；涉及跨模块结构变化时先与用户确认。
-3. 方案确认后再实施，优先复用现有阅读器和比例布局，不创建第二套阅读引擎，不改 SQLite、原文 UTF-16 偏移和批注锚点。
-4. 完成后更新本需求文档及阅读器布局架构文档，提交到当前分支；由用户执行 Windows x64 build/test 和必要的阅读器冒烟测试。
-5. Phase 4.3 验收后再讨论并实现 Phase 4.4 阅读设置窗口。
+1. Phase 4.3 代码已提交；仍需用户执行 Windows x64 build/test 和全宽背景、正文居中、宽度变化锚点恢复、批注标记对齐及 Night 全局 Dark 联动冒烟验收。Phase 4.4 开发不会将 4.3 视为已验收。
+2. Phase 4.4 按已获用户确认的方案实施：View 菜单新增“Reader Settings...”入口；统一对话框编辑 ReaderSettings 临时副本；使用 Win2D/DirectWrite 可用的系统字体族列表；提供字号、行距、指定宽度/自适应宽度和 Paper/Warm/Night 选择；提供实时样例预览；Apply 保存并应用，Cancel/Esc/关闭时恢复原设置。
+3. 预览期间调用现有 `TextCanvas.ApplyReaderSettings()`，但必须抑制 `MainWindow.OnFontChanged()` 的自动持久化；取消时重新应用打开对话框前的快照，确保试调值不会写入 settings.json。应用时再将副本写入 `settings.Reader`，同步 legacy FontFamily/FontSize 兼容字段并调用现有 `SettingsStore.Save()`。
+4. 保留现有 Font 和 Zoom 快捷菜单；它们继续通过现有 ReaderSettings 路径工作。将原 `Theme` 菜单明确标注为 `Application Theme`，与对话框中的 `Reading Background` 区分。
+5. 不修改 ReaderSettings 数据模型、SQLite、批注锚点、UTF-16 偏移映射和 TextLayoutEngine；完成后更新本需求文档及阅读器布局架构文档并提交当前分支。
+6. Phase 4.4 完成后，由用户执行 Windows x64 build/test 和设置窗口冒烟测试；4.3 与 4.4 均完成后再执行 Phase 4.5 整体验收。
 
 ### 开发协作与构建约定
 
@@ -453,6 +454,8 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 | 日期 | 变更 |
 |---|---|
+| 2026-11-05 | 用户确认开始 Phase 4.4。开发前架构方案已明确：在 View 菜单增加统一 Reader Settings 对话框入口；复用 ReaderSettings/SettingsStore/ReaderPalette/TextCanvas，不新增设置数据模型；临时副本实时预览，Apply 才持久化，Cancel/Esc/关闭恢复原快照；用 Win2D 获取系统安装字体族；保留 Font/Zoom 快捷操作，并把原全局 Theme 菜单明确标为 Application Theme。Phase 4.3 本地验收仍待执行，不因开始 4.4 而视为通过。 |
+| 2026-11-05 | 用户确认开始 Phase 4.4。开发前架构方案已明确：在 View 菜单增加统一 Reader Settings 对话框入口；复用 ReaderSettings/SettingsStore/ReaderPalette/TextCanvas，不新增设置数据模型；临时副本实时预览，Apply 才持久化，Cancel/Esc/关闭恢复原快照；用 Win2D 获取系统安装字体族；保留 Font/Zoom 快捷操作，并把原全局 Theme 菜单明确标为 Application Theme。Phase 4.3 本地验收仍待执行，不因开始 4.4 而视为通过。 |
 | 2026-11-05 | Phase 4.3 代码实现，提交 `408d8afc53fdfcf860e3acc02ed9d75e3709786a`：主阅读区改为全宽背景与居中内容容器；ContentWidthDip 控制 TextCanvas 宽度，6 DIP 标记刻度额外占宽；宽度变化时捕获并恢复原文 UTF-16 视口锚点；Paper/Warm 保持阅读区独立配色，Night 临时强制应用主界面 Dark 且不覆盖保存的 AppSettings.Theme。同步更新阅读布局架构和 Phase 4.3 需求状态。未在当前执行环境运行 Windows x64 build/test，等待用户本地验证。 |
 | 2026-11-05 | 用户完成 Phase 4.2 本地测试并反馈软件运行正常、未发现问题。验收范围对应当前 `feature/reader-settings-phase4` 代码：ReaderPalette（Paper/Warm/Night）与 Windows High Contrast 覆盖、阅读主题独立于应用 Light/Dark、ReaderSettings 字体/字号/行距接入现有比例布局、排版后恢复原文视口锚点。上次 xUnit2031 断言已改为 predicate overload；本轮未提供精确 build/test 数量和警告摘要，因此不记录具体数字。Phase 4.2 标记为用户测试通过；下一步为 Phase 4.3 全宽阅读背景和居中正文容器。测试代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`。需求文档更新提交：`c5d492669f22c596a967e28845229b03e3795fa4`；阅读器布局架构文档更新提交：`0f97f899726693ebe206838d6ee92ee267046b92`。 |
 | 2026-11-05 | 用户完成 Phase 4.1 验收：Release x64 build 成功，983/983 测试通过，0 失败、0 跳过；唯一警告为 `ProportionalTextLayoutEngineTests.cs(310,42)` 的 xUnit2031 建议，非阻断。随后在同一 `feature/reader-settings-phase4` 分支实现 Phase 4.2：新增 ReaderPalette（Paper/Warm/Night）及 High Contrast 覆盖；TextCanvas 阅读配色独立于应用 Light/Dark Theme；ReaderSettings 字体/字号/行距接入现有比例布局；排版刷新保存并恢复可见原文 UTF-16 视口锚点；新增 11 项 ReaderPalette 测试和 2 项布局/锚点测试。以上是 Phase 4.2 首次实现时的阶段记录；后续用户测试结论见本表紧随其后的记录。首次实现同时按用户上次编译提示，将 `Where(...)+Assert.Single(...)` 改为 xUnit predicate overload。相关提交：`819ad0b47f2ec34703af6a2e6b5137d933399f6a`、`34190e260138f4c231c3b2bdd4174a605d28a9b1`、`4a9cf9dfcf8572162b493e291d44a3e43d16aab6`、`3c0344abd52a5d2b99ee22d88508b73a033ab240`、`bf608db7dad2297a43c2a9e1787887051e5e6e7f`、`4a25c3324519438c3321193349b3a4dd91dcd794`、`05ff89ce50e9103fc7f516467d299fb751fb5b99`、`61b2ce8126935135c2a8f49e60f46c322315bf4d`、`3a5dcc79bb7e7415b209600ecccf62bc7dc1a84e`。 |
@@ -740,7 +743,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 后续整体界面优化应先讨论主窗口整体信息架构和视觉规范，再逐个改造阅读器及三种批注界面；不得把原项目继承功能误写成本项目开发成果，也不得把“代码已实现”直接标记为“用户已验收”。
 
-### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（4.1、4.2 已完成用户测试）
+### 13.9 Phase 4：全局阅读设置与主界面视觉隔离（4.1、4.2 已完成用户测试；4.3 待用户验证；4.4 开发中）
 
 **核心决定：阅读界面与软件主界面保留两套独立设置机制，但 Night 有明确的全局深色联动。** Paper、Warm 只改变阅读界面；Night 同时将软件主界面的有效主题临时切换为 Dark。Night 不覆盖或修改用户保存的 `AppSettings.Theme`；Night 期间用户修改全局主题仍正常保存，但界面继续保持 Dark，退出 Night 后恢复最新保存的全局主题。主界面菜单、工具栏、状态栏、批注面板和弹窗只使用应用自身主题资源，不使用 ReaderPalette 颜色；不增加这些控件独立的字体、字号或背景颜色设置。
 
@@ -799,3 +802,53 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - TextCanvas 宽度变化时，在更新引擎视口前捕获原文 UTF-16 视口锚点，使用现有 `SetViewportAnchor` 恢复；现有比例布局测试调整为直接改变 ViewportWidth，验证引擎按宽度变化自动更新布局选项。
 - Reader.Theme=Night 时，MainWindow 临时将 `RootGrid.RequestedTheme` 设为 Dark；不修改保存的 `AppSettings.Theme`。Night 期间更改全局主题只更新保存值，离开 Night 后恢复最新值。Paper/Warm 不改变全局主题。
 - **验证状态：** 代码提交 `408d8afc53fdfcf860e3acc02ed9d75e3709786a` 已推送到 `feature/reader-settings-phase4`；当前执行环境没有 .NET SDK/Windows App SDK，未运行 Windows x64 build/test。用户拉取后按本项目既定命令进行编译、自动化测试和必要冒烟验收；未验收前不将 Phase 4.3 标记为用户通过。
+
+
+#### 13.9.6 Phase 4.4 统一阅读设置窗口——已确认的实施架构（2026-11-05）
+
+**目标与边界**
+
+- 从 `View → Reader Settings...` 打开一个统一设置对话框，集中配置阅读字体、字号、行距、正文最大宽度/自适应宽度和 Paper/Warm/Night 阅读背景。
+- 对话框提供样例预览；所有设置仍是全局 ReaderSettings，对所有小说项目生效。
+- 原 `View → Theme` 实际控制的是软件主界面外观，菜单文案改为 `Application Theme`，对话框将阅读配色称为 `Reading Background`，避免两种主题混淆。
+- 不增加 SQLite 表、不改变项目文件、不引入项目级阅读设置，不更改文本布局引擎或锚点结构。
+
+**模块职责与文件**
+
+- `src/FujiyNotepad.WinUI/ReaderSettingsDialog.xaml(.cs)`：独立 `ContentDialog`，负责控件、系统字体列表、临时草稿、样例预览和输入归一化；通过 `PreviewChanged` 事件把草稿副本通知窗口，不直接访问设置文件或 TextCanvas。
+- `src/FujiyNotepad.WinUI/MainWindow.xaml`：在 View 菜单增加入口；原全局主题子菜单改名为 Application Theme。
+- `src/FujiyNotepad.WinUI/MainWindow.xaml.cs`：负责显示对话框、设置 `XamlRoot`、接收预览、Apply/Cancel 状态协调和持久化；通过现有 `View.ApplyReaderSettings()` 应用阅读设置。
+- `src/FujiyNotepad.WinUI/Strings/en-US/Resources.resw` 与 `Strings/pt-BR/Resources.resw`：新增菜单及对话框文案，保持两份资源键一致。
+- `ReaderSettings`、`AppSettings.Reader`、`SettingsStore` 和 `ReaderPalette` 沿用现有实现，不新增持久化模型或序列化路径。
+
+**系统字体来源**
+
+- 使用项目已引用的 Win2D：`CanvasTextFormat.GetSystemFontFamilies(ApplicationLanguages.Languages)` 获取当前 Windows/用户语言优先的系统字体族名称。
+- 名称去重并按当前区域排序；若已保存字体未出现在当前系统字体集合中，仍将其临时放入列表并保持选中，避免打开/取消设置时静默改写用户原值。
+- 字体选择仅传递字体族名称给现有 `TextCanvas.ApplyReaderSettings`；不安装字体、不加载外部字体文件。
+
+**设置编辑与数据流**
+
+1. 用户从 View 菜单打开窗口；MainWindow 将当前 `settings.Reader` 深拷贝为原始快照，并把另一份副本传给对话框。
+2. 对话框控件只更新 draft；字体、字号、行距、宽度或主题变化时，刷新对话框样例预览并发出 draft 副本。
+3. MainWindow 收到预览后，临时调用现有 `View.ApplyReaderSettings(draft)`。字体变化会触发既有 `FontChanged → OnFontChanged`；必须增加预览抑制标记，使该回调只更新 Zoom 标签/快捷菜单选中状态，不写入 `settings.Reader`、legacy 字段或 settings.json。
+4. 用户点 Apply：将对话框最终副本写入 `settings.Reader`，同步 legacy `settings.FontFamily/FontSize` 兼容字段，调用现有 `SettingsStore.Save(settings)`；保持当前预览后的阅读位置和主题联动。
+5. 用户点 Cancel、关闭按钮或按 Esc：不保存 draft，MainWindow 使用原始快照再次调用 `View.ApplyReaderSettings`，恢复字体、字号、行距、正文宽度、阅读背景及 Night 对应用主界面的临时 Dark 联动；随后恢复焦点。
+6. 对话框必须在显示前设置 `XamlRoot = RootGrid.XamlRoot`，遵循 WinUI 3 ContentDialog 的窗口宿主要求。
+
+**控件与交互**
+
+- 字体：系统字体族 ComboBox，保留当前值；使用 Win2D 系统字体枚举，不维护硬编码字体名单作为唯一选项。
+- 字号：Slider，范围复用 `ReaderSettings.MinFontSizeDip/MaxFontSizeDip`（6–72 DIP），显示当前数值。
+- 行距：Slider，范围复用模型边界（0.8–2.5），显示倍数。
+- 正文宽度：NumberBox，指定宽度范围 480–2400 DIP；另设“自适应可用宽度”选项，勾选时写入 0 并禁用指定宽度输入。
+- 阅读背景：Paper、Warm、Night 三个互斥选项；样例预览使用现有 `ReaderPalette` 对应背景色和文字色，不复制/另建主题调色板。
+- Apply 保存；Cancel、Esc 和关闭按钮撤销全部未应用改动。窗口关闭后保留原有 Ctrl+加减号/Zoom、Font 快捷菜单行为。
+- Windows High Contrast 仍由现有 ReaderPalette/ TextCanvas 逻辑优先覆盖；对话框提示该无障碍行为，不提供自定义 RGB 颜色。
+
+**测试与验收**
+
+- 不新增数据表或设置字段；现有 SettingsStore round-trip/迁移测试继续作为持久化基础。
+- 本阶段至少执行 Release x64 build、自动化测试；用户冒烟测试覆盖入口可见、系统字体列表、字号/行距、宽度指定与自适应、三种背景、样例预览、Apply 保存、Cancel/Esc 撤销、Night 联动、项目切换及重启持久化。
+- 额外重点检查：预览改变字体时不得提前写入设置；取消后所有阅读参数和主界面主题均恢复；应用 Paper/Warm 不改变应用主题；Night 退出后恢复用户保存的 Application Theme。
+- Phase 4.3 的本地构建/冒烟验收仍是独立待办；Phase 4.4 开发不代表 Phase 4.3 已验收。
