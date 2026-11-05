@@ -105,11 +105,29 @@
   <data name="ZoomOutItem.Text" xml:space="preserve"><value>Reduzir</value></data>
   <data name="ResetZoomItem.Text" xml:space="preserve"><value>Redefinir Zoom</value></data>
   <data name="FontSubMenu.Text" xml:space="preserve"><value>Fonte</value></data>
-  <data name="ThemeSubMenu.Text" xml:space="preserve"><value>Tema</value></data>
+  <data name="ApplicationThemeSubMenu.Text" xml:space="preserve"><value>Tema do aplicativo</value></data>
   <data name="ThemeSystem.Text" xml:space="preserve"><value>Sistema</value></data>
   <data name="ThemeLight.Text" xml:space="preserve"><value>Claro</value></data>
   <data name="ThemeDark.Text" xml:space="preserve"><value>Escuro</value></data>
+  <data name="ReaderSettingsItem.Text" xml:space="preserve"><value>Configurações de leitura...</value></data>
   <data name="HighlightRulesItem.Text" xml:space="preserve"><value>Regras de Realce...</value></data>
+
+  <!-- ===== Reader settings dialog ===== -->
+  <data name="ReaderSettingsDialog.Title" xml:space="preserve"><value>Configurações de leitura</value></data>
+  <data name="ReaderSettingsDialog.PrimaryButtonText" xml:space="preserve"><value>Aplicar</value></data>
+  <data name="ReaderSettingsDialog.CloseButtonText" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ReaderSettingsFontFamilyLabel.Text" xml:space="preserve"><value>Família da fonte</value></data>
+  <data name="ReaderSettingsFontSizeLabel.Text" xml:space="preserve"><value>Tamanho da fonte</value></data>
+  <data name="ReaderSettingsLineSpacingLabel.Text" xml:space="preserve"><value>Espaçamento entre linhas</value></data>
+  <data name="ReaderSettingsContentWidthLabel.Text" xml:space="preserve"><value>Largura do conteúdo</value></data>
+  <data name="ReaderSettingsAdaptiveWidthCheckBox.Content" xml:space="preserve"><value>Ajustar à largura disponível</value></data>
+  <data name="ReaderSettingsThemeLabel.Text" xml:space="preserve"><value>Plano de fundo da leitura</value></data>
+  <data name="ReaderSettingsPaperThemeLabel.Text" xml:space="preserve"><value>Paper</value></data>
+  <data name="ReaderSettingsWarmThemeLabel.Text" xml:space="preserve"><value>Warm</value></data>
+  <data name="ReaderSettingsNightThemeLabel.Text" xml:space="preserve"><value>Night</value></data>
+  <data name="ReaderSettingsPreviewLabel.Text" xml:space="preserve"><value>Pré-visualização</value></data>
+  <data name="ReaderSettingsHighContrastNote.Text" xml:space="preserve"><value>O Alto Contraste do Windows substitui o plano de fundo selecionado por motivos de acessibilidade.</value></data>
+  <data name="ReaderSettingsGlobalNote.Text" xml:space="preserve"><value>Estas configurações se aplicam a todos os projetos de romances.</value></data>
 
   <!-- ===== Encoding menu ===== -->
   <data name="EncodingMenu.Title" xml:space="preserve"><value>Codificação</value></data>

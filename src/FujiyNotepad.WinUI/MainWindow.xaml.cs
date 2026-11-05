@@ -83,6 +83,7 @@ namespace FujiyNotepad.WinUI
 
         private readonly SettingsStore settingsStore = SettingsStore.Default();
         private AppSettings settings = new();
+        private bool suppressReaderSettingsPersistence;
         private SizeInt32 lastNormalSize;
         private const double ReaderMarkerWidthDip = 6d;
 
@@ -3340,6 +3341,82 @@ namespace FujiyNotepad.WinUI
             }
         }
 
+        private static ReaderSettings CloneReaderSettings(ReaderSettings source)
+        {
+            var clone = new ReaderSettings
+            {
+                FontFamily = source.FontFamily,
+                FontSizeDip = source.FontSizeDip,
+                LineSpacingMultiplier = source.LineSpacingMultiplier,
+                ContentWidthDip = source.ContentWidthDip,
+                Theme = source.Theme,
+            };
+            clone.Normalize();
+            return clone;
+        }
+
+        // The dialog previews a draft through the existing reader settings path. FontChanged normally persists
+        // immediately, so suppress that side effect until the user explicitly presses Apply.
+        private void PreviewReaderSettings(ReaderSettings draft)
+        {
+            bool wasSuppressed = suppressReaderSettingsPersistence;
+            suppressReaderSettingsPersistence = true;
+            try
+            {
+                View.ApplyReaderSettings(draft);
+            }
+            finally
+            {
+                suppressReaderSettingsPersistence = wasSuppressed;
+            }
+
+            LblZoom.Text = $"{View.ZoomPercent}%";
+            TickFontMenu(View.FontFamilyName);
+        }
+
+        private async void ReaderSettings_Click(object sender, RoutedEventArgs e)
+        {
+            ReaderSettings original = CloneReaderSettings(settings.Reader);
+            ReaderSettingsDialog? dialog = null;
+
+            try
+            {
+                dialog = new ReaderSettingsDialog(original)
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                };
+                dialog.PreviewChanged += PreviewReaderSettings;
+
+                ContentDialogResult result = await dialog.ShowAsync();
+                if (result == ContentDialogResult.Primary)
+                {
+                    ReaderSettings applied = dialog.GetSelectedSettings();
+                    settings.Reader = applied;
+                    settings.FontFamily = applied.FontFamily; // keep legacy settings files compatible
+                    settings.FontSize = applied.FontSizeDip;
+                    settingsStore.Save(settings);
+                    PreviewReaderSettings(applied);
+                }
+                else
+                {
+                    // Cancel, ESC and the dialog close button all restore the pre-dialog snapshot.
+                    PreviewReaderSettings(original);
+                }
+            }
+            catch (Exception ex)
+            {
+                PreviewReaderSettings(original);
+                LogDiagnostic($"Reader settings dialog failed: {ex}");
+            }
+            finally
+            {
+                if (dialog is not null)
+                    dialog.PreviewChanged -= PreviewReaderSettings;
+
+                View.FocusCanvas();
+            }
+        }
+
         // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
         // forces the effective app theme to Dark without changing settings.Theme. If the user changes the
         // global theme while Night is active, that preference is saved and restored after leaving Night.
@@ -3493,6 +3570,11 @@ namespace FujiyNotepad.WinUI
         {
             LblZoom.Text = $"{View.ZoomPercent}%";
             TickFontMenu(View.FontFamilyName);
+
+            // Preview changes must not mutate the global settings object or write settings.json.
+            if (suppressReaderSettingsPersistence)
+                return;
+
             settings.FontFamily = View.FontFamilyName; // keep legacy settings files compatible
             settings.FontSize = View.FontSizePoints;
             settings.Reader.FontFamily = View.FontFamilyName;

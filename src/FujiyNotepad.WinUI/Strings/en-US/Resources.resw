@@ -115,11 +115,29 @@
   <data name="ZoomOutItem.Text" xml:space="preserve"><value>Zoom Out</value></data>
   <data name="ResetZoomItem.Text" xml:space="preserve"><value>Reset Zoom</value></data>
   <data name="FontSubMenu.Text" xml:space="preserve"><value>Font</value></data>
-  <data name="ThemeSubMenu.Text" xml:space="preserve"><value>Theme</value></data>
+  <data name="ApplicationThemeSubMenu.Text" xml:space="preserve"><value>Application Theme</value></data>
   <data name="ThemeSystem.Text" xml:space="preserve"><value>System</value></data>
   <data name="ThemeLight.Text" xml:space="preserve"><value>Light</value></data>
   <data name="ThemeDark.Text" xml:space="preserve"><value>Dark</value></data>
+  <data name="ReaderSettingsItem.Text" xml:space="preserve"><value>Reader Settings...</value></data>
   <data name="HighlightRulesItem.Text" xml:space="preserve"><value>Highlight Rules...</value></data>
+
+  <!-- ===== Reader settings dialog ===== -->
+  <data name="ReaderSettingsDialog.Title" xml:space="preserve"><value>Reader Settings</value></data>
+  <data name="ReaderSettingsDialog.PrimaryButtonText" xml:space="preserve"><value>Apply</value></data>
+  <data name="ReaderSettingsDialog.CloseButtonText" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ReaderSettingsFontFamilyLabel.Text" xml:space="preserve"><value>Font family</value></data>
+  <data name="ReaderSettingsFontSizeLabel.Text" xml:space="preserve"><value>Font size</value></data>
+  <data name="ReaderSettingsLineSpacingLabel.Text" xml:space="preserve"><value>Line spacing</value></data>
+  <data name="ReaderSettingsContentWidthLabel.Text" xml:space="preserve"><value>Content width</value></data>
+  <data name="ReaderSettingsAdaptiveWidthCheckBox.Content" xml:space="preserve"><value>Adapt to available width</value></data>
+  <data name="ReaderSettingsThemeLabel.Text" xml:space="preserve"><value>Reading background</value></data>
+  <data name="ReaderSettingsPaperThemeLabel.Text" xml:space="preserve"><value>Paper</value></data>
+  <data name="ReaderSettingsWarmThemeLabel.Text" xml:space="preserve"><value>Warm</value></data>
+  <data name="ReaderSettingsNightThemeLabel.Text" xml:space="preserve"><value>Night</value></data>
+  <data name="ReaderSettingsPreviewLabel.Text" xml:space="preserve"><value>Preview</value></data>
+  <data name="ReaderSettingsHighContrastNote.Text" xml:space="preserve"><value>Windows High Contrast overrides the selected reading background for accessibility.</value></data>
+  <data name="ReaderSettingsGlobalNote.Text" xml:space="preserve"><value>These settings apply to all novel projects.</value></data>
 
   <!-- ===== Encoding menu ===== -->
   <data name="EncodingMenu.Title" xml:space="preserve"><value>Encoding</value></data>

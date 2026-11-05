@@ -175,11 +175,13 @@
                     <RadioMenuFlyoutItem x:Name="FontCourierNew" Text="Courier New" GroupName="Font" Tag="Courier New" Click="Font_Click" />
                     <RadioMenuFlyoutItem x:Name="FontLucidaConsole" Text="Lucida Console" GroupName="Font" Tag="Lucida Console" Click="Font_Click" />
                 </MenuFlyoutSubItem>
-                <MenuFlyoutSubItem x:Uid="ThemeSubMenu" Text="Theme">
+                <MenuFlyoutSubItem x:Uid="ApplicationThemeSubMenu" Text="Application Theme">
                     <RadioMenuFlyoutItem x:Uid="ThemeSystem" x:Name="ThemeSystem" Text="System" GroupName="Theme" Tag="System" Click="Theme_Click" />
                     <RadioMenuFlyoutItem x:Uid="ThemeLight" x:Name="ThemeLight" Text="Light" GroupName="Theme" Tag="Light" Click="Theme_Click" />
                     <RadioMenuFlyoutItem x:Uid="ThemeDark" x:Name="ThemeDark" Text="Dark" GroupName="Theme" Tag="Dark" Click="Theme_Click" />
                 </MenuFlyoutSubItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="ReaderSettingsItem" x:Name="ReaderSettingsItem" Text="Reader Settings..." Click="ReaderSettings_Click" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="HighlightRulesItem" Text="Highlight Rules..." Click="HighlightRules_Click" />
             </MenuBarItem>
