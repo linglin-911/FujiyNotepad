@@ -540,16 +540,26 @@ public sealed partial class TextLayoutEngine
 
         if (returnCharacter && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
         {
-            int firstEnd = layout.GetNextCaretIndex(hitRow.SourceStartIndex);
-            if (firstEnd > hitRow.SourceStartIndex)
+            int sampleStart = hitRow.SourceStartIndex;
+            while (sampleStart < hitRow.SourceEndIndex)
             {
-                IReadOnlyList<TextLayoutRect> firstCharacterGeometry = layout.GetRangeGeometry(
-                    hitRow.SourceStartIndex, firstEnd - hitRow.SourceStartIndex);
-                if (firstCharacterGeometry.Count > 0)
+                int nextBoundary = layout.GetNextCaretIndex(sampleStart);
+                if (nextBoundary <= sampleStart)
+                    break;
+
+                if (!char.IsWhiteSpace(layout.SourceText[sampleStart]))
                 {
-                    TextLayoutRect firstRectangle = firstCharacterGeometry[0];
-                    hitTestY = firstRectangle.Y + firstRectangle.Height / 2;
+                    IReadOnlyList<TextLayoutRect> sampleGeometry = layout.GetRangeGeometry(
+                        sampleStart, nextBoundary - sampleStart);
+                    if (sampleGeometry.Count > 0)
+                    {
+                        TextLayoutRect sampleRectangle = sampleGeometry[0];
+                        hitTestY = sampleRectangle.Y + sampleRectangle.Height / 2;
+                        break;
+                    }
                 }
+
+                sampleStart = nextBoundary;
             }
         }
 
