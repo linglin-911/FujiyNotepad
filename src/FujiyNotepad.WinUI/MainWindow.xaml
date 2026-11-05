@@ -367,7 +367,8 @@
                     <ComboBox x:Name="AnnotationPaneChapterSelector" Grid.Row="1"
                               HorizontalAlignment="Stretch" PlaceholderText="选择章节"
                               MaxDropDownHeight="420"
-                              SelectionChanged="AnnotationPaneChapterSelector_SelectionChanged" />
+                              SelectionChanged="AnnotationPaneChapterSelector_SelectionChanged"
+                              DropDownClosed="AnnotationPaneChapterSelector_DropDownClosed" />
 
                     <Grid x:Name="AnnotationPaneTabBar" Grid.Row="2" ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
