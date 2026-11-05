@@ -9,7 +9,7 @@
 > 批注功能基线分支：`feature/novel-project-annotations`
 > Phase 4.2 用户验收代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`
 > 当前基线：`fix/reader-proportional-line-overlap` 已解决比例字体窗口宽度变化时的文字重叠；当前 Phase 4 工作分支从该修复分支建立。
-> 用户最新实测反馈（2026-11-05）：用户运行首轮提交 `8c88e23573e671778c5896d5be4a96aa29d9c611` 后，截图显示小批注虚线仍穿过字形上半部，拖动选字无法命中文字。自动化测试 1011 项中 1004 项成功、7 项失败，均在 Presentation.Tests。复核确认首轮 DrawBounds 临时布局坐标转换方案不可靠；另发现命中测试使用选区留白、批注位置优先级错误，以及两组测试漏计 TextPadding=8 DIP。本轮已提交第二轮修正 `e79a58d0c1be54b64d2dd29d529826a144c95b71`，改用原始布局 LayoutBounds 并拆分文字命中区/选区矩形；尚未执行第二轮 Windows x64 build/test，也未完成用户实测验收。
+> 用户最新实测反馈（2026-11-05）：用户运行首轮提交 `8c88e23573e671778c5896d5be4a96aa29d9c611` 后，截图显示小批注虚线仍穿过字形上半部，拖动选字无法命中文字。自动化测试 1011 项中 1004 项成功、7 项失败，均在 Presentation.Tests。复核确认首轮 DrawBounds 临时布局坐标转换方案不可靠；另发现命中测试使用选区留白、批注位置优先级错误，以及两组测试漏计 TextPadding=8 DIP。本轮已提交第二轮修正 `e79a58d0c1be54b64d2dd29d529826a144c95b71`、`eb476b7c34841541d3aed958638d7874225ae52b`，改用原始布局 LayoutBounds 并拆分文字命中区/选区矩形；尚未执行第二轮 Windows x64 build/test，也未完成用户实测验收。
 
 ## 1. 状态标记与维护规则
 
@@ -480,7 +480,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 |---|---|
 | 2026-11-05 | 完成 BUG-020、BUG-021 和 S-063 的代码修改。BUG-020 使用 DrawBounds 真实字形范围与临时视觉行布局测量，统一选区背景/批注虚线几何并修正绘制原点与裁剪；BUG-021 在左键字符命中前清理旧选区；S-063 将 DirectWrite leading/trailing hit 中线规则用于按下与拖动端点，并保留 shaping cluster 长度。新增几何、中线、空白点击清理和批注字形簇测试。代码提交：b685f42a996d77516b9f1b5f7430bc499a590a5e、97ea31363ceeff130c9e23fdd6d0a4b224d1dbbc、72ef36e9f19454fa06f3aa2b299bf113e7279970。当前未运行 Windows x64 build/test，等待用户本地构建、自动化测试与视觉/交互验收。 |
 | 2026-11-05 | 用户实测上一轮文字选择修复后，新增并暂缓 BUG-020/021：选区背景和小批注虚线均明显偏上，虚线穿过字形；已有选区时点击阅读器空白区域不能取消选区。S-057 更新为存在用户实测缺陷，新增 S-062 记录空白点击取消选区的交互要求。用户要求本轮只更新需求文档并交接，不立即修复。当前功能代码基准 HEAD：`f8897dc1183b702b8e5c1c05396b694104c81b85`；未提供本轮 build/test 完整结果，不推断测试通过。 |
-| 2026-11-05 | 用户实测首轮 DrawBounds 垂直几何后，批注虚线仍穿过字形上半部，拖动选字失效；本地自动化测试 1011 项中 7 项失败、1004 项通过。复核发现临时布局 caret 原点换算不可靠、文字命中错误使用选区留白、批注位置错误优先使用 SourceStartIndex，以及测试漏计 8 DIP TextPadding。第二轮改用原始布局 LayoutBounds、分离 TextTop/TextBottom 与 SelectionTop/Height、恢复 nearestCaret 批注位置并修正测试坐标。代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`；第二轮测试与用户实测待执行。 |
+| 2026-11-05 | 用户实测首轮 DrawBounds 垂直几何后，批注虚线仍穿过字形上半部，拖动选字失效；本地自动化测试 1011 项中 7 项失败、1004 项通过。复核发现临时布局 caret 原点换算不可靠、文字命中错误使用选区留白、批注位置错误优先使用 SourceStartIndex，以及测试漏计 8 DIP TextPadding。第二轮改用原始布局 LayoutBounds、分离 TextTop/TextBottom 与 SelectionTop/Height、恢复 nearestCaret 批注位置、保留多 UTF-16 单元 shaping cluster，并修正测试坐标。代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`、`eb476b7c34841541d3aed958638d7874225ae52b`；第二轮测试与用户实测待执行。 |
 
 | 2026-11-05 | BUG-018/019 按用户最终确认方案实施：ReaderSettingsPanel 继续覆盖 ReaderViewport，不挤压阅读区域；ReaderToolsRail 使用独立 56 DIP 布局列，ReaderViewport 宽度自动扣除工具栏。面板与齿轮按钮改用 SolidBackgroundFillColorBaseBrush。面板打开时只有面板内部可操作；点击工具栏或其他面板外区域关闭面板并消费点击，工具栏容器不可命中，齿轮按钮禁用，不执行按钮命令。代码与架构文档已更新，等待 Windows x64 build/test 和用户冒烟验收。 |
 | 2026-11-05 | 用户拉取修复提交 d92d16dae231e53ad98f58d0b0a9dd9e5837e79c 后，已能正常运行程序并打开右侧实时阅读设置面板。根据用户截图登记 BUG-018：ReaderSettingsPanel 当前使用 LayerFillColorDefaultBrush、工具按钮使用 CardBackgroundFillColorDefaultBrush，实际视觉呈半透明，需改为主题适配的不透明背景；登记 BUG-019：ReaderOverlayHost 与 ReaderToolsRail 目前覆盖在阅读区域上方，未从正文可用宽度中预留工具栏区域，最大/自适应正文可能侵入按钮区域。用户明确要求本轮只记录，不直接修复。另将 Phase 4.4 的实际设计更新为非模态右侧实时设置面板：无 Preview/Apply/Cancel，设置即时生效并防抖保存；面板外点击关闭且消费点击，左侧阅读区滚轮可用。
@@ -683,14 +683,14 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 可见文字行直接从原始 CanvasTextLayout.GetCharacterRegions() 读取 CanvasTextLayoutRegion.LayoutBounds。该矩形本身处于原始布局坐标系（DIP），与 DrawTextLayout 使用同一布局原点；不再创建临时单行布局，也不再做 DrawBounds/caret 原点换算。
 - TextLayoutVerticalGeometry 改为 TextTop/TextBottom、SelectionTop/SelectionHeight、AnnotationUnderlineY/Thickness。TextTop/TextBottom 表示原始布局文字带；选区和批注矩形在其基础上增加行内可用留白；虚线只能绘制在文字带下方的剩余空间，不足时隐藏。
 - 普通文字命中直接使用鼠标实际 localY，并以未加垂直留白的 TextTop/TextBottom 验证；不能把选区 padding 或行间距视为文字。
-- 小批注点击仍使用带留白的 GetRangeGeometry 矩形；仅为解析矩形内的水平字符位置，使用文字带中心做 DirectWrite hit-test。批注目标位置优先按 nearestCaret 夹取到共同范围，保留完整 shaping cluster 的 sourceLength 和 trailing hit。
+- 小批注点击仍使用带留白的 GetRangeGeometry 矩形；仅为解析矩形内的水平字符位置，使用文字带中心做 DirectWrite hit-test。普通单字符批注位置优先按 nearestCaret 夹取到共同范围；当 DirectWrite 返回多 UTF-16 单元 shaping cluster 时保留 cluster 起始位置，完整返回 sourceLength 和 trailing hit，避免通用 grapheme 边界表拆分字形簇。
 - 空白行/纯空格行仍使用同字体的代表性文字布局作为回退；该回退不参与正常可见文字行的坐标计算。
 - 新增/调整几何测试：原始布局坐标直用、行距变化不移动文字带、选区 padding 不侵入行间距、文字带超出 caret-row 时不裁剪、无效 LayoutBounds 处理；增加批注矩形垂直留白命中测试；修正遗漏 8 DIP TextPadding 的字符左右半区测试坐标。
 - BUG-021 左键按下先清除旧选区的逻辑未改动；右键章节批注和设置面板被动交互规则未改动。
 
 **第二轮提交与验证状态**
 
-- 代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`。
+- 代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`、`eb476b7c34841541d3aed958638d7874225ae52b`。
 - 本轮没有可用的 Windows/.NET SDK 执行环境；尚未获得第二轮 x64 build/test 结果，也尚未获得用户对虚线位置和拖动选字的复测结果。不得标记 BUG-020、S-057、BUG-021 或 S-063 为用户验收完成。
 
 ## 13. 整体界面优化阶段：仓库盘点与功能归属

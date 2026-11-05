@@ -234,7 +234,7 @@ The proportional backend must measure the active font's actual space advance whe
 - TextLayoutVerticalGeometry exposes the raw TextTop/TextBottom band separately from SelectionTop/SelectionHeight. The selection and annotation-marker rectangle may add up to 1.5 DIP padding only where the visual row has room; the underline is placed below TextBottom within available lower padding, otherwise omitted.
 - Ordinary text hit-testing uses the actual pointer Y and the unpadded text band. Annotation-marker hit-testing intentionally accepts the padded source-range rectangle, while using the text-band center only to resolve the horizontal source position.
 - Empty and whitespace-only rows have no character LayoutBounds; only these rows use a representative same-format sample layout aligned to the row caret origin.
-- The second implementation also restores nearest-caret preference when resolving annotation-marker positions and corrects test coordinates to include the engine's 8-DIP TextPadding.
+- The second implementation restores nearest-caret preference for ordinary character marker hits, preserves the source start and complete UTF-16 length when DirectWrite reports a multi-unit shaping cluster, and corrects test coordinates to include the engine's 8-DIP TextPadding.
 
 ### BUG-021 — blank left-click clears selection
 
