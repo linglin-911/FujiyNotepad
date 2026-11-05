@@ -724,6 +724,9 @@ namespace FujiyNotepad.WinUI
             ChapterDirectoryItem.IsEnabled = hasProject;
             SmallAnnotationsItem.IsEnabled = hasProject;
             ChapterAnnotationsItem.IsEnabled = hasProject;
+            NewChapterAnnotationRailButton.Visibility = hasProject
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             NewChapterAnnotationRailButton.IsEnabled = hasProject && filteredSource is null;
             BigAnnotationsItem.IsEnabled = hasProject;
             View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
