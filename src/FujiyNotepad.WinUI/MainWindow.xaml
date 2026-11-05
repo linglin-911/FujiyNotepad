@@ -552,8 +552,7 @@
                     Visibility="Collapsed"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                    BorderThickness="1,0,1,0"
-                    Panel.ZIndex="20">
+                    BorderThickness="1,0,1,0">
                 <local:ReaderSettingsPane x:Name="ReaderSettingsControl" />
             </Border>
 
@@ -561,7 +560,7 @@
                  (directory, annotations, etc.) can join this same vertical stack. -->
             <StackPanel x:Name="ReaderToolsRail"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Margin="0,0,8,0" Spacing="10" Panel.ZIndex="30">
+                        Margin="0,0,8,0" Spacing="10">
                 <Button x:Uid="ReaderSettingsToggleButton" x:Name="ReaderSettingsToggleButton"
                         AutomationProperties.AutomationId="ReaderSettingsToggleButton"
                         Width="44" Height="44" MinWidth="44" MinHeight="44"
