@@ -417,6 +417,65 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
         return result;
     }
 
+    /// <summary>
+    /// Returns small-annotation summaries that have at least one anchor in the requested chapter.
+    /// Counts and the representative quotation are scoped to that chapter, so a multi-chapter note
+    /// appears in each chapter it is linked to without leaking unrelated anchors into the chapter list.
+    /// </summary>
+    public async Task<IReadOnlyList<NovelAnnotationSummary>> GetAnnotationSummariesForChapterAsync(
+        Guid chapterId, Guid? categoryId = null, string? searchText = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT n.Id, n.CategoryId, n.Title, n.Content, n.CreatedAt, n.UpdatedAt,
+                   COUNT(a.Id),
+                   COALESCE(SUM(CASE WHEN a.IsOrphaned = 1 THEN 1 ELSE 0 END), 0),
+                   MIN(CASE WHEN a.IsOrphaned = 0 THEN a.StartOffset END),
+                   (SELECT q.Quote FROM AnnotationAnchors q
+                    WHERE q.AnnotationId = n.Id AND q.ChapterId = $chapter AND q.IsOrphaned = 0
+                    ORDER BY q.StartOffset, q.EndOffset LIMIT 1)
+            FROM Annotations n
+            INNER JOIN AnnotationAnchors a ON a.AnnotationId = n.Id AND a.ChapterId = $chapter
+            WHERE ($category IS NULL OR n.CategoryId = $category)
+              AND ($search IS NULL
+                   OR n.Content LIKE $search ESCAPE '\\'
+                   OR EXISTS (
+                       SELECT 1 FROM AnnotationAnchors q
+                       WHERE q.AnnotationId = n.Id AND q.ChapterId = $chapter
+                         AND q.Quote LIKE $search ESCAPE '\\'
+                   ))
+            GROUP BY n.Id
+            ORDER BY n.UpdatedAt DESC;
+            """;
+        command.Parameters.AddWithValue("$chapter", chapterId.ToString("D"));
+        command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
+        string? pattern = string.IsNullOrWhiteSpace(searchText) ? null : "%" + EscapeLike(searchText.Trim()) + "%";
+        command.Parameters.AddWithValue("$search", (object?)pattern ?? DBNull.Value);
+
+        var result = new List<NovelAnnotationSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var annotation = new NovelAnnotation(
+                Guid.Parse(reader.GetString(0)),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4)),
+                DateTimeOffset.Parse(reader.GetString(5)));
+            result.Add(new NovelAnnotationSummary(
+                annotation,
+                reader.GetInt32(6),
+                reader.GetInt32(7),
+                reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9)));
+        }
+        return result;
+    }
+
     public async Task<bool> HasAnchorAsync(Guid annotationId, long startOffset, long endOffset,
         CancellationToken cancellationToken = default)
     {
