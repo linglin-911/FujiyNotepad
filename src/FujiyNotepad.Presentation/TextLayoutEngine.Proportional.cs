@@ -548,27 +548,14 @@ public sealed partial class TextLayoutEngine
 
         if (returnCharacter && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
         {
-            int sampleStart = hitRow.SourceStartIndex;
-            while (sampleStart < hitRow.SourceEndIndex)
-            {
-                int nextBoundary = layout.GetNextCaretIndex(sampleStart);
-                if (nextBoundary <= sampleStart)
-                    break;
-
-                if (!char.IsWhiteSpace(layout.SourceText[sampleStart]))
-                {
-                    IReadOnlyList<TextLayoutRect> sampleGeometry = layout.GetRangeGeometry(
-                        sampleStart, nextBoundary - sampleStart);
-                    if (sampleGeometry.Count > 0)
-                    {
-                        TextLayoutRect sampleRectangle = sampleGeometry[0];
-                        hitTestY = sampleRectangle.Y + sampleRectangle.Height / 2;
-                        break;
-                    }
-                }
-
-                sampleStart = nextBoundary;
-            }
+            // Use the actual DrawBounds center of this visual row only to resolve the horizontal hit and
+            // DirectWrite leading/trailing side. The real pointer Y is validated against the target
+            // character's own shared text rectangle immediately below.
+            TextLayoutVerticalGeometry rowGeometry =
+                layout.GetVisualRowVerticalGeometry(hitRow.SourceStartIndex);
+            if (rowGeometry.GlyphBottom > rowGeometry.GlyphTop)
+                hitTestY = rowGeometry.GlyphTop
+                           + (rowGeometry.GlyphBottom - rowGeometry.GlyphTop) / 2;
         }
 
         // Resolve the character from its horizontal position on the row's text band, then validate the
