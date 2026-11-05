@@ -35,6 +35,15 @@ public sealed partial class MainWindow
 
     private async void BigAnnotations_Click(object sender, RoutedEventArgs e)
     {
+        if (ChapterAnnotationEditorView.Visibility == Visibility.Visible)
+        {
+            BigAnnotationsItem.IsChecked = false;
+            await ShowNovelProjectMessageAsync(
+                "正在编辑章节批注",
+                "请先保存，或点击编辑器右上角的 X 关闭编辑，再打开大批注工作区。");
+            return;
+        }
+
         if (activeAnnotationStore is null || activeNovelProject is null)
         {
             BigAnnotationsItem.IsChecked = false;
