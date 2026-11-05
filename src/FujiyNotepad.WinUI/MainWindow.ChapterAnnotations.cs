@@ -124,6 +124,9 @@ public sealed partial class MainWindow
         bool hasSelection = GetSelectedChapterAnnotationSummary() is not null;
         EditChapterAnnotationButton.IsEnabled = hasSelection;
         DeleteChapterAnnotationButton.IsEnabled = hasSelection;
+        NewChapterAnnotationPaneButton.IsEnabled =
+            selectedChapterAnnotationChapterId is Guid chapterId
+            && chapterAnnotationChapters.Any(chapter => chapter.Id == chapterId && chapter.IsActive);
     }
 
     private ChapterAnnotationSummary? GetSelectedChapterAnnotationSummary()
@@ -945,6 +948,31 @@ public sealed partial class MainWindow
         {
             diagnostics.LogSwallowed("Resume indexing for chapter navigation", ex);
             LblStatus.Text = $"无法继续索引以定位章节：{ex.Message}";
+        }
+    }
+
+    private async void NewChapterAnnotationForSelectedChapter_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedChapterAnnotationChapterId is not Guid chapterId)
+            return;
+
+        NovelChapter? chapter = chapterAnnotationChapters.FirstOrDefault(item => item.Id == chapterId);
+        if (chapter is null || !chapter.IsActive)
+        {
+            await ShowNovelProjectMessageAsync(
+                "无法创建章节批注",
+                "当前选择的是已删除章节。请先切换到一个仍存在的章节。");
+            return;
+        }
+
+        try
+        {
+            await CreateChapterAnnotationForChapterAsync(chapter);
+        }
+        catch (Exception ex)
+        {
+            diagnostics.LogSwallowed("Create chapter annotation for selected chapter", ex);
+            await ShowNovelProjectMessageAsync("创建章节批注失败", ex.Message);
         }
     }
 
