@@ -148,7 +148,6 @@
                         <KeyboardAccelerator Modifiers="Control,Shift" Key="R" />
                     </ToggleMenuFlyoutItem.KeyboardAccelerators>
                 </ToggleMenuFlyoutItem>
-                <ToggleMenuFlyoutItem x:Uid="HighlightSelectionToggle" x:Name="HighlightSelectionToggle" Text="Highlight Selection Occurrences" Click="HighlightSelection_Click" />
                 <ToggleMenuFlyoutItem x:Uid="FollowTailToggle" x:Name="FollowTailToggle" Text="Follow Tail" Click="FollowTail_Click" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="ZoomInItem" Text="Zoom In" Click="ZoomIn_Click">
