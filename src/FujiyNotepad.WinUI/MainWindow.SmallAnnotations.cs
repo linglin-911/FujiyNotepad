@@ -1619,12 +1619,17 @@ namespace FujiyNotepad.WinUI
             if (summary is null || activeAnnotationStore is not { } store)
                 return;
 
+            IReadOnlyList<AnnotationAnchor> allAnchors =
+                await store.GetAnchorsForAnnotationAsync(summary.Annotation.Id);
+            if (!ReferenceEquals(store, activeAnnotationStore))
+                return;
+
             var dialog = new ContentDialog
             {
                 Title = "删除小批注",
                 Content = $"确定删除这条小批注吗？\n\n"
                     + $"内容：{CreateSmallAnnotationExcerpt(summary.Annotation.Content, 100)}\n\n"
-                    + $"这将同时删除它关联的 {summary.AnchorCount} 处原文位置，且无法撤销。",
+                    + $"这将同时删除它关联的 {allAnchors.Count} 处原文位置，且无法撤销。",
                 PrimaryButtonText = "删除",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
