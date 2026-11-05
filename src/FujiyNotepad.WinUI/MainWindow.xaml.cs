@@ -169,6 +169,7 @@ namespace FujiyNotepad.WinUI
             View.CaretChanged += UpdateCursorStatus;
             View.FontChanged += OnFontChanged;
             View.CreateSmallAnnotationRequested += CreateSmallAnnotationFromSelection;
+            View.TextSelectionCompleted += OnTextSelectionCompleted;
             View.AddSelectionToSmallAnnotationRequested += AddSelectionToExistingSmallAnnotation;
             View.CreateChapterAnnotationRequested += CreateChapterAnnotationFromPosition;
             View.AnnotationMarkerClicked += OnAnnotationMarkerClicked;
@@ -659,6 +660,7 @@ namespace FujiyNotepad.WinUI
             selectedChapterAnnotationChapterId = null;
             selectedChapterAnnotationCategoryId = null;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            AnnotationPane.Visibility = Visibility.Collapsed;
             ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshCancellation?.Cancel();
@@ -708,12 +710,14 @@ namespace FujiyNotepad.WinUI
             ChapterDirectoryItem.IsEnabled = hasProject;
             SmallAnnotationsItem.IsEnabled = hasProject;
             ChapterAnnotationsItem.IsEnabled = hasProject;
+            NewChapterAnnotationRailButton.IsEnabled = hasProject && filteredSource is null;
             BigAnnotationsItem.IsEnabled = hasProject;
             View.SetAnnotationCommandsEnabled(hasProject && filteredSource is null);
             if (!hasProject)
             {
                 ChapterDirectoryPane.Visibility = Visibility.Collapsed;
                 ChapterDirectoryItem.IsChecked = false;
+                AnnotationPane.Visibility = Visibility.Collapsed;
                 SmallAnnotationPane.Visibility = Visibility.Collapsed;
                 SmallAnnotationsItem.IsChecked = false;
                 ChapterAnnotationPane.Visibility = Visibility.Collapsed;
@@ -1530,6 +1534,9 @@ namespace FujiyNotepad.WinUI
                     View.SetAnnotationMarkers(Array.Empty<TextAnnotationMarker>());
                 return;
             }
+
+            if (AnnotationPane.Visibility == Visibility.Visible)
+                ScheduleAnnotationPaneChapterFollow();
 
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshTimer.Start();
@@ -3389,6 +3396,7 @@ namespace FujiyNotepad.WinUI
             SmallAnnotationPane.Visibility = Visibility.Collapsed;
             ChapterAnnotationsItem.IsChecked = false;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            AnnotationPane.Visibility = Visibility.Collapsed;
             ChapterDirectoryItem.IsChecked = false;
             ChapterDirectoryPane.Visibility = Visibility.Collapsed;
             chapterAnnotationFilterDebounce?.Cancel();
@@ -3517,8 +3525,7 @@ namespace FujiyNotepad.WinUI
         private void UpdateReaderToolsRailVisibility()
         {
             bool anotherPaneIsOpen =
-                SmallAnnotationPane.Visibility == Visibility.Visible
-                || ChapterAnnotationPane.Visibility == Visibility.Visible
+                AnnotationPane.Visibility == Visibility.Visible
                 || ChapterDirectoryPane.Visibility == Visibility.Visible
                 || BigAnnotationWorkspace.Visibility == Visibility.Visible;
             bool railVisible = !anotherPaneIsOpen;
