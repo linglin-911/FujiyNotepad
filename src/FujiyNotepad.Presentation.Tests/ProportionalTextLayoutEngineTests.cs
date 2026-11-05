@@ -347,7 +347,6 @@ public sealed class ProportionalTextLayoutEngineTests
         Assert.Equal(0, Assert.Single(engine.GetVisibleLines(hasFocus: false, caretVisible: false)).SourceStartIndex);
 
         engine.ViewportWidth = 60;
-        engine.ConfigureProportionalLayout(provider, "Test", 10);
         engine.SetViewportAnchor(new TextPosition(0, 6));
 
         VisibleLine first = Assert.Single(engine.GetVisibleLines(hasFocus: false, caretVisible: false));

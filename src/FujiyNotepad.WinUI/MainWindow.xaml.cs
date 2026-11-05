@@ -84,6 +84,7 @@ namespace FujiyNotepad.WinUI
         private readonly SettingsStore settingsStore = SettingsStore.Default();
         private AppSettings settings = new();
         private SizeInt32 lastNormalSize;
+        private const double ReaderMarkerWidthDip = 6d;
 
         // Up/Down search-history recall state for the Find and Filter boxes (SearchHistoryNavigator is pure and
         // unit-tested). Each is rebuilt lazily and reset when its bar opens or a search is recorded.
@@ -124,6 +125,12 @@ namespace FujiyNotepad.WinUI
         {
             LogDiagnostic("MainWindow: constructor entered");
             this.InitializeComponent();
+            View.ReaderPaletteChanged += UpdateReaderViewportBackground;
+            View.ReaderThemeChanged += OnReaderThemeChanged;
+            View.ContentWidthChanged += UpdateReaderContentHostWidth;
+            ReaderViewport.SizeChanged += ReaderViewport_SizeChanged;
+            UpdateReaderViewportBackground();
+            UpdateReaderContentHostWidth();
             LogDiagnostic("MainWindow: InitializeComponent completed");
             RootGrid.Loaded += (_, _) => LogDiagnostic("MainWindow: RootGrid Loaded");
 
@@ -3333,16 +3340,55 @@ namespace FujiyNotepad.WinUI
             }
         }
 
-        // Applies the application-chrome theme to the window root (System = follow the OS). The reading
-        // surface uses its independent ReaderSettings.Theme and is deliberately not changed here.
+        // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
+        // forces the effective app theme to Dark without changing settings.Theme. If the user changes the
+        // global theme while Night is active, that preference is saved and restored after leaving Night.
         private void ApplyThemeSetting(string theme)
         {
-            RootGrid.RequestedTheme = theme switch
+            string effectiveTheme = string.Equals(View.ReaderTheme, "Night", StringComparison.OrdinalIgnoreCase)
+                ? "Dark"
+                : theme;
+
+            RootGrid.RequestedTheme = effectiveTheme switch
             {
                 "Light" => ElementTheme.Light,
                 "Dark" => ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
+        }
+
+        private void OnReaderThemeChanged() => ApplyThemeSetting(settings.Theme);
+
+        private void UpdateReaderViewportBackground()
+        {
+            ReaderViewportBackground.Background =
+                new Microsoft.UI.Xaml.Media.SolidColorBrush(View.ReaderBackgroundColor);
+        }
+
+        private void ReaderViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateReaderContentHostWidth();
+
+        // ContentWidthDip limits TextCanvas itself. The 6-DIP marker ruler is additional and stays attached
+        // to the centered content group. A value of zero uses all text width available beside the ruler.
+        private void UpdateReaderContentHostWidth()
+        {
+            double viewportWidth = ReaderViewport.ActualWidth;
+            if (!double.IsFinite(viewportWidth) || viewportWidth <= 0)
+                return;
+
+            double markerWidth = Math.Min(ReaderMarkerWidthDip, viewportWidth);
+            double availableTextWidth = Math.Max(0, viewportWidth - markerWidth);
+            double configuredTextWidth = View.ContentWidthDip;
+            double textWidth = configuredTextWidth <= 0
+                ? availableTextWidth
+                : Math.Min(configuredTextWidth, availableTextWidth);
+            double hostWidth = Math.Min(viewportWidth, textWidth + markerWidth);
+
+            if (double.IsNaN(ReaderContentHost.Width) ||
+                Math.Abs(ReaderContentHost.Width - hostWidth) > 0.1)
+            {
+                ReaderContentHost.Width = hostWidth;
+            }
         }
 
         // Parses the persisted rules text and pushes the compiled rule set to the view (null when there are
@@ -3571,9 +3617,11 @@ namespace FujiyNotepad.WinUI
             View.TabSize = tab;
             (tab switch { 2 => TabWidth2, 8 => TabWidth8, _ => TabWidth4 }).IsChecked = true;
 
-            // Apply reader typography and the reader-only palette before the FontChanged event is subscribed.
-            // The application's Light/Dark theme below remains independent from the reading surface.
+            // Apply the normalized reader snapshot. Paper/Warm affect only the reading surface; Night
+            // temporarily overrides the effective application theme through ReaderThemeChanged.
+            settings.Reader.Normalize();
             View.ApplyReaderSettings(settings.Reader);
+            UpdateReaderContentHostWidth();
             TickFontMenu(View.FontFamilyName);
             LblZoom.Text = $"{View.ZoomPercent}%";
 

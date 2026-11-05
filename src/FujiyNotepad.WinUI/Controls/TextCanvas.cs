@@ -70,6 +70,7 @@ namespace FujiyNotepad.WinUI.Controls
         private Color controlCharColor = Color.FromArgb(235, 0xD0, 0x30, 0x30);
         private Color annotationMarkerColor = Color.FromArgb(255, 0xC5, 0x7A, 0x20);
         private double readerLineSpacingMultiplier = ReaderSettings.DefaultLineSpacingMultiplier;
+        private double readerContentWidthDip = ReaderSettings.DefaultContentWidthDip;
         private string readerTheme = ReaderSettings.DefaultTheme;
 
         // Detects Windows High Contrast so ApplyReaderPalette can switch the surface to the system HC palette. Kept
@@ -101,6 +102,9 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly Dictionary<int, List<TextAnnotationMarker>> annotationMarkersByLine = new();
 
         public event Action? ViewChanged;
+        public event Action? ReaderPaletteChanged;
+        public event Action? ReaderThemeChanged;
+        public event Action? ContentWidthChanged;
         public event Action<TextPosition>? CaretChanged;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
@@ -194,7 +198,7 @@ namespace FujiyNotepad.WinUI.Controls
             KeyDown += OnKeyDown;
             GotFocus += (_, _) => { hasFocusInternal = true; RestartCaretBlink(); canvas.Invalidate(); };
             LostFocus += (_, _) => { hasFocusInternal = false; caretTimer.Stop(); caretElement.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed; canvas.Invalidate(); };
-            SizeChanged += (_, _) => { UpdateRootClip(); SyncViewport(); ViewChanged?.Invoke(); canvas.Invalidate(); };
+            SizeChanged += OnSizeChanged;
 
             // Reader colors are selected only by ReaderSettings.Theme, never by the application's Light/Dark theme.
             ApplyReaderPalette();
@@ -296,6 +300,23 @@ namespace FujiyNotepad.WinUI.Controls
         {
             engine.ViewportWidth = ActualWidth;
             engine.ViewportHeight = ActualHeight;
+        }
+
+        // Capture against the engine's previous viewport width before SyncViewport invalidates/reflows it.
+        // The returned position is always an original-source UTF-16 line/column, never a screen coordinate.
+        private void OnSizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
+        {
+            UpdateRootClip();
+            bool widthChanged = Math.Abs(e.NewSize.Width - e.PreviousSize.Width) > 0.5;
+            TextPosition? viewportAnchor = widthChanged ? CaptureViewportAnchor() : null;
+
+            SyncViewport();
+            if (viewportAnchor is TextPosition anchor)
+                engine.SetViewportAnchor(anchor);
+            else
+                ViewChanged?.Invoke();
+
+            canvas.Invalidate();
         }
 
         #region Public surface for the host
@@ -485,13 +506,19 @@ namespace FujiyNotepad.WinUI.Controls
         /// <summary>The active reader line-spacing multiplier.</summary>
         public double LineSpacingMultiplier => readerLineSpacingMultiplier;
 
+        /// <summary>The maximum reader text-surface width in DIPs; zero means use the available width.</summary>
+        public double ContentWidthDip => readerContentWidthDip;
+
+        /// <summary>The effective reader background, including the Windows High Contrast override.</summary>
+        public Color ReaderBackgroundColor => backgroundColor;
+
         /// <summary>The active reader-only theme key.</summary>
         public string ReaderTheme => readerTheme;
 
         /// <summary>
-        /// Applies a snapshot of global reader settings. Font, size and line spacing share one layout refresh;
-        /// palette changes repaint only the reader surface and never modify the application's XAML theme.
-        /// ContentWidthDip is consumed by the reader viewport host in Phase 4.3.
+        /// Applies a snapshot of global reader settings. Typography changes share one layout refresh;
+        /// content-width changes notify the centered viewport host; palette changes repaint only the reader.
+        /// The Night preset separately asks the window host to apply a temporary app-chrome Dark override.
         /// </summary>
         public void ApplyReaderSettings(ReaderSettings settings)
         {
@@ -511,21 +538,25 @@ namespace FujiyNotepad.WinUI.Controls
                 !string.Equals(textFormat.FontFamily, normalized.FontFamily, StringComparison.Ordinal) ||
                 Math.Abs(textFormat.FontSize - normalized.FontSizeDip) > 0.01 ||
                 Math.Abs(readerLineSpacingMultiplier - normalized.LineSpacingMultiplier) > 0.001;
+            bool contentWidthChanged = Math.Abs(readerContentWidthDip - normalized.ContentWidthDip) > 0.01;
             bool paletteChanged = !string.Equals(readerTheme, normalized.Theme, StringComparison.Ordinal);
 
             textFormat.FontFamily = normalized.FontFamily;
             textFormat.FontSize = (float)normalized.FontSizeDip;
             readerLineSpacingMultiplier = normalized.LineSpacingMultiplier;
+            readerContentWidthDip = normalized.ContentWidthDip;
             readerTheme = normalized.Theme;
 
             if (typographyChanged)
-            {
                 RefreshFont();
-            }
+
+            if (contentWidthChanged)
+                ContentWidthChanged?.Invoke();
 
             if (paletteChanged)
             {
                 ApplyReaderPalette();
+                ReaderThemeChanged?.Invoke();
             }
         }
 
@@ -541,23 +572,28 @@ namespace FujiyNotepad.WinUI.Controls
         /// <summary>Raised when reader typography changes, so the host can persist settings and update status.</summary>
         public event Action? FontChanged;
 
+        // Capture the first visible original-source UTF-16 position while the engine still has its old layout.
+        // This is shared by typography refresh and viewport-width changes.
+        private TextPosition? CaptureViewportAnchor()
+        {
+            if (engine.TotalLines <= 0)
+                return null;
+
+            IReadOnlyList<VisibleLine> visible = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            if (visible.Count == 0)
+                return null;
+
+            VisibleLine first = visible[0];
+            return new TextPosition(
+                first.LineIndex,
+                first.UsesProportionalLayout ? first.SourceStartIndex : 0);
+        }
+
         // Re-measure the active font, update the proportional layout provider and gutter metrics, then repaint.
         private void RefreshFont()
         {
-            // Capture the first visible source position before invalidating layouts. A font/size/line-spacing
-            // change may alter soft-wrap boundaries, so restoring only the old visual-row number is incorrect.
-            TextPosition? viewportAnchor = null;
-            if (engine.TotalLines > 0)
-            {
-                IReadOnlyList<VisibleLine> visible = engine.GetVisibleLines(hasFocus: false, caretVisible: false);
-                if (visible.Count > 0)
-                {
-                    VisibleLine first = visible[0];
-                    viewportAnchor = new TextPosition(
-                        first.LineIndex,
-                        first.UsesProportionalLayout ? first.SourceStartIndex : 0);
-                }
-            }
+            // Capture before invalidating layouts; a font/size/line-spacing change may alter soft-wrap boundaries.
+            TextPosition? viewportAnchor = CaptureViewportAnchor();
 
             ClearTextLayoutCache();
             metricsValid = false;
@@ -2020,6 +2056,7 @@ namespace FujiyNotepad.WinUI.Controls
             }
 
             canvas?.Invalidate();
+            ReaderPaletteChanged?.Invoke();
         }
 
         // Reads the live Windows High-Contrast system colours for ReaderPalette to map onto the surface.
