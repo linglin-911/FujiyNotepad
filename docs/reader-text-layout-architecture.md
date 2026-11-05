@@ -108,7 +108,7 @@ The proportional backend must measure the active font's actual space advance whe
 - The inherited font-family and Zoom quick commands now initialize from and write to ReaderSettings; legacy root FontFamily/FontSize values are still synchronized for backward compatibility.
 - Added SettingsStore tests for nested round-trip, defaults, legacy migration, explicit Reader precedence and invalid-value normalization.
 - **Validation status:** the user ran `dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` successfully and `dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` passed 983/983 tests (0 failed, 0 skipped). The build reported one non-blocking xUnit2031 analyzer warning at `ProportionalTextLayoutEngineTests.cs(310,42)`; it recommended the predicate overload of `Assert.Single`. The latest branch has changed that assertion to the predicate overload; disappearance of the warning awaits the next user build. The 983-test result covers Phase 4.1 and predates the Phase 4.2 tests below.
-- Phase 4.2 is implemented and user-tested. Phase 4.3 content-width hosting and Phase 4.4 the visible Reader Settings dialog are still not implemented.
+- Phase 4.2 is implemented and user-tested. Phase 4.3 content-width hosting and Night-to-app-Dark linkage are implemented; the user's Windows x64 build/test and targeted smoke test are pending. Phase 4.4 the visible Reader Settings dialog has not started.
 
 ## Phase 4.2 implementation status (2026-11-05; user-tested)
 
@@ -118,7 +118,7 @@ The proportional backend must measure the active font's actual space advance whe
 - Typography refresh captures the first visible row's original-source UTF-16 start position and restores the nearest visual row containing that source position after reflow. Added `TextLayoutEngine.SetViewportAnchor` and regression coverage for wrapping changes; the engine continues to create layouts on demand rather than reflowing the whole novel.
 - Added 11 ReaderPalette tests (three presets, fallback, High Contrast role mapping and preset separation) and two proportional-engine tests (line-spacing option propagation and viewport-anchor restoration). The default `Microsoft YaHei` font is also present in the existing quick Font menu so its selected state is visible.
 - **Validation status:** the user tested the current `feature/reader-settings-phase4` code and reported that the application runs normally with no issues found. The user did not provide an exact build/test summary, test count or analyzer-warning count, so no precise totals are claimed. This user feedback supersedes the earlier pending-validation status; the 13 Phase 4.2 tests are part of the submitted code.
-- Phase 4.3 content-width host and Phase 4.4 settings dialog remain pending. No new application-chrome typography/theme controls have been added.
+- Phase 4.3 content-width host and Night-to-app-Dark linkage are implemented, pending user build/test and smoke verification. Phase 4.4 settings dialog remains pending. No new application-chrome typography/theme controls have been added.
 
 ## Phase 4 — global reader settings architecture (agreed)
 
