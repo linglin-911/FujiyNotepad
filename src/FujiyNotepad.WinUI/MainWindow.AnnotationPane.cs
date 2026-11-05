@@ -516,6 +516,7 @@ public sealed partial class MainWindow
         var flyout = new Flyout
         {
             IsLightDismissEnabled = false,
+            OverlayInputPassThroughElement = View,
             Content = new Border
             {
                 Padding = new Thickness(16, 14, 16, 14),
