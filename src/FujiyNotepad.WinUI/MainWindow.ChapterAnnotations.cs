@@ -215,6 +215,8 @@ public sealed partial class MainWindow
 
             UpdateChapterAnnotationActionButtons();
             await RefreshChapterAnnotationsAsync();
+            if (SmallAnnotationPane.Visibility == Visibility.Visible)
+                await RefreshSmallAnnotationsAsync();
         }
         catch (Exception ex)
         {
@@ -389,7 +391,7 @@ public sealed partial class MainWindow
             {
                 chapterAnnotationChapters = existing;
                 RefreshChapterDirectoryList();
-                if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+                if (AnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
             }
@@ -401,14 +403,14 @@ public sealed partial class MainWindow
                 await store.SaveChapterIndexIfEmptyAsync(existing, project.Metadata.DocumentRevision);
                 chapterAnnotationChapters = existing;
                 RefreshChapterDirectoryList();
-                if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+                if (AnnotationPane.Visibility == Visibility.Visible)
                     await LoadChapterAnnotationsAsync();
                 return;
             }
 
             long revision = project.Metadata.DocumentRevision;
             LblStatus.Text = "正在识别章节标题...";
-            if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+            if (AnnotationPane.Visibility == Visibility.Visible)
             {
                 ChapterAnnotationEmptyState.Text = "正在识别章节，请稍候...";
                 ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
@@ -434,7 +436,7 @@ public sealed partial class MainWindow
                 ? $"章节索引完成：识别到 {chapterAnnotationChapters.Count:N0} 章"
                 : "章节索引完成：未识别到符合格式的章节标题";
 
-            if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+            if (AnnotationPane.Visibility == Visibility.Visible)
                 await LoadChapterAnnotationsAsync();
         }
         catch (OperationCanceledException)
@@ -610,7 +612,7 @@ public sealed partial class MainWindow
                 selectedChapterAnnotationChapterId = null;
             }
 
-            if (ChapterAnnotationPane.Visibility == Visibility.Visible)
+            if (AnnotationPane.Visibility == Visibility.Visible)
                 await LoadChapterAnnotationsAsync();
 
             if (requireConfirmation)
@@ -696,6 +698,9 @@ public sealed partial class MainWindow
 
         foreach (NovelChapter chapter in chapterAnnotationChapters)
         {
+            if (!chapter.IsActive)
+                continue;
+
             long overlapStart = Math.Max(visibleStart, chapter.StartOffset);
             long overlapEnd = Math.Min(visibleEnd, chapter.EndOffset);
             long overlap = Math.Max(0, overlapEnd - overlapStart);
