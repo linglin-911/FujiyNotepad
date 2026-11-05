@@ -618,7 +618,10 @@ public sealed partial class TextLayoutEngine
         double sampleY = fromY + dy * sampleT;
         double localX = sampleX - bestRow.TextX;
         double localY = sampleY - bestLayoutTop;
-        TextLayoutHitTestResult hit = bestLayout.HitTest(localX, localY);
+        TextLayoutVerticalGeometry textBand =
+            bestLayout.GetVisualRowVerticalGeometry(bestRow.SourceStartIndex);
+        double hitTestY = textBand.TextTop + textBand.TextHeight / 2;
+        TextLayoutHitTestResult hit = bestLayout.HitTest(localX, hitTestY);
 
         if (!hit.IsInside ||
             hit.SourceLength <= 0 ||
@@ -629,7 +632,8 @@ public sealed partial class TextLayoutEngine
             // a tangent that never enters a text rectangle will still fail the exact-range verification.
             localX = entryX - bestRow.TextX;
             localY = entryY - bestLayoutTop;
-            hit = bestLayout.HitTest(localX, localY);
+            hit = bestLayout.HitTest(
+                localX, textBand.TextTop + textBand.TextHeight / 2);
             if (!hit.IsInside ||
                 hit.SourceLength <= 0 ||
                 !IsInsideTextRangeGeometry(
@@ -730,9 +734,20 @@ public sealed partial class TextLayoutEngine
         double localX = x - hitRow.TextX;
         double localY = y - layoutTop;
 
-        // DirectWrite hit-tests the original layout's LayoutBounds. Keep the real pointer Y so the line gap
-        // cannot be converted into a character hit by sampling the visual-row center.
-        TextLayoutHitTestResult hit = layout.HitTest(localX, localY);
+        // Use the text-band center only to resolve the horizontal character position. The actual pointer Y
+        // is still checked against that character's exact rectangle below, so line spacing never becomes
+        // part of the hit area. This also works when tight line spacing places part of the text band outside
+        // DirectWrite's full line-layout box.
+        double hitTestY = localY;
+        if (returnCharacter && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
+        {
+            TextLayoutVerticalGeometry textBand =
+                layout.GetVisualRowVerticalGeometry(hitRow.SourceStartIndex);
+            if (textBand.TextHeight > 0)
+                hitTestY = textBand.TextTop + textBand.TextHeight / 2;
+        }
+
+        TextLayoutHitTestResult hit = layout.HitTest(localX, hitTestY);
 
         if (returnCharacter && !hit.IsInside && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
         {

@@ -29,7 +29,7 @@ public sealed class ProportionalTextLayoutEngineTests
         engine.WordWrap = true;
 
         Assert.Equal(new TextPosition(0, 2), engine.HitTest(23, 5));
-        Assert.Equal(new TextPosition(0, 1), engine.HitTestCharacter(23, 5));
+        Assert.Equal(new TextPosition(0, 1), engine.HitTestCharacter(23, 10));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class ProportionalTextLayoutEngineTests
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition position = engine.HitTestCharacter(18, 25, out bool hitCharacter);
+        TextPosition position = engine.HitTestCharacter(18, 30, out bool hitCharacter);
 
         Assert.True(hitCharacter);
         Assert.Equal(new TextPosition(0, 3), position);
@@ -78,7 +78,7 @@ public sealed class ProportionalTextLayoutEngineTests
         engine.WordWrap = true;
 
         TextPosition position = engine.HitTestCharacter(
-            8, 5, out bool hitCharacter, out int sourceLength);
+            8, 10, out bool hitCharacter, out int sourceLength);
 
         Assert.True(hitCharacter);
         Assert.Equal(new TextPosition(0, 0), position);
@@ -91,8 +91,8 @@ public sealed class ProportionalTextLayoutEngineTests
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition beforeText = engine.HitTestCharacter(-5, 25, out bool beforeHit);
-        TextPosition afterText = engine.HitTestCharacter(100, 25, out bool afterHit);
+        TextPosition beforeText = engine.HitTestCharacter(-5, 30, out bool beforeHit);
+        TextPosition afterText = engine.HitTestCharacter(100, 30, out bool afterHit);
 
         Assert.False(beforeHit);
         Assert.False(afterHit);
@@ -100,7 +100,7 @@ public sealed class ProportionalTextLayoutEngineTests
         Assert.Equal(new TextPosition(0, 4), afterText);
 
         // Context-menu positioning still uses the nearest source boundary when the pointer is in blank space.
-        Assert.Equal(new TextPosition(0, 2), engine.HitTestCharacter(-5, 25));
+        Assert.Equal(new TextPosition(0, 2), engine.HitTestCharacter(-5, 30));
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public sealed class ProportionalTextLayoutEngineTests
             [0] = new() { new TextAnnotationMarker(0, 1, 5) },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(15, 25, markers, out TextPosition position);
+        bool hit = engine.TryHitTestAnnotationMarkers(15, 30, markers, out TextPosition position);
 
         Assert.True(hit);
         Assert.Equal(new TextPosition(0, 3), position);
@@ -300,7 +300,7 @@ public sealed class ProportionalTextLayoutEngineTests
             },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(35, 5, markers, out TextPosition position);
+        bool hit = engine.TryHitTestAnnotationMarkers(35, 10, markers, out TextPosition position);
 
         Assert.True(hit);
         Assert.Equal(new TextPosition(0, 3), position);
@@ -312,7 +312,7 @@ public sealed class ProportionalTextLayoutEngineTests
         var engine = NewEngine(new FakeLines("ab", "cd"), viewportWidth: 100, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition position = engine.HitTestCharacter(18, 25, out bool hitCharacter);
+        TextPosition position = engine.HitTestCharacter(18, 30, out bool hitCharacter);
 
         Assert.True(hitCharacter);
         Assert.Equal(new TextPosition(1, 1), position);

@@ -851,7 +851,7 @@ namespace FujiyNotepad.WinUI.Controls
                         out TextPosition entry,
                         out int entrySourceLength,
                         out bool entryTrailingHit,
-                        out _, out _))
+                        out double entryX, out double entryY))
                 {
                     // Do not create an anchor from blank space. Keep waiting until the pointer trajectory
                     // crosses a real text rectangle; the engine returns the first boundary point A.
@@ -859,6 +859,9 @@ namespace FujiyNotepad.WinUI.Controls
                     return;
                 }
 
+                // Record A as the effective start of this gesture. The source caret was resolved just
+                // inside this boundary by the engine, so the original blank-space mouse-down is discarded.
+                pointerDownPosition = new Point(entryX, entryY);
                 engine.PointerPressCharacter(
                     entry, entrySourceLength, entryTrailingHit, shift: false);
                 hasSelectionAnchor = true;
