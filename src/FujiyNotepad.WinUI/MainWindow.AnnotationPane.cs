@@ -403,6 +403,7 @@ public sealed partial class MainWindow
             return;
         }
 
+        Guid? categoryId = pendingSmallAnnotationCategoryId;
         string content = contentBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(content))
         {
@@ -465,7 +466,7 @@ public sealed partial class MainWindow
                 selected.StartOffset,
                 selected.EndOffset,
                 selected.Quote,
-                categoryId: pendingSmallAnnotationCategoryId,
+                categoryId: categoryId,
                 title: null,
                 chapterId: chapter.Id,
                 documentRevision: project.Metadata.DocumentRevision,
@@ -478,7 +479,6 @@ public sealed partial class MainWindow
                 return;
             }
 
-            Guid? categoryId = pendingSmallAnnotationCategoryId;
             CloseSmallAnnotationComposer();
             AnnotationPane.Visibility = Visibility.Visible;
             SetAnnotationPaneTab(showChapterAnnotations: false);
