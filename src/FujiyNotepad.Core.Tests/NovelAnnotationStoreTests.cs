@@ -71,6 +71,50 @@ public sealed class NovelAnnotationStoreTests
     }
 
     [Fact]
+    public async Task GetAnnotationSummariesForChapterAsync_ScopesMultiChapterNotesAndSearchToSelectedChapter()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using var store = new NovelAnnotationStore(path);
+            await store.InitializeAsync();
+
+            Guid firstChapter = Guid.NewGuid();
+            Guid secondChapter = Guid.NewGuid();
+            Guid shared = await store.CreateAnnotationAsync("shared note", title: "legacy hidden title");
+            Guid firstOnly = await store.CreateAnnotationAsync("first chapter only");
+
+            await store.AddAnchorAsync(shared, 10, 20, "first chapter quote", firstChapter);
+            await store.AddAnchorAsync(shared, 110, 120, "second chapter quote", secondChapter);
+            await store.AddAnchorAsync(firstOnly, 30, 40, "another first chapter quote", firstChapter);
+
+            IReadOnlyList<NovelAnnotationSummary> firstChapterNotes =
+                await store.GetAnnotationSummariesForChapterAsync(firstChapter);
+            IReadOnlyList<NovelAnnotationSummary> secondChapterNotes =
+                await store.GetAnnotationSummariesForChapterAsync(secondChapter);
+            IReadOnlyList<NovelAnnotationSummary> quoteSearch =
+                await store.GetAnnotationSummariesForChapterAsync(firstChapter, searchText: "second chapter quote");
+            IReadOnlyList<NovelAnnotationSummary> titleSearch =
+                await store.GetAnnotationSummariesForChapterAsync(firstChapter, searchText: "legacy hidden title");
+
+            Assert.Equal(2, firstChapterNotes.Count);
+            NovelAnnotationSummary firstShared = Assert.Single(
+                firstChapterNotes, item => item.Annotation.Id == shared);
+            Assert.Equal(1, firstShared.AnchorCount);
+            Assert.Single(secondChapterNotes);
+            Assert.Equal(shared, secondChapterNotes[0].Annotation.Id);
+            Assert.Equal(0, quoteSearch.Count);
+            Assert.Equal(0, titleSearch.Count);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (string suffix in new[] { "", "-wal", "-shm" })
+                if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task RangeQueries_ReturnAllOverlappingNotesIncludingNestedRanges()
     {
         string path = Path.Combine(Path.GetTempPath(), $"novel-annotations-{Guid.NewGuid():N}.sqlite");
