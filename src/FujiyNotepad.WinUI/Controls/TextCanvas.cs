@@ -1388,7 +1388,7 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 DrawSourceTextRangeHighlight(
                     ds, layout, line, line.SelectionStartIndex, line.SelectionLength,
-                    selectionColor, layoutTopPx, dpiScale);
+                    selectionColor, layoutTopPx);
                 if (line.SelectionContinuesPastRow)
                 {
                     DrawSourceSelectionContinuation(
@@ -1518,8 +1518,9 @@ namespace FujiyNotepad.WinUI.Controls
                 if (!vertical.HasAnnotationUnderline)
                     continue;
 
-                float y = (float)PixelSnap.SnapToDevicePixels(
-                    layoutTop + vertical.AnnotationUnderlineY, dpiScale);
+                // The layout origin was already snapped for DrawTextLayout. Preserve the exact relative
+                // DrawBounds offset instead of independently snapping the underline a second time.
+                float y = layoutTop + (float)vertical.AnnotationUnderlineY;
                 float strokeThickness = (float)vertical.AnnotationUnderlineThickness;
 
                 foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(start, end - start))
