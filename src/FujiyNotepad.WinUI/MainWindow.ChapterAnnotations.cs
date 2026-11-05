@@ -39,25 +39,24 @@ public sealed partial class MainWindow
         if (activeAnnotationStore is null || activeNovelProject is null)
         {
             ChapterAnnotationsItem.IsChecked = false;
-            ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            AnnotationPane.Visibility = Visibility.Collapsed;
             UpdateReaderToolsRailVisibility();
             return;
         }
 
-        bool show = ChapterAnnotationsItem.IsChecked;
-        if (show)
-            CloseReaderSettingsPanel();
-        ChapterAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show)
+        if (!ChapterAnnotationsItem.IsChecked)
         {
-            chapterAnnotationFilterDebounce?.Cancel();
+            CloseAnnotationPane_Click(sender, e);
             return;
         }
 
+        CloseReaderSettingsPanel();
         ChapterDirectoryItem.IsChecked = false;
         ChapterDirectoryPane.Visibility = Visibility.Collapsed;
-        SmallAnnotationsItem.IsChecked = false;
-        SmallAnnotationPane.Visibility = Visibility.Collapsed;
+        annotationPaneChapterManuallySelected = false;
+        selectedChapterAnnotationChapterId = null;
+        AnnotationPane.Visibility = Visibility.Visible;
+        SetAnnotationPaneTab(showChapterAnnotations: true);
         await LoadChapterAnnotationsAsync();
         if (LineIndexer.IsCompleted)
             _ = EnsureChapterIndexAsync();
@@ -65,42 +64,11 @@ public sealed partial class MainWindow
     }
 
     private void CloseChapterAnnotations_Click(object sender, RoutedEventArgs e)
-    {
-        chapterAnnotationFilterDebounce?.Cancel();
-        ChapterAnnotationsItem.IsChecked = false;
-        ChapterAnnotationPane.Visibility = Visibility.Collapsed;
-        UpdateReaderToolsRailVisibility();
-    }
+        => CloseAnnotationPane_Click(sender, e);
 
     private void ChapterAnnotationSearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         ScheduleChapterAnnotationRefresh();
-    }
-
-    private void ChapterAnnotationChapterFilter_SelectionChanged(
-        object sender, SelectionChangedEventArgs e)
-    {
-        if (refreshingChapterAnnotationUi)
-            return;
-
-        int selectedIndex = ChapterAnnotationChapterFilter.SelectedIndex;
-        selectedChapterAnnotationChapterId =
-            selectedIndex > 0 && selectedIndex - 1 < chapterAnnotationChapters.Count
-                ? chapterAnnotationChapters[selectedIndex - 1].Id
-                : null;
-
-        // While the chapter dropdown is open, wheel-scrolling through a large novel should only
-        // move the highlighted item. Do not issue a database query for every intermediate selection;
-        // refresh once the user closes the dropdown.
-        if (!ChapterAnnotationChapterFilter.IsDropDownOpen)
-            ScheduleChapterAnnotationRefresh();
-    }
-
-    private void ChapterAnnotationChapterFilter_DropDownClosed(
-        object sender, object e)
-    {
-        if (!refreshingChapterAnnotationUi)
-            ScheduleChapterAnnotationRefresh();
     }
 
     private void ChapterAnnotationCategoryFilter_SelectionChanged(
@@ -156,7 +124,6 @@ public sealed partial class MainWindow
         bool hasSelection = GetSelectedChapterAnnotationSummary() is not null;
         EditChapterAnnotationButton.IsEnabled = hasSelection;
         DeleteChapterAnnotationButton.IsEnabled = hasSelection;
-        NewChapterAnnotationButton.IsEnabled = chapterAnnotationChapters.Count > 0;
     }
 
     private ChapterAnnotationSummary? GetSelectedChapterAnnotationSummary()
@@ -188,30 +155,36 @@ public sealed partial class MainWindow
             refreshingChapterAnnotationUi = true;
             try
             {
-                // Use explicit ComboBoxItem containers throughout. Do not mix ItemsSource with Items,
-                // and do not assign null to DisplayMemberPath while rebuilding a live WinUI ComboBox.
-                ChapterAnnotationChapterFilter.SelectedIndex = -1;
-                ChapterAnnotationChapterFilter.Items.Clear();
+                AnnotationPaneChapterSelector.SelectedIndex = -1;
+                AnnotationPaneChapterSelector.Items.Clear();
                 ChapterAnnotationCategoryFilter.SelectedIndex = -1;
                 ChapterAnnotationCategoryFilter.Items.Clear();
 
-                ChapterAnnotationChapterFilter.Items.Add(
-                    new ComboBoxItem { Content = "全部章节" });
+                if (!annotationPaneChapterManuallySelected
+                    || selectedChapterAnnotationChapterId is null
+                    || chapters.All(chapter => chapter.Id != selectedChapterAnnotationChapterId.Value))
+                {
+                    selectedChapterAnnotationChapterId =
+                        GetDominantVisibleChapter()?.Id
+                        ?? chapters.FirstOrDefault(chapter => chapter.IsActive)?.Id
+                        ?? chapters.FirstOrDefault()?.Id;
+                }
+
                 foreach (NovelChapter chapter in chapters)
                 {
-                    ChapterAnnotationChapterFilter.Items.Add(new ComboBoxItem
+                    AnnotationPaneChapterSelector.Items.Add(new ComboBoxItem
                     {
-                        Content = chapter.Title,
+                        Content = chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}",
                         Tag = chapter.Id,
                     });
                 }
                 int selectedChapterIndex = selectedChapterAnnotationChapterId is Guid selectedChapterId
-                    ? chapters.ToList().FindIndex(chapter => chapter.Id == selectedChapterId) + 1
-                    : 0;
-                ChapterAnnotationChapterFilter.SelectedIndex =
-                    selectedChapterIndex >= 0 ? selectedChapterIndex : 0;
+                    ? chapters.ToList().FindIndex(chapter => chapter.Id == selectedChapterId)
+                    : -1;
+                AnnotationPaneChapterSelector.SelectedIndex =
+                    selectedChapterIndex >= 0 ? selectedChapterIndex : -1;
                 selectedChapterAnnotationChapterId =
-                    (ChapterAnnotationChapterFilter.SelectedItem as ComboBoxItem)?.Tag is Guid chapterId
+                    (AnnotationPaneChapterSelector.SelectedItem as ComboBoxItem)?.Tag is Guid chapterId
                         ? chapterId
                         : null;
 
@@ -236,6 +209,12 @@ public sealed partial class MainWindow
                         : null;
             }
             finally
+            {
+                refreshingChapterAnnotationUi = false;
+            }
+
+            UpdateChapterAnnotationActionButtons();
+            await RefreshChapterAnnotationsAsync();            finally
             {
                 refreshingChapterAnnotationUi = false;
             }
