@@ -583,8 +583,8 @@ public sealed class ProportionalTextLayoutEngineTests
             else if (y >= rows[^1].Top + rows[^1].Height)
                 row = rows[^1];
 
-            // Simulate DirectWrite returning no glyph hit in the lower row padding. The selection
-            // rectangle still spans the complete visual row and must remain clickable.
+            // Simulate DirectWrite returning a glyph hit only inside the text band. The surrounding
+            // baseline/line-spacing area is deliberately not part of the text hit rectangle.
             if (x < 0 || y < row.Top + 2.5 || y >= row.Top + 17.5)
             {
                 return new TextLayoutHitTestResult(row.SourceStartIndex, 0, false, false);
