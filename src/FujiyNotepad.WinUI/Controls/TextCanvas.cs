@@ -920,7 +920,7 @@ namespace FujiyNotepad.WinUI.Controls
             double x = firstSelectedLine.SelectionWidth > 0
                 ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
                 : fallback.X;
-            double y = Math.Max(1d, firstSelectedLine.Y - 1.5d);
+            double y = Math.Max(1d, firstSelectedLine.Y - 1.33d);
             return new Point(
                 Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
                 y);

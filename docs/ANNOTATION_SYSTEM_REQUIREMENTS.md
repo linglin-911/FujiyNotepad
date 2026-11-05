@@ -1077,11 +1077,13 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 **2026-11-06 第二轮界面改进实施记录（待 Windows 实测）：**
 - 选区菜单与输入浮层共用的 FlyoutPresenter 已关闭系统默认矩形 ThemeShadow，避免圆角内容外出现明显矩形底板/阴影。
-- TextCanvas 选区菜单锚点从首条可见选中行上方 4 DIP 收紧至约 1.5 DIP，保留第一条可见选中行中心定位及独立的鼠标松开锚点。
+- TextCanvas 选区菜单锚点从首条可见选中行上方 4 DIP 收紧至约 1.33 DIP，保留第一条可见选中行中心定位及独立的鼠标松开锚点。
 - 小批注输入浮层宽度由原先最大约 440 DIP 扩大到最大约 660 DIP（约增加 50%），同时按阅读视口宽度收缩，避免小窗口溢出。
 - 编辑区域左侧增加小型编辑图标；输入 TextBox 使用独立无状态边框模板，移除 PointerOver/Focused 背景切换和焦点蓝色底线，编辑区域与外层卡片保持同色融合。
 - 关闭按钮改为居中的 Symbol.Cancel 图标，缩小至 26×26 DIP；保存按钮缩小至约 82×34 DIP。
 - 小批注 Flyout 设置 IsLightDismissEnabled=false，点击外部不再关闭；同时将 OverlayInputPassThroughElement 指向阅读 TextCanvas，让阅读区在浮层保持打开时继续接收滚轮等指针输入。保留右上角关闭按钮和保存成功后自动关闭，仍需 Windows 实测确认。
 - 未修改小批注保存流程、原文选区校验、章节归属检查、锚点元数据、数据库结构或自动滚动行为。
+
+- 本轮代码提交：c21966e7ce7c49781f2e6a6facc7d9874a1eb281；阅读区输入透传补充：9f08ff6686adeae9295a48f2096c777bded58ff7。
 
 **下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否明显缩短、输入浮层宽度是否增加约 50%、编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线、编辑图标和缩小后的按钮位置是否正确、点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若滚轮仍被 Flyout 截断，再针对 Popup 输入路由单独处理。未完成 Windows 实测前不得标记为验收通过。
