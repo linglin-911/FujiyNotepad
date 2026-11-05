@@ -443,8 +443,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 2. 当前重点转为 Windows x64 build/test 和针对性冒烟：Paper/Warm/Night 背景、正文居中与宽度、工具栏不被正文侵占、面板不透明、滚轮滚动、面板外点击（包括工具栏）关闭且不触发底层操作、面板打开时工具栏不执行命令、关闭后工具栏恢复、字体/字号/行距/宽度即时生效及重启持久化。
 3. 检查 ReaderViewport、ReaderContentHost、ReaderOverlayHost、ReaderToolsRail 的父子关系及 SizeChanged/宽度刷新调用链；不要仅通过 Margin 或遮挡解决布局问题。
 4. 保持 ReaderSettings 数据模型、SQLite、批注锚点、UTF-16 偏移映射和现有 TextLayoutEngine 不变；不加载整本小说、不进行全书同步重排、不重构无关功能。
-5. 保持 ReaderSettings 数据模型、SQLite、批注锚点、UTF-16 偏移映射和现有 TextLayoutEngine 不变；不加载整本小说、不进行全书同步重排、不重构无关功能。
-6. Phase 4.3 和 4.4 完成用户验收后，再执行 Phase 4.5 整体验收。
+5. Phase 4.3 和 4.4 完成用户验收后，再执行 Phase 4.5 整体验收。
 
 ### 开发协作与构建约定
 
