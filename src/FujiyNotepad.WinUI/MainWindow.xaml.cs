@@ -3545,6 +3545,8 @@ namespace FujiyNotepad.WinUI
             // RootGrid_PointerPressed dismisses the panel without invoking any toolbar command.
             ReaderToolsRail.IsHitTestVisible = !settingsPanelOpen;
             ReaderSettingsToggleButton.IsEnabled = !settingsPanelOpen;
+            NewChapterAnnotationRailButton.IsEnabled =
+                activeAnnotationStore is not null && filteredSource is null;
         }
 
         // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
