@@ -1075,4 +1075,13 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 用户日志中的 XAML WMC0001（ReaderSettingsPane、TextCanvas）及 WMC1509（MarkupCompilePass2 未提供 LocalAssembly）暂按 C# 编译失败后的连带类型解析问题处理。已检查两个控件的实际类声明、命名空间和 XAML 映射，当前均能对应；本次没有修改 XAML。若修复 C# 后这些错误仍存在，再单独检查 XAML 编译管线。
 - 修复代码提交：a70943b548043c0a20b414e024ca4ee43c1f9197（fix(reader): correct WinUI annotation popup icons and colors）。
 
-**下一步：** 用户拉取修复提交后重新执行 Windows x64 Release build；通过后执行 Core.Tests。只有构建与测试通过后，才进入菜单/输入浮层视觉实测：菜单是否位于多行选区第一条可见行上方、箭头是否贴合、Paper/Warm/Night 背景配色、按钮无多余边框、输入卡片无套框、X 圆形、保存按钮药丸形，以及输入浮层仍位于选区末端下方且不滚动原文。之后再验证跨章节筛选、多锚点小批注、章节自动跟随/手动固定、章节编辑器 X/保存和项目切换状态清理。
+**2026-11-06 第二轮界面改进实施记录（待 Windows 实测）：**
+- 选区菜单与输入浮层共用的 FlyoutPresenter 已关闭系统默认矩形 ThemeShadow，避免圆角内容外出现明显矩形底板/阴影。
+- TextCanvas 选区菜单锚点从首条可见选中行上方 4 DIP 收紧至约 1.5 DIP，保留第一条可见选中行中心定位及独立的鼠标松开锚点。
+- 小批注输入浮层宽度由原先最大约 440 DIP 扩大到最大约 660 DIP（约增加 50%），同时按阅读视口宽度收缩，避免小窗口溢出。
+- 编辑区域左侧增加小型编辑图标；输入 TextBox 使用独立无状态边框模板，移除 PointerOver/Focused 背景切换和焦点蓝色底线，编辑区域与外层卡片保持同色融合。
+- 关闭按钮改为居中的 Symbol.Cancel 图标，缩小至 26×26 DIP；保存按钮缩小至约 82×34 DIP。
+- 小批注 Flyout 设置 IsLightDismissEnabled=false，点击外部不再关闭；保留右上角关闭按钮和保存成功后自动关闭。该设置也应允许阅读区接收鼠标滚轮，仍需 Windows 实测确认。
+- 未修改小批注保存流程、原文选区校验、章节归属检查、锚点元数据、数据库结构或自动滚动行为。
+
+**下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否明显缩短、输入浮层宽度是否增加约 50%、编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线、编辑图标和缩小后的按钮位置是否正确、点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若滚轮仍被 Flyout 截断，再针对 Popup 输入路由单独处理。未完成 Windows 实测前不得标记为验收通过。

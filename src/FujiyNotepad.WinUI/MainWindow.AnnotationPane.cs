@@ -389,9 +389,10 @@ public sealed partial class MainWindow
         Brush popupForeground = new SolidColorBrush(Colors.White);
         var contentBox = new TextBox
         {
+            Style = (Style)RootGrid.Resources["AnnotationComposerTextBoxStyle"],
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
-            MinHeight = 136,
+            MinHeight = 150,
             MaxHeight = 220,
             FontSize = 16,
             PlaceholderText = "写下这一刻的想法……",
@@ -401,8 +402,9 @@ public sealed partial class MainWindow
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(0),
             Foreground = popupForeground,
-            Padding = new Thickness(2, 8, 2, 8),
+            Padding = new Thickness(0, 7, 0, 7),
             VerticalContentAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         smallAnnotationComposerTextBox = contentBox;
 
@@ -415,20 +417,28 @@ public sealed partial class MainWindow
             Visibility = Visibility.Collapsed,
         };
 
+        var closeGlyph = new Viewbox
+        {
+            Width = 12,
+            Height = 12,
+            Child = new SymbolIcon
+            {
+                Symbol = Symbol.Cancel,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 45, 48, 52)),
+            },
+        };
         var closeButton = new Button
         {
-            Content = "×",
-            Width = 32,
-            Height = 32,
-            MinWidth = 32,
-            MinHeight = 32,
+            Content = closeGlyph,
+            Width = 26,
+            Height = 26,
+            MinWidth = 26,
+            MinHeight = 26,
             Padding = new Thickness(0),
-            FontSize = 20,
-            CornerRadius = new CornerRadius(16),
+            CornerRadius = new CornerRadius(13),
             Background = new SolidColorBrush(Color.FromArgb(255, 232, 234, 237)),
             BorderBrush = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
-            Foreground = new SolidColorBrush(Color.FromArgb(255, 45, 48, 52)),
             UseSystemFocusVisuals = false,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
@@ -438,11 +448,11 @@ public sealed partial class MainWindow
         var saveButton = new Button
         {
             Content = "保存",
-            MinWidth = 100,
-            Height = 40,
-            Padding = new Thickness(18, 0, 18, 0),
-            FontSize = 14,
-            CornerRadius = new CornerRadius(20),
+            MinWidth = 82,
+            Height = 34,
+            Padding = new Thickness(14, 0, 14, 0),
+            FontSize = 13,
+            CornerRadius = new CornerRadius(17),
             Background = new SolidColorBrush(Color.FromArgb(255, 43, 132, 222)),
             BorderBrush = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
@@ -462,26 +472,53 @@ public sealed partial class MainWindow
         };
         saveButton.Click += async (_, _) => await SaveSmallAnnotationComposerAsync();
 
-        var layout = new Grid { RowSpacing = 6, MinWidth = 360, MaxWidth = 440 };
+        double availableWidth = View.ActualWidth > 0 ? View.ActualWidth - 40d : 660d;
+        double composerWidth = Math.Min(660d, Math.Max(280d, availableWidth));
+        var editorArea = new Grid { ColumnSpacing = 8 };
+        editorArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        editorArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var editorIcon = new Viewbox
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(0, 8, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = new SymbolIcon
+            {
+                Symbol = Symbol.Edit,
+                Foreground = new SolidColorBrush(Color.FromArgb(190, 255, 255, 255)),
+            },
+        };
+        Grid.SetColumn(editorIcon, 0);
+        Grid.SetColumn(contentBox, 1);
+        editorArea.Children.Add(editorIcon);
+        editorArea.Children.Add(contentBox);
+
+        var layout = new Grid
+        {
+            RowSpacing = 4,
+            Width = composerWidth,
+        };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         Grid.SetRow(closeButton, 0);
-        Grid.SetRow(contentBox, 1);
+        Grid.SetRow(editorArea, 1);
         Grid.SetRow(smallAnnotationComposerValidation, 2);
         Grid.SetRow(saveButton, 3);
         layout.Children.Add(closeButton);
-        layout.Children.Add(contentBox);
+        layout.Children.Add(editorArea);
         layout.Children.Add(smallAnnotationComposerValidation);
         layout.Children.Add(saveButton);
 
         var flyout = new Flyout
         {
+            IsLightDismissEnabled = false,
             Content = new Border
             {
-                Padding = new Thickness(10),
+                Padding = new Thickness(16, 14, 16, 14),
                 CornerRadius = new CornerRadius(24),
                 Background = popupBackground,
                 BorderThickness = new Thickness(0),
@@ -659,6 +696,7 @@ public sealed partial class MainWindow
         style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
         style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(0)));
+        style.Setters.Add(new Setter(FlyoutPresenter.IsDefaultShadowEnabledProperty, false));
         return style;
     }
 }
