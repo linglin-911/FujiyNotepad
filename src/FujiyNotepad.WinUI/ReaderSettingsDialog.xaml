@@ -58,17 +58,20 @@
             <StackPanel Spacing="6">
                 <TextBlock x:Uid="ReaderSettingsContentWidthLabel"
                            Text="Content width" FontWeight="SemiBold" />
-                <Grid ColumnSpacing="12">
+                <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <NumberBox x:Name="ContentWidthNumberBox"
+                    <NumberBox x:Name="ContentWidthNumberBox" Width="132"
                                Minimum="480" Maximum="2400" Value="900"
                                SmallChange="20" LargeChange="100"
                                SpinButtonPlacementMode="Inline"
                                ValueChanged="ContentWidthNumberBox_ValueChanged" />
-                    <CheckBox x:Name="AdaptiveWidthCheckBox" Grid.Column="1"
+                    <TextBlock Grid.Column="1" Text="DIP"
+                               VerticalAlignment="Center" />
+                    <CheckBox x:Name="AdaptiveWidthCheckBox" Grid.Column="2"
                               x:Uid="ReaderSettingsAdaptiveWidthCheckBox"
                               Content="Adapt to available width"
                               VerticalAlignment="Center"
