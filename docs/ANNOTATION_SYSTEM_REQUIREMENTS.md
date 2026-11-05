@@ -1054,7 +1054,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - MainWindow.xaml 已将小批注/章节批注改为同一个 420 DIP 右侧面板，并增加章节选择器、类型切换、章节批注内嵌编辑器及右侧工具栏新建入口。
 - MainWindow.SmallAnnotations.cs 已按所选章节过滤小批注，列表和详情隐藏标题；新建小批注改用输入浮层。
 - MainWindow.ChapterAnnotations.cs 已按所选章节过滤章节批注，改用右侧内嵌编辑器；列表隐藏标题。
-- NovelAnnotationStore.cs 新增按章节查询小批注摘要的方法；章节批注搜索不再匹配隐藏标题。未新增或删除数据库表、列。
+- NovelAnnotationStore.cs 新增按章节查询小批注摘要的方法；章节批注搜索不再匹配隐藏标题。NovelAnnotationStoreTests 新增多章节锚点筛选及隐藏标题搜索测试。未新增或删除数据库表、列。
 - 大批注中的小批注/章节批注参考卡片也不再显示这两类批注的标题；大批注自身标题功能不受影响。
 
 **验证状态：** 当前修改已提交到开发分支，但尚未执行 Windows x64 Release build、自动化测试和用户实机交互验收。不得将本阶段标记为测试通过；重点验证选区菜单位置、Flyout 关闭/保存、跨章节筛选、多锚点小批注、章节自动跟随与手动固定、章节编辑器 X/保存，以及项目切换后的状态清理。
