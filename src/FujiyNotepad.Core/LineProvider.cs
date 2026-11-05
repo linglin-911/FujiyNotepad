@@ -1,0 +1,342 @@
+using System.Text;
+
+namespace FujiyNotepad.Core
+{
+    /// <summary>
+    /// Supplies the decoded text of individual file lines on demand, reading only the requested line
+    /// from the underlying <see cref="IByteSource"/> using line boundaries from <see cref="LineIndexer"/>.
+    /// A bounded cache keeps recently read lines so repeated rendering of the visible window does not
+    /// re-read the disk. A line's text is stable once the line is fully terminated, because the index is
+    /// append-only — so cached values stay valid. The exception is the file's final line: while indexing is in
+    /// progress it is not exposed at all, but once indexing completes an unterminated last line <i>is</i>
+    /// exposed (see <see cref="LineCount"/>), and a writer appending to the file can then extend it. That is
+    /// why <see cref="RefreshLength"/> drops the cache and stamps a new generation.
+    /// </summary>
+    public sealed class LineProvider : ILineSource, ILineEndingSource
+    {
+        // Cap the bytes decoded for any one line so a pathologically long line cannot allocate without
+        // bound; the remainder is elided with a marker (this is a viewer, not an editor).
+        private const int MaxLineBytes = 64 * 1024;
+        private const int MaxCachedLines = 8192;
+
+        private readonly IByteSource source;
+        private readonly LineIndexer indexer;
+        private readonly TextEncoding encoding;
+        private long fileSize;
+        private bool endsWithNewline;
+        private readonly Dictionary<int, string> cache = new();
+        // Bumped whenever RefreshLength drops the cache. A decode that began before that drop carries the old
+        // stamp, so it can be recognised as describing the pre-change file and discarded instead of being
+        // written back — otherwise it resurrects exactly the stale line the clear existed to purge. 64-bit so
+        // the counter cannot wrap during a long-running tail session; it is only ever touched under cacheLock,
+        // so the wider field needs no interlocked access even on the 32-bit build.
+        private long cacheGeneration;
+        // The cache is the only mutable shared state: viewport rendering (UI thread) and the filter scan /
+        // matching-line export (background threads) all call GetLine concurrently, and the underlying
+        // positional byte reads are thread-safe, so this lock just keeps the dictionary itself consistent.
+        private readonly object cacheLock = new();
+
+        public LineProvider(IByteSource source, LineIndexer indexer, TextEncoding? encoding = null)
+        {
+            this.source = source;
+            this.indexer = indexer;
+            this.encoding = encoding ?? TextEncoding.Utf8;
+            fileSize = source.Length;
+            endsWithNewline = FileEndsWithNewline();
+        }
+
+        private bool FileEndsWithNewline()
+        {
+            byte[] newline = encoding.NewLineBytes;
+            if (fileSize < newline.Length)
+            {
+                return false;
+            }
+            byte[] tail = new byte[newline.Length];
+            if (source.ReadFull(fileSize - newline.Length, tail) != newline.Length)
+            {
+                return false;
+            }
+            return tail.AsSpan().SequenceEqual(newline);
+        }
+
+        /// <summary>
+        /// Re-reads the source length (after a writer has appended to or truncated the file) and updates the
+        /// cached size and trailing-newline flag, dropping every cached line so the previously-final line —
+        /// whose text may now be longer or newly terminated — and any new lines are re-read on the next render.
+        /// Returns true if the size changed. Call after the indexer has been resumed over the new region.
+        /// </summary>
+        public bool RefreshLength()
+        {
+            long newSize = source.Length;
+            if (newSize == fileSize)
+            {
+                return false;
+            }
+
+            fileSize = newSize;
+            endsWithNewline = FileEndsWithNewline();
+            lock (cacheLock)
+            {
+                cache.Clear();
+                // Invalidate decodes already in flight; an eviction-driven Clear (in GetLine) deliberately does
+                // not bump this, because those entries are still valid — they are merely being made room for.
+                cacheGeneration++;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Number of lines currently available to display. While indexing is in progress only lines
+        /// whose terminating offset is already known are exposed; once indexing completes, the final
+        /// unterminated line (a file not ending in '\n') is included. A single trailing newline does not
+        /// add a phantom empty line, matching <c>StreamReader.ReadLine</c> semantics.
+        /// </summary>
+        public int LineCount
+        {
+            get
+            {
+                if (fileSize == 0)
+                {
+                    return 0;
+                }
+
+                // The index is seeded with two zeros and grows by one entry per newline, so the number
+                // of newlines discovered so far is (indexed entries - 2).
+                int newlines = Math.Max(0, indexer.GetNumberOfLinesIndexed() - 2);
+
+                if (indexer.IsCompleted)
+                {
+                    return endsWithNewline ? newlines : newlines + 1;
+                }
+
+                return newlines;
+            }
+        }
+
+        /// <summary>Returns the decoded text of line <paramref name="lineIndex"/> (0-based), without its terminator.</summary>
+        public string GetLine(int lineIndex)
+        {
+            long generation;
+            lock (cacheLock)
+            {
+                if (cache.TryGetValue(lineIndex, out string? cached))
+                {
+                    return cached;
+                }
+                generation = cacheGeneration;
+            }
+
+            // Decode outside the lock: ReadLine only does positional (thread-safe) reads and touches no
+            // shared mutable state, so concurrent callers can decode different lines in parallel.
+            string text = ReadLine(lineIndex);
+
+            lock (cacheLock)
+            {
+                // Drop the result if the file changed while we were decoding (RefreshLength cleared the cache).
+                // The text describes the old file — for the previously-final line of a growing log that means
+                // the pre-append, truncated version — so caching it would serve stale text to the viewport
+                // until the next size change. This caller still gets what it asked for; only the cache is
+                // protected, which is what outlives the call.
+                if (generation == cacheGeneration)
+                {
+                    if (cache.Count >= MaxCachedLines)
+                    {
+                        cache.Clear();
+                    }
+                    cache[lineIndex] = text;
+                }
+            }
+            return text;
+        }
+
+        /// <summary>
+        /// Decoded text of <paramref name="lineIndex"/> for a one-pass bulk scan (filter / grep / export),
+        /// <b>without</b> inserting the line into the cache. A whole-file scan reads each line exactly once, so
+        /// caching every line only thrashes the bounded cache — evicting the lines the viewport is showing — for
+        /// no reuse benefit. A line already cached by the viewport is still served from the cache (a cheap hit);
+        /// a miss is decoded and returned but not stored. Like <see cref="GetLine"/>, the decode is a thread-safe
+        /// positional read, so bulk scans can run off the UI thread while it renders.
+        /// </summary>
+        public string GetLineUncached(int lineIndex)
+        {
+            lock (cacheLock)
+            {
+                if (cache.TryGetValue(lineIndex, out string? cached))
+                {
+                    return cached;
+                }
+            }
+
+            return ReadLine(lineIndex);
+        }
+
+        private (long start, long end) GetByteRange(int lineIndex)
+        {
+            // 0-based display line i starts at index entry [i+1]; it ends at entry [i+2] when that next
+            // start is known, otherwise at end of file.
+            long start = indexer.GetOffsetFromLineNumber(lineIndex + 1);
+            long end = (lineIndex + 2 < indexer.GetNumberOfLinesIndexed())
+                ? indexer.GetOffsetFromLineNumber(lineIndex + 2)
+                : fileSize;
+            return (start, end);
+        }
+
+        /// <summary>
+        /// The terminator of line <paramref name="lineIndex"/>: <see cref="LineEnding.CrLf"/> when it ends with
+        /// an encoded <c>\r\n</c>, <see cref="LineEnding.Lf"/> for a bare <c>\n</c>, or <see cref="LineEnding.None"/>
+        /// for the file's final unterminated line. Reads only the line's trailing bytes (the terminator sits at
+        /// the end of the line's byte range), so it is cheap enough to call per visible line.
+        /// </summary>
+        public LineEnding GetLineEnding(int lineIndex)
+        {
+            byte[] nl = encoding.NewLineBytes;
+            byte[] cr = encoding.CarriageReturnBytes;
+            if (nl.Length == 0)
+            {
+                return LineEnding.None;
+            }
+
+            (long start, long end) = GetByteRange(lineIndex);
+            int tailLen = nl.Length + cr.Length;
+            long from = end - tailLen;
+            if (from < start)
+            {
+                from = start;
+                tailLen = (int)(end - start);
+            }
+            if (tailLen < nl.Length)
+            {
+                return LineEnding.None;
+            }
+
+            byte[] tail = new byte[tailLen];
+            int read = source.ReadFull(from, tail);
+            if (read < nl.Length || !tail.AsSpan(read - nl.Length, nl.Length).SequenceEqual(nl))
+            {
+                return LineEnding.None;
+            }
+
+            if (cr.Length > 0 && read >= nl.Length + cr.Length
+                && tail.AsSpan(read - nl.Length - cr.Length, cr.Length).SequenceEqual(cr))
+            {
+                return LineEnding.CrLf;
+            }
+            return LineEnding.Lf;
+        }
+
+        private string ReadLine(int lineIndex)
+        {
+            (long start, long end) = GetByteRange(lineIndex);
+
+            long length = end - start;
+            bool truncated = false;
+            if (length > MaxLineBytes)
+            {
+                length = MaxLineBytes;
+                truncated = true;
+            }
+
+            if (length <= 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] buffer = new byte[length];
+            int read = source.ReadFull(start, buffer);
+
+            int textLen = read;
+            if (!truncated)
+            {
+                // Drop the line's own terminator (the encoded "\n", and a preceding "\r") from the rendered text.
+                textLen = StripSuffix(buffer, textLen, encoding.NewLineBytes);
+                textLen = StripSuffix(buffer, textLen, encoding.CarriageReturnBytes);
+            }
+
+            // Strip a byte-order mark at the very start of the file so it is not rendered on the first line.
+            int from = lineIndex == 0 ? BomLength(buffer, textLen) : 0;
+
+            string text = encoding.Encoding.GetString(buffer, from, textLen - from);
+            return truncated ? text + " …" : text;
+        }
+
+        // Removes a trailing byte sequence (a newline or carriage-return) from the line if present.
+        private static int StripSuffix(byte[] buffer, int length, byte[] suffix)
+        {
+            if (suffix.Length == 0 || length < suffix.Length)
+            {
+                return length;
+            }
+            if (!buffer.AsSpan(length - suffix.Length, suffix.Length).SequenceEqual(suffix))
+            {
+                return length;
+            }
+            return length - suffix.Length;
+        }
+
+        // Length of this encoding's BOM when the buffer begins with it (only relevant on line 0), else 0.
+        private int BomLength(byte[] buffer, int available)
+        {
+            byte[] bom = encoding.Bom;
+            if (bom.Length == 0 || available < bom.Length)
+            {
+                return 0;
+            }
+            return buffer.AsSpan(0, bom.Length).SequenceEqual(bom) ? bom.Length : 0;
+        }
+
+        /// <summary>
+        /// Converts a byte offset measured from the start of <paramref name="lineIndex"/> into a
+        /// character column within the decoded line (used to position a Find match, which is located by
+        /// byte offset, onto the character grid). The result is clamped to the decoded line length.
+        /// </summary>
+        public int ByteColumnToCharColumn(int lineIndex, long byteColumn)
+        {
+            if (byteColumn <= 0)
+            {
+                return 0;
+            }
+
+            (long start, long end) = GetByteRange(lineIndex);
+            long available = end - start;
+            // Never decode more than one capped line's worth. A Find match far into a not-yet-indexed line
+            // (or a single giant line) makes byteColumn/available huge; without this cap the allocation and
+            // read below would be proportional to that distance — up to gigabytes on the calling thread.
+            // The result is clamped to the (also-capped) rendered line length, so this matches GetLine.
+            long count = Math.Min(Math.Min(byteColumn, available), MaxLineBytes);
+            if (count <= 0)
+            {
+                return 0;
+            }
+
+            byte[] buffer = new byte[count];
+            int read = source.ReadFull(start, buffer);
+
+            int from = lineIndex == 0 ? BomLength(buffer, read) : 0;
+
+            // Count whole characters in the prefix; the decoder ignores a trailing partial code unit.
+            int chars = encoding.Encoding.GetCharCount(buffer, from, read - from);
+            int lineLength = GetLine(lineIndex).Length;
+            return Math.Min(chars, lineLength);
+        }
+
+        /// <summary>
+        /// Converts a character column within <paramref name="lineIndex"/> to a byte offset measured from
+        /// the start of that line (the inverse of <see cref="ByteColumnToCharColumn"/>), used to start a
+        /// Find from the caret. Counts the encoded bytes of the decoded line prefix; a leading BOM on line 0
+        /// is not added, so a Find may begin a couple of bytes early there (harmless - it only widens the
+        /// scan).
+        /// </summary>
+        public long CharColumnToByteColumn(int lineIndex, int charColumn)
+        {
+            if (charColumn <= 0)
+            {
+                return 0;
+            }
+
+            string text = GetLine(lineIndex);
+            int chars = Math.Min(charColumn, text.Length);
+            return encoding.Encoding.GetByteCount(text.AsSpan(0, chars));
+        }
+    }
+}

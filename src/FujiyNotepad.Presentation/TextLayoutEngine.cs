@@ -1,0 +1,2032 @@
+using System.Text;
+using FujiyNotepad.Core;
+
+namespace FujiyNotepad.Presentation
+{
+    /// <summary>A caret/selection position: a 0-based line and a 0-based source character index in it.</summary>
+    public readonly struct TextPosition : IComparable<TextPosition>, IEquatable<TextPosition>
+    {
+        public TextPosition(int line, int column)
+        {
+            Line = line;
+            Column = column;
+        }
+
+        public int Line { get; }
+        public int Column { get; }
+
+        public int CompareTo(TextPosition other) => Line != other.Line ? Line.CompareTo(other.Line) : Column.CompareTo(other.Column);
+        public bool Equals(TextPosition other) => Line == other.Line && Column == other.Column;
+        public override bool Equals(object? obj) => obj is TextPosition p && Equals(p);
+        public override int GetHashCode() => HashCode.Combine(Line, Column);
+        public static bool operator <(TextPosition a, TextPosition b) => a.CompareTo(b) < 0;
+        public static bool operator >(TextPosition a, TextPosition b) => a.CompareTo(b) > 0;
+        public static bool operator <=(TextPosition a, TextPosition b) => a.CompareTo(b) <= 0;
+        public static bool operator >=(TextPosition a, TextPosition b) => a.CompareTo(b) >= 0;
+        public static bool operator ==(TextPosition a, TextPosition b) => a.Equals(b);
+        public static bool operator !=(TextPosition a, TextPosition b) => !a.Equals(b);
+    }
+
+    /// <summary>A UI-agnostic navigation/selection command fed to <see cref="TextLayoutEngine.HandleKey"/>.</summary>
+    public enum NavKey
+    {
+        Left,
+        Right,
+        Up,
+        Down,
+        PageUp,
+        PageDown,
+        LineStart,
+        LineEnd,
+        DocumentStart,
+        DocumentEnd,
+        SelectAll,
+        Copy,
+    }
+
+    /// <summary>The outcome of feeding a key to <see cref="TextLayoutEngine.HandleKey"/>.</summary>
+    public readonly struct KeyResult
+    {
+        public KeyResult(bool handled, string? copyText)
+        {
+            Handled = handled;
+            CopyText = copyText;
+        }
+
+        /// <summary>True if the engine consumed the key (the host should mark the event handled).</summary>
+        public bool Handled { get; }
+
+        /// <summary>Non-null when a copy was requested; the host should place this text on the clipboard.</summary>
+        public string? CopyText { get; }
+    }
+
+    /// <summary>A match-highlight rectangle on a line, in viewport pixels (the line's Y/height are known).</summary>
+    public readonly record struct HighlightRect(double X, double Width, int StartIndex = -1, int Length = 0);
+
+    /// <summary>
+    /// A persistent-highlight-rule rectangle: like <see cref="HighlightRect"/> but carrying the rule's packed
+    /// 0xAARRGGBB colour, since each rule paints in its own colour (unlike the single-colour Find highlight).
+    /// </summary>
+    public readonly record struct RuleHighlightRect(double X, double Width, uint Argb, int StartIndex = -1, int Length = 0);
+
+    /// <summary>A source-text range that should receive a clickable small-annotation underline.</summary>
+    public readonly record struct TextAnnotationMarker(int Line, int StartColumn, int EndColumn);
+
+    /// <summary>
+    /// Size of the current selection. <see cref="Lines"/> is 0 when nothing is selected, otherwise the number
+    /// of lines it touches. <see cref="Characters"/> is the selected character count, or -1 when the selection
+    /// is too large to count cheaply (only the line count is shown then).
+    /// </summary>
+    public readonly record struct SelectionStats(long Characters, int Lines);
+
+    /// <summary>
+    /// One visible visual row's layout in viewport pixels, ready for a renderer to paint. The
+    /// <see cref="TextLayoutEngine"/> computes these from either the legacy cell model or source-indexed
+    /// proportional layout; the host only issues the corresponding draw and fill calls.
+    /// </summary>
+    public readonly struct VisibleLine
+    {
+        /// <summary>0-based source line index.</summary>
+        public int LineIndex { get; init; }
+
+        /// <summary>Top of the line in viewport pixels.</summary>
+        public double Y { get; init; }
+
+        /// <summary>Legacy path: tab-expanded row text. Proportional path: the corresponding source substring.</summary>
+        public string Display { get; init; }
+
+        /// <summary>Start index in the legacy tab-expanded display, or source UTF-16 text in proportional mode.</summary>
+        public int DisplayStartIndex { get; init; }
+
+        /// <summary>X (viewport px) at which the text starts (accounts for the horizontal scroll offset).</summary>
+        public double TextX { get; init; }
+
+        /// <summary>True if part of this line is selected.</summary>
+        public bool HasSelection { get; init; }
+
+        /// <summary>Left edge of the selection highlight in viewport pixels.</summary>
+        public double SelectionX { get; init; }
+
+        /// <summary>Width of the selection highlight in viewport pixels.</summary>
+        public double SelectionWidth { get; init; }
+
+        /// <summary>Selected-range start: row-local display index in legacy mode, absolute source UTF-16 index in proportional mode.</summary>
+        public int SelectionStartIndex { get; init; }
+
+        /// <summary>Length of the selected range in UTF-16 units.</summary>
+        public int SelectionLength { get; init; }
+
+        /// <summary>True when the selection continues beyond this visual row, including its row break.</summary>
+        public bool SelectionContinuesPastRow { get; init; }
+
+        /// <summary>True if the caret sits on this line and should be drawn.</summary>
+        public bool HasCaret { get; init; }
+
+        /// <summary>X (viewport px) of the caret.</summary>
+        public double CaretX { get; init; }
+
+        /// <summary>Caret index in the legacy display row, or absolute source UTF-16 index in proportional mode.</summary>
+        public int CaretDisplayIndex { get; init; }
+
+        /// <summary>
+        /// Highlight rectangles for every Find match on this line (empty when highlighting is off). Painted
+        /// under the text; the currently-selected match is drawn over its highlight by the selection layer.
+        /// </summary>
+        public IReadOnlyList<HighlightRect> Matches { get; init; }
+
+        /// <summary>
+        /// Highlight rectangles for every occurrence of the selected text on this line (empty when the feature
+        /// is off or there is no qualifying selection). Occurrences that coincide with a Find match are excluded,
+        /// so selecting the searched word doesn't double-paint over the Find highlight — but a different selected
+        /// word still highlights alongside an active Find. Painted under the active selection so the selected
+        /// occurrence itself reads as the selection colour.
+        /// </summary>
+        public IReadOnlyList<HighlightRect> SelectionMatches { get; init; }
+
+        /// <summary>
+        /// Persistent highlight-rule rectangles on this line, each in its rule's colour (empty when no rules are
+        /// set). Painted under the Find highlight and the text, so a search still reads over a coloured line.
+        /// </summary>
+        public IReadOnlyList<RuleHighlightRect> RuleHighlights { get; init; }
+
+        /// <summary>True when this line is bookmarked (the gutter paints a marker for it).</summary>
+        public bool IsBookmarked { get; init; }
+
+        /// <summary>
+        /// Whitespace/control markers to overlay on this line (empty unless "Show Whitespace" is on). Each gives
+        /// a display column, width, kind (space/tab/control) and whether it is part of the trailing run.
+        /// </summary>
+        public IReadOnlyList<WhitespaceMarker> Whitespace { get; init; }
+
+        /// <summary>
+        /// In word-wrap mode, true for the 2nd…Nth display rows of a wrapped source line (the gutter shows the
+        /// line number only on the first row). Always false in the non-wrap, one-row-per-line model.
+        /// </summary>
+        public bool IsWrapContinuation { get; init; }
+
+        /// <summary>True when geometry and source ranges come from the proportional layout provider.</summary>
+        public bool UsesProportionalLayout { get; init; }
+
+        /// <summary>Half-open source UTF-16 range represented by this visual row.</summary>
+        public int SourceStartIndex { get; init; }
+        public int SourceEndIndex { get; init; }
+
+        /// <summary>Top and height of this row inside its complete source-line layout.</summary>
+        public double LayoutRowTop { get; init; }
+        public double LayoutRowHeight { get; init; }
+
+        /// <summary>Absolute source-line UTF-16 caret index for the proportional renderer.</summary>
+        public int CaretSourceIndex { get; init; }
+    }
+
+    /// <summary>
+    /// The framework-independent reader engine behind the WinUI text canvas. It tracks scrolling,
+    /// caret/selection, hit-testing and the per-line render model, but its layout calculations still assume
+    /// fixed monospace cells on its legacy path, while an optional <see cref="ITextLayoutProvider"/> supplies
+    /// proportional layout, source-index hit testing and visual-row geometry. The class has no Win2D/WinUI/WinRT dependency and remains headlessly unit-testable.
+    /// </summary>
+    public sealed partial class TextLayoutEngine
+    {
+        private const int MaxCopyChars = 25_000_000;
+
+        /// <summary>
+        /// Inner horizontal padding (viewport pixels) between the control's left/right border and the text,
+        /// so the first character of each line isn't pressed against the edge. It is applied to the rendered
+        /// text/caret/selection X, subtracted back out in hit-testing, and added to the horizontal extent so
+        /// every coordinate calculation stays consistent.
+        /// </summary>
+        public const double TextPadding = 8d;
+
+        // Horizontal padding inside the line-number gutter (on each side of the number).
+        private const double GutterPaddingX = 6d;
+
+        private int tabSize = 4;
+
+        private double lineHeight;
+        private double charWidth;
+
+        private readonly Dictionary<int, LineColumns> columnsCache = new();
+
+        private static readonly IReadOnlyList<HighlightRect> NoHighlights = Array.Empty<HighlightRect>();
+        private ILineHighlighter? highlighter;
+        private ILineHighlighter? selectionHighlighter;
+
+        private static readonly IReadOnlyList<RuleHighlightRect> NoRuleHighlights = Array.Empty<RuleHighlightRect>();
+        private HighlightRuleSet? highlightRules;
+
+        private static readonly IReadOnlyList<WhitespaceMarker> NoWhitespace = Array.Empty<WhitespaceMarker>();
+
+        private readonly BookmarkSet bookmarks = new();
+
+        private bool showLineNumbers = false;
+        private bool showWhitespace = false;
+
+        private ILineSource? provider;
+        private int totalLines;
+        private int firstVisibleLine;
+        private double horizontalOffset;
+        private double horizontalExtentPx;
+
+        // Word wrap (issue #31). When on, one source line renders as N display rows wrapped to the viewport
+        // width, and there is no horizontal scroll. The vertical scrollbar stays in *source-line* units (so the
+        // constant-memory "extent = line count" model is preserved); firstVisibleRow is which wrapped row of
+        // firstVisibleLine sits at the very top, giving smooth scrolling through a line longer than the viewport.
+        private bool wordWrap;
+        private int firstVisibleRow;
+
+        private TextPosition caret;
+        private TextPosition anchor;
+        private int desiredColumn = -1;
+
+        /// <summary>Raised when the scroll position or horizontal extent changes (host re-syncs scrollbars).</summary>
+        public event Action? ViewChanged;
+
+        /// <summary>Raised when the caret moves (host updates the status bar).</summary>
+        public event Action<TextPosition>? CaretChanged;
+
+        /// <summary>Raised when the surface needs repainting (host invalidates the canvas).</summary>
+        public event Action? RedrawRequested;
+
+        /// <summary>Raised when the caret should become solid and restart blinking (host resets its blink timer).</summary>
+        public event Action? CaretBlinkResetRequested;
+
+        #region Viewport + metrics (fed by the host)
+
+        /// <summary>The live viewport width in pixels (the host pushes <c>ActualWidth</c> here).</summary>
+        public double ViewportWidth { get; set; }
+
+        /// <summary>The live viewport height in pixels (the host pushes <c>ActualHeight</c> here).</summary>
+        public double ViewportHeight { get; set; }
+
+        /// <summary>Injects font-probe metrics used by the legacy path and fixed-width gutter calculations.</summary>
+        public void SetMetrics(double charWidthPx, double lineHeightPx)
+        {
+            charWidth = charWidthPx;
+            lineHeight = lineHeightPx;
+        }
+
+        /// <summary>
+        /// Tab width in columns (default 4, minimum 1). Changing it re-expands every line, so the cached
+        /// column maps are cleared and the surface is refreshed.
+        /// </summary>
+        public int TabSize
+        {
+            get => tabSize;
+            set
+            {
+                int clamped = Math.Max(1, value);
+                if (clamped == tabSize)
+                {
+                    return;
+                }
+                tabSize = clamped;
+                columnsCache.Clear();
+                ClearProportionalLayoutCache();
+                RaiseViewChanged();
+                RaiseRedraw();
+            }
+        }
+
+        #endregion
+
+        #region Public surface mirrored by the host
+
+        public int FirstVisibleLine
+        {
+            get => firstVisibleLine;
+            set => SetFirstVisibleLine(value);
+        }
+
+        /// <summary>
+        /// Positions the top of the viewport at the visual row containing an original-source UTF-16 position.
+        /// Used after typography changes so a reflow keeps the same reading anchor when possible.
+        /// </summary>
+        public void SetViewportAnchor(TextPosition position)
+        {
+            if (provider is null || totalLines <= 0)
+                return;
+
+            position = ClampPosition(position);
+            int row = 0;
+
+            if (UsesProportionalLayout)
+            {
+                ITextLayoutResult layout = GetProportionalLayout(position.Line);
+                row = FindVisualRowForCaret(layout.VisualLines, position.Column);
+            }
+            else if (wordWrap)
+            {
+                IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(GetColumns(position.Line), WrapColumns);
+                row = LineWrapper.RowOfCharIndex(rows, position.Column);
+            }
+
+            // Always assign the row: the same numeric row index can represent a different source range after reflow.
+            firstVisibleLine = position.Line;
+            firstVisibleRow = row;
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        public double HorizontalOffset
+        {
+            get => horizontalOffset;
+            set => SetHorizontalOffset(value);
+        }
+
+        public int TotalLines => totalLines;
+
+        /// <summary>Maps a source UTF-16 column to the tab-expanded display index used by the renderer.</summary>
+        public int GetDisplayIndexForColumn(int lineIndex, int sourceColumn)
+        {
+            if (provider is null || lineIndex < 0 || lineIndex >= totalLines)
+                throw new ArgumentOutOfRangeException(nameof(lineIndex));
+
+            return GetColumns(lineIndex).DisplayIndexOfCharIndex(sourceColumn);
+        }
+        private double EffectiveVisualRowHeight
+        {
+            get
+            {
+                if (UsesProportionalLayout && provider is not null && totalLines > 0)
+                {
+                    int line = Math.Clamp(firstVisibleLine, 0, totalLines - 1);
+                    ITextLayoutResult layout = GetProportionalLayout(line);
+                    if (layout.VisualLines.Count > 0)
+                    {
+                        int row = wordWrap
+                            ? Math.Clamp(firstVisibleRow, 0, layout.VisualLines.Count - 1)
+                            : 0;
+                        return GetSafeRowHeight(layout.VisualLines[row]);
+                    }
+                }
+
+                return lineHeight;
+            }
+        }
+
+        public int FullyVisibleLineCount
+        {
+            get
+            {
+                double rowHeight = EffectiveVisualRowHeight;
+                return rowHeight > 0 ? Math.Max(1, (int)(ViewportHeight / rowHeight)) : 1;
+            }
+        }
+        public int MaxFirstLine => wordWrap
+            ? Math.Max(0, totalLines - 1)
+            : Math.Max(0, totalLines - FullyVisibleLineCount);
+        public double CharWidthPx => charWidth;
+        public double HorizontalExtentPx => Math.Max(horizontalExtentPx, ViewportWidth);
+        public TextPosition CaretPosition => caret;
+
+        /// <summary>
+        /// Word wrap (issue #31). Off by default — the whole non-wrap path is unchanged. Turning it on clears
+        /// the horizontal scroll, keeps the current source line at the top, and re-lays out.
+        /// </summary>
+        public bool WordWrap
+        {
+            get => wordWrap;
+            set
+            {
+                if (wordWrap == value)
+                {
+                    return;
+                }
+                wordWrap = value;
+                desiredColumn = -1;
+                ClearProportionalLayoutCache();
+                firstVisibleRow = 0;
+                horizontalOffset = 0;
+                firstVisibleLine = Math.Clamp(firstVisibleLine, 0, MaxFirstLine);
+                RaiseViewChanged();
+                RaiseRedraw();
+            }
+        }
+
+        // The wrap budget in display columns: the viewport width minus the gutter, left padding and a right
+        // padding, divided by the cell width. At least 1 so a line always makes progress.
+        private int WrapColumns
+        {
+            get
+            {
+                if (charWidth <= 0)
+                {
+                    return 1;
+                }
+                double avail = ViewportWidth - TextOriginX - TextPadding;
+                return Math.Max(1, (int)Math.Floor(avail / charWidth));
+            }
+        }
+
+        private IReadOnlyList<LineWrapper.WrapRow> WrapRowsOf(int lineIndex) =>
+            LineWrapper.Wrap(GetColumns(lineIndex), WrapColumns);
+
+        /// <summary>
+        /// The raw source text of the line the caret is on, for screen readers (issue #75). Bounded to a single
+        /// line so even a multi-gigabyte file stays cheap — assistive tech reads each line as the caret moves
+        /// through the file. Returns an empty string when no file is open.
+        /// </summary>
+        public string GetCaretLineText()
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return string.Empty;
+            }
+
+            int line = Math.Clamp(caret.Line, 0, totalLines - 1);
+            return GetSourceLine(line);
+        }
+
+        /// <summary>
+        /// Whether the line-number gutter is drawn. The gutter is a fixed-width column on the left (it does not
+        /// scroll horizontally); turning it on/off shifts the text area and re-syncs the view.
+        /// </summary>
+        public bool ShowLineNumbers
+        {
+            get => showLineNumbers;
+            set
+            {
+                if (value != showLineNumbers)
+                {
+                    showLineNumbers = value;
+                    RaiseViewChanged();
+                    RaiseRedraw();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether whitespace/control markers (space dots, tab arrows, trailing emphasis, control boxes) are
+        /// overlaid on the rendered text. Pure overlay - it doesn't change layout, only requests a redraw.
+        /// </summary>
+        public bool ShowWhitespace
+        {
+            get => showWhitespace;
+            set
+            {
+                if (value != showWhitespace)
+                {
+                    showWhitespace = value;
+                    RaiseRedraw();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Width in pixels of the line-number gutter (0 when off): wide enough for the largest line number,
+        /// with a minimum of two digits so it doesn't jitter for tiny files.
+        /// </summary>
+        public double GutterWidthPx
+        {
+            get
+            {
+                if (!showLineNumbers || totalLines <= 0 || charWidth <= 0)
+                {
+                    return 0;
+                }
+                int digits = Math.Max(2, DigitCount(totalLines));
+                return digits * charWidth + GutterPaddingX * 2;
+            }
+        }
+
+        // Screen x of text column 0 before the horizontal scroll offset: the left padding, plus the gutter.
+        private double TextOriginX => TextPadding + GutterWidthPx;
+
+        private static int DigitCount(int value)
+        {
+            int digits = 1;
+            while (value >= 10)
+            {
+                value /= 10;
+                digits++;
+            }
+            return digits;
+        }
+
+        /// <summary>True when there is a non-empty selection (the anchor and caret differ).</summary>
+        public bool HasSelection => anchor != caret;
+
+        /// <summary>
+        /// The start of the current selection in document order (equals the caret when nothing is selected).
+        /// After <see cref="SelectMatch"/> this is the start of the matched text, which "Find Previous" uses
+        /// as the upper bound so it never re-finds the current match.
+        /// </summary>
+        public TextPosition SelectionStart => NormalizedSelection().start;
+
+        /// <summary>The end of the current selection in document order (equals the caret when empty).</summary>
+        public TextPosition SelectionEnd => NormalizedSelection().end;
+
+        // A multi-line selection spanning more lines than this isn't character-counted (the count would mean
+        // decoding that many lines on the UI thread on every selection change); only its line count is shown.
+        private const int MaxSelectionLinesForCharCount = 5000;
+
+        /// <summary>
+        /// The size of the current selection (characters and lines) for the status bar. Returns zero lines when
+        /// there is no selection. The character count is exact for a single-line or a moderate multi-line
+        /// selection; for a very large multi-line selection it is -1 (uncounted) and only the line count applies.
+        /// </summary>
+        public SelectionStats GetSelectionStats()
+        {
+            if (provider == null || anchor == caret)
+            {
+                return new SelectionStats(0, 0);
+            }
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+
+            if (start.Line == end.Line)
+            {
+                return new SelectionStats(Math.Max(0, end.Column - start.Column), 1);
+            }
+
+            int lines = end.Line - start.Line + 1;
+            if (lines > MaxSelectionLinesForCharCount)
+            {
+                return new SelectionStats(-1, lines);
+            }
+
+            long characters = 0;
+            for (int line = start.Line; line <= end.Line; line++)
+            {
+                int lineLength = GetSourceLine(line).Length;
+                if (line == start.Line)
+                {
+                    characters += Math.Max(0, lineLength - start.Column);
+                }
+                else if (line == end.Line)
+                {
+                    characters += Math.Min(end.Column, lineLength);
+                }
+                else
+                {
+                    characters += lineLength;
+                }
+
+                if (line < end.Line)
+                {
+                    characters += 1; // the line break between the two lines
+                }
+            }
+
+            return new SelectionStats(characters, lines);
+        }
+
+        /// <summary>
+        /// The selected text when the selection is non-empty and lies on a single source line; otherwise null.
+        /// Used to drive "highlight all occurrences of the selected text" (issue #130), which only applies to a
+        /// single-line selection. Columns are character indices into the line's source, so the slice is exact.
+        /// </summary>
+        public string? GetSelectedTextOnSingleLine()
+        {
+            if (provider == null || anchor == caret)
+            {
+                return null;
+            }
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            if (start.Line != end.Line)
+            {
+                return null;
+            }
+
+            string source = GetSourceLine(start.Line);
+            int from = Math.Clamp(start.Column, 0, source.Length);
+            int to = Math.Clamp(end.Column, 0, source.Length);
+            if (to <= from)
+            {
+                return null;
+            }
+
+            return source.Substring(from, to - from);
+        }
+
+        /// <summary>
+        /// Builds the exact selected source text, preserving each line's LF/CRLF terminator. Unlike the clipboard
+        /// copy command, this is used for annotation quotes, which must match the document's decoded text.
+        /// </summary>
+        public string? GetSelectedTextForAnnotation()
+        {
+            if (provider is null || anchor == caret)
+                return null;
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            var builder = new StringBuilder();
+
+            for (int lineIndex = start.Line; lineIndex <= end.Line; lineIndex++)
+            {
+                string line = GetSourceLine(lineIndex);
+                int from = lineIndex == start.Line ? Math.Clamp(start.Column, 0, line.Length) : 0;
+                int to = lineIndex == end.Line ? Math.Clamp(end.Column, from, line.Length) : line.Length;
+                builder.Append(line.AsSpan(from, to - from));
+
+                if (lineIndex < end.Line)
+                {
+                    string terminator = provider is ILineEndingSource endings
+                        ? endings.GetLineEnding(lineIndex) switch
+                        {
+                            LineEnding.CrLf => "\r\n",
+                            LineEnding.Lf => "\n",
+                            _ => "\n",
+                        }
+                        : "\n";
+                    builder.Append(terminator);
+                }
+            }
+
+            return builder.Length == 0 ? null : builder.ToString();
+        }
+
+        /// <summary>
+        /// The time difference between the leading timestamps of the first and last selected lines, or
+        /// <c>null</c> when there is no multi-line selection or either endpoint line does not begin with a
+        /// recognized timestamp. Drives the status bar's log-duration readout (issue #67). Reads only the two
+        /// endpoint lines, so it stays cheap even for a large selection.
+        /// </summary>
+        public TimeSpan? GetSelectionTimestampDelta()
+        {
+            if (provider == null || anchor == caret)
+            {
+                return null;
+            }
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            if (start.Line == end.Line)
+            {
+                return null;
+            }
+
+            if (TimestampParser.TryParseLeading(GetSourceLine(start.Line), out DateTimeOffset first) &&
+                TimestampParser.TryParseLeading(GetSourceLine(end.Line), out DateTimeOffset last))
+            {
+                return last - first;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Sets (or clears, with <c>null</c>) the highlighter used to paint every Find match in the viewport,
+        /// and requests a redraw. Each visible line's <see cref="VisibleLine.Matches"/> is then computed from
+        /// this highlighter on the next <see cref="GetVisibleLines"/>.
+        /// </summary>
+        public void SetHighlighter(ILineHighlighter? value)
+        {
+            highlighter = value;
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Sets (or clears, with <c>null</c>) the highlighter used to paint every occurrence of the selected
+        /// text in the viewport (issue #130), and requests a redraw. This is a separate channel from
+        /// <see cref="SetHighlighter"/> (Find) and coexists with it: occurrences that fall on a Find match are
+        /// excluded (so selecting the searched word adds no second colour), but a different selected word still
+        /// highlights alongside the Find matches. Each visible line's <see cref="VisibleLine.SelectionMatches"/>
+        /// is computed from this highlighter on the next <see cref="GetVisibleLines"/>.
+        /// </summary>
+        public void SetSelectionHighlighter(ILineHighlighter? value)
+        {
+            selectionHighlighter = value;
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Sets (or clears, with <c>null</c>) the persistent highlight rules and requests a redraw. These are a
+        /// separate channel from <see cref="SetHighlighter"/> (Find), so they survive opening/closing the Find
+        /// bar and apply across every open file. Each visible line's <see cref="VisibleLine.RuleHighlights"/> is
+        /// recomputed from this rule set on the next <see cref="GetVisibleLines"/>.
+        /// </summary>
+        public void SetHighlightRules(HighlightRuleSet? value)
+        {
+            highlightRules = value is { Count: > 0 } ? value : null;
+            RaiseRedraw();
+        }
+
+        public void SetProvider(ILineSource? newProvider)
+        {
+            ClearProportionalLayoutCache();
+            provider = newProvider;
+            totalLines = newProvider?.LineCount ?? 0;
+            firstVisibleLine = 0;
+            firstVisibleRow = 0;
+            horizontalOffset = 0;
+            caret = anchor = new TextPosition(0, 0);
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            columnsCache.Clear();
+            bookmarks.Clear(); // bookmarks are line indices into the previous file
+            RaiseViewChanged();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        public void UpdateTotalLines(int count)
+        {
+            // This method is polled while indexing is in progress. An unchanged count means there is no
+            // viewport change; source-content refreshes use RefreshSourceContent() explicitly.
+            if (count == totalLines)
+                return;
+
+            totalLines = count;
+            columnsCache.Clear();
+            ClearProportionalLayoutCache();
+            if (firstVisibleLine > MaxFirstLine)
+            {
+                firstVisibleLine = MaxFirstLine;
+            }
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Invalidates cached text geometry after the existing line source has been refreshed in place
+        /// (for example, after a followed file grows without changing its currently visible line count).
+        /// Unlike <see cref="UpdateTotalLines"/>, this is an explicit content-change notification, not an
+        /// indexing-progress poll.
+        /// </summary>
+        public void RefreshSourceContent()
+        {
+            if (provider is null)
+                return;
+
+            columnsCache.Clear();
+            ClearProportionalLayoutCache();
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        public void GoToLine(int lineIndex)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
+            caret = anchor = new TextPosition(lineIndex, 0);
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        // ----- Bookmarks (toggle on the caret line; jump next/previous with wrap-around) -----
+
+        /// <summary>Whether any line is bookmarked (lets the host enable/disable navigation commands).</summary>
+        public bool HasBookmarks => bookmarks.Count > 0;
+
+        /// <summary>The bookmarked line indices in ascending order (e.g. for the scrollbar marker margin).</summary>
+        public IReadOnlyCollection<int> BookmarkLines => bookmarks.Lines;
+
+        /// <summary>Toggles the bookmark on the caret's line and redraws; returns true if it is now bookmarked.</summary>
+        public bool ToggleBookmarkAtCaret()
+        {
+            bool added = bookmarks.Toggle(caret.Line);
+            RaiseRedraw();
+            return added;
+        }
+
+        /// <summary>Moves the caret to the next bookmarked line (wrapping); no-op when there are no bookmarks.</summary>
+        public void GoToNextBookmark()
+        {
+            int? next = bookmarks.NextAfter(caret.Line);
+            if (next.HasValue)
+            {
+                GoToLine(next.Value);
+            }
+        }
+
+        /// <summary>Moves the caret to the previous bookmarked line (wrapping); no-op when there are none.</summary>
+        public void GoToPreviousBookmark()
+        {
+            int? prev = bookmarks.PreviousBefore(caret.Line);
+            if (prev.HasValue)
+            {
+                GoToLine(prev.Value);
+            }
+        }
+
+        /// <summary>Removes every bookmark and redraws.</summary>
+        public void ClearBookmarks()
+        {
+            if (bookmarks.Count > 0)
+            {
+                bookmarks.Clear();
+                RaiseRedraw();
+            }
+        }
+
+        /// <summary>
+        /// Moves the caret to <paramref name="column"/> on line <paramref name="lineIndex"/> (each clamped to
+        /// the document / the line length), clears any selection, scrolls the line to the top and nudges the
+        /// caret horizontally into view. Used by <c>Go To Offset</c> to land on the exact character at a byte
+        /// position; <see cref="GoToLine"/> is the column-0 special case.
+        /// </summary>
+        public void GoToLineColumn(int lineIndex, int column)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
+            int lineLen = LineLength(lineIndex);
+            int col = Math.Clamp(column, 0, lineLen);
+            caret = anchor = new TextPosition(lineIndex, col);
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
+            if (wordWrap)
+                EnsureCaretVisibleVerticallyWrapped();
+            else
+                EnsureCaretVisibleHorizontally();
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>Centers the current caret position vertically in the viewport.</summary>
+        public void CenterCaretVertically()
+        {
+            if (provider is null || totalLines == 0)
+                return;
+
+            if (UsesProportionalLayout)
+            {
+                TryGetProportionalVisualPosition(caret, out int caretRow);
+                (int topLine, int topRow) = AdvanceDisplayRows(
+                    caret.Line, caretRow, -(VisibleRowCount / 2));
+                SetTopPosition(topLine, topRow);
+            }
+            else if (wordWrap)
+            {
+                int wrapCols = WrapColumns;
+                IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(GetColumns(caret.Line), wrapCols);
+                int caretRow = LineWrapper.RowOfCharIndex(rows, caret.Column);
+                (int topLine, int topRow) = AdvanceDisplayRows(
+                    caret.Line, caretRow, -(VisibleRowCount / 2));
+                SetTopPosition(topLine, topRow);
+            }
+            else
+            {
+                SetFirstVisibleLine(caret.Line - (FullyVisibleLineCount / 2));
+            }
+        }
+
+        public void SelectMatch(int lineIndex, int startColumn, int length)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
+            int lineLen = LineLength(lineIndex);
+            int start = Math.Clamp(startColumn, 0, lineLen);
+            int end = Math.Clamp(startColumn + length, start, lineLen);
+            anchor = new TextPosition(lineIndex, start);
+            caret = new TextPosition(lineIndex, end);
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            if (wordWrap)
+            {
+                // Make the match's wrapped row visible (the match may be deep in a long, wrapped line).
+                EnsureCaretVisibleVerticallyWrapped();
+            }
+            else
+            {
+                // Only scroll when the match line is off-screen; if it is already visible, keep the scroll
+                // position and just highlight (the horizontal nudge below is a no-op when it is fully visible).
+                if (lineIndex < firstVisibleLine || lineIndex >= firstVisibleLine + FullyVisibleLineCount)
+                {
+                    SetFirstVisibleLine(Math.Min(lineIndex, MaxFirstLine));
+                }
+                EnsureCaretVisibleHorizontally();
+            }
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        #endregion
+
+        #region Scrolling
+
+        private void SetFirstVisibleLine(int value)
+        {
+            value = Math.Clamp(value, 0, MaxFirstLine);
+            if (value == firstVisibleLine && firstVisibleRow == 0)
+            {
+                return;
+            }
+            firstVisibleLine = value;
+            firstVisibleRow = 0; // a source-line jump lands at the top of that line
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        private void SetHorizontalOffset(double value)
+        {
+            double max = Math.Max(0, HorizontalExtentPx - ViewportWidth);
+            value = Math.Clamp(value, 0, max);
+            if (Math.Abs(value - horizontalOffset) < 0.01)
+            {
+                return;
+            }
+            horizontalOffset = value;
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>Scrolls in response to a mouse-wheel notch (positive delta scrolls up).</summary>
+        public void ScrollByWheelDelta(int delta)
+        {
+            int linesPerNotch = 3;
+            int lines = -(delta / 120) * linesPerNotch;
+            if (wordWrap)
+            {
+                ScrollDisplayRows(lines);
+            }
+            else
+            {
+                SetFirstVisibleLine(firstVisibleLine + lines);
+            }
+        }
+
+        #endregion
+
+        #region Pointer
+
+        /// <summary>Places the caret (and, unless extending a selection, the anchor) at a pressed point.</summary>
+        public void PointerPress(double x, double y, bool shift) => PointerPress(HitTest(x, y), shift);
+
+        /// <summary>Places the caret at an already-resolved source position.</summary>
+        public void PointerPress(TextPosition pos, bool shift)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            pos = ClampPosition(pos);
+            if (!shift)
+            {
+                anchor = pos;
+            }
+            caret = pos;
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Collapses the current selection at its active caret. The reader calls this before hit-testing
+        /// every left-click, so clicks in blank space also clear an existing selection.
+        /// </summary>
+        public void ClearSelection()
+        {
+            if (!HasSelection)
+                return;
+
+            anchor = caret;
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Starts a pointer gesture at the leading or trailing caret boundary of the hit character/cluster.
+        /// A trailing-side press anchors after the complete source cluster; a leading-side press anchors before it.
+        /// </summary>
+        public void PointerPressCharacter(TextPosition position, int sourceLength, bool shift) =>
+            PointerPressCharacter(position, sourceLength, isTrailingHit: false, shift: shift);
+
+        public void PointerPressCharacter(
+            TextPosition position, int sourceLength, bool isTrailingHit, bool shift)
+        {
+            if (provider is null || totalLines == 0 || sourceLength <= 0)
+                return;
+
+            position = ClampPosition(position);
+            TextPosition characterEnd = EndOfHitCharacter(position, sourceLength);
+            if (characterEnd <= position)
+                return;
+
+            if (!shift)
+            {
+                TextPosition boundary = isTrailingHit ? characterEnd : position;
+                anchor = boundary;
+                caret = boundary;
+            }
+
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>Moves the active selection boundary to the leading or trailing edge of the hit cluster.</summary>
+        public void PointerDragCharacter(TextPosition position, int sourceLength) =>
+            PointerDragCharacter(position, sourceLength, isTrailingHit: true);
+
+        public void PointerDragCharacter(TextPosition position, int sourceLength, bool isTrailingHit)
+        {
+            if (provider is null || totalLines == 0 || sourceLength <= 0)
+                return;
+
+            position = ClampPosition(position);
+            TextPosition characterEnd = EndOfHitCharacter(position, sourceLength);
+            if (characterEnd <= position)
+            {
+                PointerDragBoundary(position);
+                return;
+            }
+
+            caret = isTrailingHit ? characterEnd : position;
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Extends a drag to a row boundary when the pointer has left the text rectangle, such as when it
+        /// travels through the vertical spacing between two visual rows.
+        /// </summary>
+        public void PointerDragBoundary(TextPosition position)
+        {
+            if (provider is null || totalLines == 0)
+                return;
+
+            caret = ClampPosition(position);
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        private TextPosition EndOfHitCharacter(TextPosition position, int sourceLength)
+        {
+            int requestedEnd = Math.Clamp(
+                position.Column + Math.Max(1, sourceLength),
+                position.Column,
+                LineLength(position.Line));
+
+            if (UsesProportionalLayout)
+            {
+                // HitTestCharacter already returns the complete UTF-16 range reported by DirectWrite,
+                // expanded to valid grapheme boundaries. Only repair a range that ends before the first
+                // valid boundary; asking for the *next* boundary after requestedEnd would include a neighbour.
+                int firstBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(position.Column);
+                if (firstBoundary > position.Column && requestedEnd < firstBoundary)
+                    requestedEnd = firstBoundary;
+            }
+
+            return new TextPosition(position.Line, requestedEnd);
+        }
+
+        /// <summary>Scrolls one display row when a drag pointer is held beyond the top/bottom edges.</summary>
+        public void ScrollForPointer(double y)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            if (y < 0)
+            {
+                if (wordWrap) { ScrollDisplayRows(-1); } else { SetFirstVisibleLine(firstVisibleLine - 1); }
+            }
+            else if (y > ViewportHeight)
+            {
+                if (wordWrap) { ScrollDisplayRows(1); } else { SetFirstVisibleLine(firstVisibleLine + 1); }
+            }
+        }
+
+        /// <summary>Extends the selection to an already-resolved source position.</summary>
+        public void PointerDrag(TextPosition pos)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return;
+            }
+
+            caret = ClampPosition(pos);
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>Extends the selection to a dragged point, auto-scrolling past the top/bottom edges.</summary>
+        public void PointerDrag(double x, double y)
+        {
+            ScrollForPointer(y);
+            PointerDrag(HitTest(x, y));
+        }
+
+        /// <summary>
+        /// Maps an index in a visible row's tab-expanded Display string back to the original source position.
+        /// <paramref name="displayIndex"/> is the index in the complete source line, not the row-local index.
+        /// </summary>
+        public TextPosition PositionFromDisplayIndex(int lineIndex, int displayIndex, bool trailing, int displayCharacterCount = 1)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return new TextPosition(0, 0);
+            }
+
+            lineIndex = Math.Clamp(lineIndex, 0, totalLines - 1);
+            int column = GetColumns(lineIndex).CharIndexOfDisplayIndex(displayIndex, trailing, displayCharacterCount);
+            return new TextPosition(lineIndex, column);
+        }
+
+        /// <summary>Maps a viewport point to the nearest caret position. Metrics must be set first.</summary>
+        public TextPosition HitTest(double x, double y)
+        {
+            if (UsesProportionalLayout)
+                return HitTestProportional(x, y, returnCharacter: false, out _, out _, out _);
+
+            if (provider == null || totalLines == 0 || lineHeight <= 0)
+            {
+                return new TextPosition(0, 0);
+            }
+
+            if (wordWrap)
+            {
+                return HitTestWrapped(x, y);
+            }
+
+            int line = firstVisibleLine + (int)Math.Floor(y / lineHeight);
+            line = Math.Clamp(line, 0, totalLines - 1);
+
+            LineColumns columns = GetColumns(line);
+            double column = (x - TextOriginX + horizontalOffset) / charWidth;
+            int charIndex = columns.CharIndexOfColumn(column);
+            return new TextPosition(line, charIndex);
+        }
+
+        #endregion
+
+        #region Keyboard
+
+        /// <summary>
+        /// Applies a navigation/selection/copy command. Returns whether it was consumed and, for copy, the
+        /// text the host should place on the clipboard.
+        /// </summary>
+        public KeyResult HandleKey(NavKey key, bool shift)
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return new KeyResult(false, null);
+            }
+
+            string? copyText = null;
+
+            switch (key)
+            {
+                case NavKey.Left:
+                    MoveCaretByChar(-1, shift);
+                    break;
+                case NavKey.Right:
+                    MoveCaretByChar(+1, shift);
+                    break;
+                case NavKey.Up:
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(-1, shift); } else { MoveCaretByLine(-1, shift); }
+                    break;
+                case NavKey.Down:
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(+1, shift); } else { MoveCaretByLine(+1, shift); }
+                    break;
+                case NavKey.PageUp:
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(-VisibleRowCount, shift); } else { MoveCaretByLine(-FullyVisibleLineCount, shift); }
+                    break;
+                case NavKey.PageDown:
+                    if (UsesProportionalLayout || wordWrap) { MoveCaretByDisplayRow(+VisibleRowCount, shift); } else { MoveCaretByLine(+FullyVisibleLineCount, shift); }
+                    break;
+                case NavKey.LineStart:
+                    MoveCaretTo(new TextPosition(caret.Line, 0), shift);
+                    break;
+                case NavKey.LineEnd:
+                    MoveCaretTo(new TextPosition(caret.Line, LineLength(caret.Line)), shift);
+                    break;
+                case NavKey.DocumentStart:
+                    MoveCaretTo(new TextPosition(0, 0), shift);
+                    break;
+                case NavKey.DocumentEnd:
+                    int last = totalLines - 1;
+                    MoveCaretTo(new TextPosition(last, LineLength(last)), shift);
+                    break;
+                case NavKey.SelectAll:
+                    SelectAll();
+                    break;
+                case NavKey.Copy:
+                    copyText = BuildCopyText();
+                    break;
+                default:
+                    return new KeyResult(false, null);
+            }
+
+            return new KeyResult(true, copyText);
+        }
+
+        private string GetSourceLine(int line) => provider!.GetLine(line);
+
+        private int LineLength(int line) => GetSourceLine(line).Length;
+
+        private TextPosition ClampPosition(TextPosition pos)
+        {
+            int line = Math.Clamp(pos.Line, 0, Math.Max(0, totalLines - 1));
+            return new TextPosition(line, Math.Clamp(pos.Column, 0, LineLength(line)));
+        }
+
+        private void MoveCaretByChar(int delta, bool shift)
+        {
+            if (UsesProportionalLayout)
+            {
+                int proportionalLine = caret.Line;
+                int proportionalColumn = caret.Column;
+                if (delta < 0)
+                {
+                    if (proportionalColumn > 0)
+                        proportionalColumn = GetProportionalLayout(proportionalLine).GetPreviousCaretIndex(proportionalColumn);
+                    else if (proportionalLine > 0)
+                    {
+                        proportionalLine--;
+                        proportionalColumn = LineLength(proportionalLine);
+                    }
+                }
+                else
+                {
+                    if (proportionalColumn < LineLength(proportionalLine))
+                        proportionalColumn = GetProportionalLayout(proportionalLine).GetNextCaretIndex(proportionalColumn);
+                    else if (proportionalLine < totalLines - 1)
+                    {
+                        proportionalLine++;
+                        proportionalColumn = 0;
+                    }
+                }
+
+                desiredColumn = -1;
+                desiredProportionalX = -1;
+                ApplyCaret(new TextPosition(proportionalLine, proportionalColumn), shift);
+                return;
+            }
+
+            int line = caret.Line;
+            int col = caret.Column + delta;
+
+            if (col < 0)
+            {
+                if (line > 0)
+                {
+                    line--;
+                    col = LineLength(line);
+                }
+                else
+                {
+                    col = 0;
+                }
+            }
+            else if (col > LineLength(line))
+            {
+                if (line < totalLines - 1)
+                {
+                    line++;
+                    col = 0;
+                }
+                else
+                {
+                    col = LineLength(line);
+                }
+            }
+
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            ApplyCaret(new TextPosition(line, col), shift);
+        }
+
+        private void MoveCaretByLine(int delta, bool shift)
+        {
+            if (desiredColumn < 0)
+            {
+                desiredColumn = caret.Column;
+            }
+            int line = Math.Clamp(caret.Line + delta, 0, totalLines - 1);
+            int col = Math.Min(desiredColumn, LineLength(line));
+            ApplyCaret(new TextPosition(line, col), shift, keepDesired: true);
+        }
+
+        private void MoveCaretTo(TextPosition pos, bool shift)
+        {
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            int line = Math.Clamp(pos.Line, 0, totalLines - 1);
+            ApplyCaret(new TextPosition(line, Math.Clamp(pos.Column, 0, LineLength(line))), shift);
+        }
+
+        private void ApplyCaret(TextPosition pos, bool shift, bool keepDesired = false)
+        {
+            caret = pos;
+            if (!shift)
+            {
+                anchor = caret;
+            }
+            if (!keepDesired)
+            {
+                desiredColumn = -1;
+                desiredProportionalX = -1;
+            }
+            if (wordWrap)
+            {
+                EnsureCaretVisibleVerticallyWrapped();
+            }
+            else
+            {
+                EnsureCaretVisibleVertically();
+                EnsureCaretVisibleHorizontally();
+            }
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        // ----- Word-wrap navigation/scrolling (issue #31). Only reached when WordWrap is on. -----
+
+        private int VisibleRowCount
+        {
+            get
+            {
+                double rowHeight = EffectiveVisualRowHeight;
+                return rowHeight > 0 ? Math.Max(1, (int)(ViewportHeight / rowHeight)) : 1;
+            }
+        }
+
+        private static int ComparePos(int line1, int row1, int line2, int row2)
+            => line1 != line2 ? line1.CompareTo(line2) : row1.CompareTo(row2);
+
+        // Advances a (source line, wrapped row) position by <paramref name="delta"/> display rows (negative =
+        // up), clamping at the document's first/last row.
+        private (int line, int row) AdvanceDisplayRows(int line, int row, int delta)
+        {
+            if (UsesProportionalLayout)
+                return AdvanceProportionalDisplayRows(line, row, delta);
+
+            int wrapCols = WrapColumns;
+            while (delta > 0)
+            {
+                int rowsInLine = LineWrapper.RowCount(GetColumns(line), wrapCols);
+                if (row + 1 < rowsInLine)
+                {
+                    row++;
+                }
+                else if (line + 1 < totalLines)
+                {
+                    line++;
+                    row = 0;
+                }
+                else
+                {
+                    break;
+                }
+                delta--;
+            }
+            while (delta < 0)
+            {
+                if (row > 0)
+                {
+                    row--;
+                }
+                else if (line > 0)
+                {
+                    line--;
+                    row = LineWrapper.RowCount(GetColumns(line), wrapCols) - 1;
+                }
+                else
+                {
+                    break;
+                }
+                delta++;
+            }
+            return (line, row);
+        }
+
+        private void SetTopPosition(int line, int row)
+        {
+            line = Math.Clamp(line, 0, Math.Max(0, totalLines - 1));
+            row = Math.Max(0, row);
+            if (line == firstVisibleLine && row == firstVisibleRow)
+            {
+                return;
+            }
+            firstVisibleLine = line;
+            firstVisibleRow = row;
+            RaiseViewChanged();
+            RaiseRedraw();
+        }
+
+        private void ScrollDisplayRows(int delta)
+        {
+            (int line, int row) = AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, delta);
+            SetTopPosition(line, row);
+        }
+
+        // Moves the caret up/down by display rows, preserving the visual column within the row (desiredColumn is
+        // the row-local display column here).
+        private void MoveCaretByDisplayRow(int delta, bool shift)
+        {
+            if (UsesProportionalLayout)
+            {
+                MoveCaretByProportionalDisplayRow(delta, shift);
+                return;
+            }
+
+            int wrapCols = WrapColumns;
+            LineColumns curCols = GetColumns(caret.Line);
+            IReadOnlyList<LineWrapper.WrapRow> curRows = LineWrapper.Wrap(curCols, wrapCols);
+            int curRow = LineWrapper.RowOfCharIndex(curRows, caret.Column);
+            int caretDisplayCol = curCols.ColumnOfCharIndex(caret.Column);
+
+            if (desiredColumn < 0)
+            {
+                desiredColumn = caretDisplayCol - curRows[curRow].StartColumn;
+            }
+            int localCol = desiredColumn;
+
+            (int line, int row) = AdvanceDisplayRows(caret.Line, curRow, delta);
+            LineColumns cols = GetColumns(line);
+            IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(cols, wrapCols);
+            row = Math.Clamp(row, 0, rows.Count - 1);
+            int targetDisplayCol = rows[row].StartColumn + localCol;
+            int charIndex = Math.Clamp(cols.CharIndexOfColumn(targetDisplayCol), rows[row].StartChar, rows[row].EndChar);
+            ApplyCaret(new TextPosition(line, charIndex), shift, keepDesired: true);
+        }
+
+        private void EnsureCaretVisibleVerticallyWrapped()
+        {
+            if (UsesProportionalLayout)
+            {
+                TryGetProportionalVisualPosition(caret, out int proportionalRow);
+                if (ComparePos(caret.Line, proportionalRow, firstVisibleLine, firstVisibleRow) < 0)
+                {
+                    SetTopPosition(caret.Line, proportionalRow);
+                    return;
+                }
+
+                int proportionalVisibleRows = VisibleRowCount;
+                (int proportionalLastLine, int proportionalLastRow) =
+                    AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, proportionalVisibleRows - 1);
+                if (ComparePos(caret.Line, proportionalRow, proportionalLastLine, proportionalLastRow) > 0)
+                {
+                    (int proportionalTopLine, int proportionalTopRow) =
+                        AdvanceDisplayRows(caret.Line, proportionalRow, -(proportionalVisibleRows - 1));
+                    SetTopPosition(proportionalTopLine, proportionalTopRow);
+                }
+                return;
+            }
+
+            int wrapCols = WrapColumns;
+            int caretRow = LineWrapper.RowOfCharIndex(LineWrapper.Wrap(GetColumns(caret.Line), wrapCols), caret.Column);
+
+            if (ComparePos(caret.Line, caretRow, firstVisibleLine, firstVisibleRow) < 0)
+            {
+                SetTopPosition(caret.Line, caretRow);
+                return;
+            }
+
+            int visible = VisibleRowCount;
+            (int lastLine, int lastRow) = AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, visible - 1);
+            if (ComparePos(caret.Line, caretRow, lastLine, lastRow) > 0)
+            {
+                (int topLine, int topRow) = AdvanceDisplayRows(caret.Line, caretRow, -(visible - 1));
+                SetTopPosition(topLine, topRow);
+            }
+        }
+
+        private TextPosition HitTestWrapped(double x, double y)
+        {
+            int wrapCols = WrapColumns;
+            int rowsDown = Math.Max(0, (int)Math.Floor(y / lineHeight));
+            (int line, int row) = AdvanceDisplayRows(firstVisibleLine, firstVisibleRow, rowsDown);
+            LineColumns columns = GetColumns(line);
+            IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(columns, wrapCols);
+            row = Math.Clamp(row, 0, rows.Count - 1);
+            double column = (x - TextOriginX) / charWidth + rows[row].StartColumn;
+            int charIndex = Math.Clamp(columns.CharIndexOfColumn(column), rows[row].StartChar, rows[row].EndChar);
+            return new TextPosition(line, charIndex);
+        }
+
+        private void SelectAll()
+        {
+            if (totalLines == 0)
+            {
+                return;
+            }
+            anchor = new TextPosition(0, 0);
+            int last = totalLines - 1;
+            caret = new TextPosition(last, LineLength(last));
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseRedraw();
+            RaiseCaretChanged(); // refresh the status bar (selection stats + timestamp delta)
+        }
+
+        private void EnsureCaretVisibleVertically()
+        {
+            if (caret.Line < firstVisibleLine)
+            {
+                SetFirstVisibleLine(caret.Line);
+            }
+            else if (caret.Line >= firstVisibleLine + FullyVisibleLineCount)
+            {
+                SetFirstVisibleLine(caret.Line - FullyVisibleLineCount + 1);
+            }
+        }
+
+        private void EnsureCaretVisibleHorizontally()
+        {
+            if (UsesProportionalLayout)
+            {
+                ITextLayoutResult layout = GetProportionalLayout(caret.Line);
+                double requiredExtent = Math.Max(
+                    layout.LayoutWidth + GutterWidthPx + TextPadding * 2,
+                    ViewportWidth);
+                if (Math.Abs(requiredExtent - horizontalExtentPx) > 0.5)
+                {
+                    horizontalExtentPx = requiredExtent;
+                    RaiseViewChanged();
+                }
+
+                double proportionalCaretX = layout.GetCaretGeometry(caret.Column).X;
+                double adjacentProportionalCaretX = proportionalCaretX;
+                if (caret.Column < layout.SourceText.Length)
+                {
+                    int nextIndex = layout.GetNextCaretIndex(caret.Column);
+                    adjacentProportionalCaretX = layout.GetCaretGeometry(nextIndex).X;
+                }
+                else if (caret.Column > 0)
+                {
+                    int previousIndex = layout.GetPreviousCaretIndex(caret.Column);
+                    adjacentProportionalCaretX = layout.GetCaretGeometry(previousIndex).X;
+                }
+
+                double proportionalCaretAdvance = Math.Abs(adjacentProportionalCaretX - proportionalCaretX);
+                double proportionalRightInset = Math.Max(1, proportionalCaretAdvance) + TextPadding * 2;
+                double proportionalTextViewport = ViewportWidth - GutterWidthPx;
+                if (proportionalCaretX < horizontalOffset)
+                    SetHorizontalOffset(proportionalCaretX);
+                else if (proportionalCaretX > horizontalOffset + proportionalTextViewport - proportionalRightInset)
+                    SetHorizontalOffset(proportionalCaretX - proportionalTextViewport + proportionalRightInset);
+                return;
+            }
+
+            if (charWidth <= 0)
+            {
+                return;
+            }
+            double caretX = GetColumns(caret.Line).ColumnOfCharIndex(caret.Column) * charWidth;
+            // Keep a padding-sized gap on whichever edge the caret is scrolled to, matching the rendered inset.
+            // The visible text width is the viewport minus the fixed gutter.
+            double rightInset = charWidth + TextPadding * 2;
+            double textViewport = ViewportWidth - GutterWidthPx;
+            if (caretX < horizontalOffset)
+            {
+                SetHorizontalOffset(caretX);
+            }
+            else if (caretX > horizontalOffset + textViewport - rightInset)
+            {
+                SetHorizontalOffset(caretX - textViewport + rightInset);
+            }
+        }
+
+        #endregion
+
+        #region Copy / selection
+
+        /// <summary>
+        /// Builds the text for the current selection (CRLF between lines), or <c>null</c> when nothing is
+        /// selected. The host is responsible for placing the result on the clipboard.
+        /// </summary>
+        public string? BuildCopyText()
+        {
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            if (start == end)
+            {
+                return null;
+            }
+
+            var sb = new StringBuilder();
+            if (start.Line == end.Line)
+            {
+                string line = GetSourceLine(start.Line);
+                sb.Append(Slice(line, start.Column, end.Column));
+            }
+            else
+            {
+                string firstLine = GetSourceLine(start.Line);
+                sb.Append(Slice(firstLine, start.Column, firstLine.Length)).Append("\r\n");
+
+                for (int l = start.Line + 1; l < end.Line && sb.Length < MaxCopyChars; l++)
+                {
+                    sb.Append(GetSourceLine(l)).Append("\r\n");
+                }
+
+                if (sb.Length < MaxCopyChars)
+                {
+                    string lastLine = GetSourceLine(end.Line);
+                    sb.Append(Slice(lastLine, 0, end.Column));
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private static string Slice(string s, int start, int end)
+        {
+            start = Math.Clamp(start, 0, s.Length);
+            end = Math.Clamp(end, start, s.Length);
+            return s.Substring(start, end - start);
+        }
+
+        /// <summary>
+        /// Builds the "Copy with Line Numbers" text: every full source line the selection spans (or just the
+        /// caret's line when there is no selection), each prefixed with its 1-based line number. Returns null
+        /// when no file is open. A selection that ends exactly at the start of a line does not include that line.
+        /// </summary>
+        public string? BuildCopyTextWithLineNumbers()
+        {
+            if (provider == null || totalLines == 0)
+            {
+                return null;
+            }
+
+            (TextPosition start, TextPosition end) = NormalizedSelection();
+            int firstLine = start.Line;
+            int lastLine = start == end
+                ? caret.Line
+                : (end.Column == 0 && end.Line > start.Line ? end.Line - 1 : end.Line);
+            lastLine = Math.Min(lastLine, totalLines - 1);
+
+            var lines = new List<string>(lastLine - firstLine + 1);
+            for (int l = firstLine; l <= lastLine; l++)
+            {
+                lines.Add(GetSourceLine(l));
+            }
+            return LineNumberedCopy.Format(firstLine + 1, lines);
+        }
+
+        internal (TextPosition start, TextPosition end) NormalizedSelection()
+            => anchor <= caret ? (anchor, caret) : (caret, anchor);
+
+        #endregion
+
+        #region Render model
+
+        /// <summary>
+        /// Computes the per-line render model for the current viewport (selection spans, caret, text
+        /// position), and refreshes the horizontal extent. The host paints each <see cref="VisibleLine"/>
+        /// with its graphics API. Metrics must be set first via <see cref="SetMetrics"/>.
+        /// </summary>
+        public IReadOnlyList<VisibleLine> GetVisibleLines(bool hasFocus, bool caretVisible)
+        {
+            if (UsesProportionalLayout)
+                return GetVisibleLinesProportional(hasFocus, caretVisible);
+
+            var lines = new List<VisibleLine>();
+            if (provider == null || totalLines == 0 || lineHeight <= 0)
+            {
+                horizontalExtentPx = ViewportWidth;
+                return lines;
+            }
+
+            if (wordWrap)
+            {
+                return GetVisibleLinesWrapped(hasFocus, caretVisible);
+            }
+
+            int renderCount = (int)Math.Ceiling(ViewportHeight / lineHeight) + 1;
+            (TextPosition selStart, TextPosition selEnd) = NormalizedSelection();
+            bool hasSelection = selStart != selEnd;
+
+            double maxWidth = 0;
+            for (int i = 0; i < renderCount; i++)
+            {
+                int lineIndex = firstVisibleLine + i;
+                if (lineIndex >= totalLines)
+                {
+                    break;
+                }
+
+                double y = i * lineHeight;
+                LineColumns columns = GetColumns(lineIndex);
+                maxWidth = Math.Max(maxWidth, columns.TotalColumns * charWidth);
+
+                bool lineHasSelection = false;
+                double selectionX = 0;
+                double selectionWidth = 0;
+                int selectionStartIndex = 0;
+                int selectionLength = 0;
+                bool selectionContinuesPastRow = false;
+                if (hasSelection && lineIndex >= selStart.Line && lineIndex <= selEnd.Line)
+                {
+                    int startChar = lineIndex == selStart.Line ? selStart.Column : 0;
+                    int endChar = lineIndex == selEnd.Line ? selEnd.Column : columns.Source.Length;
+                    int startCol = columns.ColumnOfCharIndex(startChar);
+                    int endCol = lineIndex == selEnd.Line
+                        ? columns.ColumnOfCharIndex(endChar)
+                        : columns.TotalColumns + 1;
+                    double x0 = startCol * charWidth - horizontalOffset + TextOriginX;
+                    double x1 = endCol * charWidth - horizontalOffset + TextOriginX;
+                    if (x1 > x0)
+                    {
+                        lineHasSelection = true;
+                        selectionX = x0;
+                        selectionWidth = x1 - x0;
+                    }
+
+                    selectionStartIndex = columns.DisplayIndexOfCharIndex(startChar);
+                    selectionLength = columns.DisplayIndexOfCharIndex(endChar) - selectionStartIndex;
+                    selectionContinuesPastRow = lineIndex < selEnd.Line;
+                    lineHasSelection = lineHasSelection || selectionLength > 0 || selectionContinuesPastRow;
+                }
+
+                bool hasCaret = hasFocus && caretVisible && caret.Line == lineIndex;
+                double caretX = hasCaret ? columns.ColumnOfCharIndex(caret.Column) * charWidth - horizontalOffset + TextOriginX : 0;
+                int caretDisplayIndex = hasCaret ? columns.DisplayIndexOfCharIndex(caret.Column) : -1;
+
+                lines.Add(new VisibleLine
+                {
+                    LineIndex = lineIndex,
+                    Y = y,
+                    Display = columns.Display,
+                    DisplayStartIndex = 0,
+                    TextX = TextOriginX - horizontalOffset,
+                    HasSelection = lineHasSelection,
+                    SelectionX = selectionX,
+                    SelectionWidth = selectionWidth,
+                    SelectionStartIndex = selectionStartIndex,
+                    SelectionLength = selectionLength,
+                    SelectionContinuesPastRow = selectionContinuesPastRow,
+                    HasCaret = hasCaret,
+                    CaretX = caretX,
+                    CaretDisplayIndex = caretDisplayIndex,
+                    Matches = highlighter == null ? NoHighlights : ComputeHighlights(highlighter, columns, 0, columns.Source.Length, horizontalOffset),
+                    SelectionMatches = selectionHighlighter == null ? NoHighlights : ComputeHighlights(selectionHighlighter, columns, 0, columns.Source.Length, horizontalOffset, exclude: highlighter),
+                    RuleHighlights = highlightRules == null ? NoRuleHighlights : ComputeRuleHighlights(columns, 0, columns.Source.Length, horizontalOffset),
+                    IsBookmarked = bookmarks.Count > 0 && bookmarks.Contains(lineIndex),
+                    Whitespace = showWhitespace
+                        ? WhitespaceMarkers.Compute(columns, LineEndingOf(lineIndex))
+                        : NoWhitespace,
+                });
+            }
+
+            double newExtent = Math.Max(maxWidth + GutterWidthPx + TextPadding * 2, ViewportWidth);
+            if (Math.Abs(newExtent - horizontalExtentPx) > 0.5)
+            {
+                horizontalExtentPx = newExtent;
+                RaiseViewChanged();
+            }
+            return lines;
+        }
+
+        // Word-wrap render model (issue #31): one source line emits N display rows, each carrying its own sliced
+        // text and row-local selection/caret/highlight positions. The gutter line number and bookmark tick show
+        // only on a line's first row. There is no horizontal scroll, so the extent is just the viewport width.
+        private IReadOnlyList<VisibleLine> GetVisibleLinesWrapped(bool hasFocus, bool caretVisible)
+        {
+            var lines = new List<VisibleLine>();
+            int wrapCols = WrapColumns;
+            (TextPosition selStart, TextPosition selEnd) = NormalizedSelection();
+            bool hasSelection = selStart != selEnd;
+
+            double y = 0;
+            int srcLine = firstVisibleLine;
+            while (srcLine < totalLines && y < ViewportHeight)
+            {
+                LineColumns columns = GetColumns(srcLine);
+                IReadOnlyList<LineWrapper.WrapRow> rows = LineWrapper.Wrap(columns, wrapCols);
+                int startRow = srcLine == firstVisibleLine ? Math.Clamp(firstVisibleRow, 0, rows.Count - 1) : 0;
+
+                for (int r = startRow; r < rows.Count && y < ViewportHeight; r++)
+                {
+                    LineWrapper.WrapRow row = rows[r];
+                    double originPx = row.StartColumn * charWidth;
+
+                    bool rowHasSel = false;
+                    double selX = 0, selW = 0;
+                    int selectionStartIndex = 0;
+                    int selectionLength = 0;
+                    bool selectionContinuesPastRow = false;
+                    int displayStartIndex = columns.DisplayIndexOfCharIndex(row.StartChar);
+                    if (hasSelection && srcLine >= selStart.Line && srcLine <= selEnd.Line)
+                    {
+                        int selStartChar = srcLine == selStart.Line ? selStart.Column : 0;
+                        int selEndChar = srcLine == selEnd.Line ? selEnd.Column : columns.Source.Length;
+                        int s = Math.Max(selStartChar, row.StartChar);
+                        int e = Math.Min(selEndChar, row.EndChar);
+                        bool crossesSoftWrap = selStartChar < row.EndChar && selEndChar > row.EndChar;
+                        bool crossesSourceLine = srcLine < selEnd.Line && r == rows.Count - 1
+                                                 && selStartChar <= row.EndChar;
+                        bool crossesRow = crossesSoftWrap || crossesSourceLine;
+                        if (e > s || crossesRow)
+                        {
+                            selectionStartIndex = columns.DisplayIndexOfCharIndex(s) - displayStartIndex;
+                            selectionLength = columns.DisplayIndexOfCharIndex(e) - columns.DisplayIndexOfCharIndex(s);
+                            selectionContinuesPastRow = crossesRow;
+
+                            int startCol = columns.ColumnOfCharIndex(s) - row.StartColumn;
+                            int endCol = columns.ColumnOfCharIndex(e) - row.StartColumn;
+                            // Preserve the row-break marker in the legacy pixel model; the renderer now uses
+                            // the exact caret position from CanvasTextLayout for the actual highlight.
+                            if (crossesRow)
+                            {
+                                endCol += 1;
+                            }
+                            double x0 = startCol * charWidth + TextOriginX;
+                            double x1 = endCol * charWidth + TextOriginX;
+                            if (x1 > x0)
+                            {
+                                rowHasSel = true;
+                                selX = x0;
+                                selW = x1 - x0;
+                            }
+                            rowHasSel = rowHasSel || selectionLength > 0 || selectionContinuesPastRow;
+                        }
+                    }
+
+                    bool hasCaret = hasFocus && caretVisible && caret.Line == srcLine
+                                    && LineWrapper.RowOfCharIndex(rows, caret.Column) == r;
+                    double caretX = hasCaret
+                        ? (columns.ColumnOfCharIndex(caret.Column) - row.StartColumn) * charWidth + TextOriginX
+                        : 0;
+                    int caretDisplayIndex = hasCaret
+                        ? columns.DisplayIndexOfCharIndex(caret.Column) - displayStartIndex
+                        : -1;
+
+                    lines.Add(new VisibleLine
+                    {
+                        LineIndex = srcLine,
+                        Y = y,
+                        Display = columns.DisplaySlice(row.StartChar, row.EndChar),
+                        DisplayStartIndex = displayStartIndex,
+                        TextX = TextOriginX,
+                        HasSelection = rowHasSel,
+                        SelectionX = selX,
+                        SelectionWidth = selW,
+                        SelectionStartIndex = selectionStartIndex,
+                        SelectionLength = selectionLength,
+                        SelectionContinuesPastRow = selectionContinuesPastRow,
+                        HasCaret = hasCaret,
+                        CaretX = caretX,
+                        CaretDisplayIndex = caretDisplayIndex,
+                        Matches = highlighter == null ? NoHighlights : ComputeHighlights(highlighter, columns, row.StartChar, row.EndChar, originPx),
+                        SelectionMatches = selectionHighlighter == null ? NoHighlights : ComputeHighlights(selectionHighlighter, columns, row.StartChar, row.EndChar, originPx, exclude: highlighter),
+                        RuleHighlights = highlightRules == null ? NoRuleHighlights : ComputeRuleHighlights(columns, row.StartChar, row.EndChar, originPx),
+                        IsBookmarked = r == 0 && bookmarks.Count > 0 && bookmarks.Contains(srcLine),
+                        Whitespace = NoWhitespace, // whitespace markers aren't shown in wrap mode (v1)
+                        IsWrapContinuation = r > 0,
+                    });
+                    y += lineHeight;
+                }
+                srcLine++;
+            }
+
+            horizontalExtentPx = ViewportWidth;
+            return lines;
+        }
+
+        // The terminator of a line, when the provider can report it (real file or filtered view); None otherwise.
+        // Only consulted while "Show Whitespace" is on, so the extra index lookup is paid for visible lines only.
+        private LineEnding LineEndingOf(int lineIndex) =>
+            provider is ILineEndingSource endings ? endings.GetLineEnding(lineIndex) : LineEnding.None;
+
+        private LineColumns GetColumns(int lineIndex)
+        {
+            if (columnsCache.TryGetValue(lineIndex, out LineColumns? cached))
+            {
+                return cached;
+            }
+
+            string text = provider!.GetLine(lineIndex);
+            LineColumns columns = LineColumns.Build(text, tabSize);
+            if (columnsCache.Count >= 4096)
+            {
+                columnsCache.Clear();
+            }
+            columnsCache[lineIndex] = columns;
+            return columns;
+        }
+
+        // Maps the highlighter's character-index match spans to viewport-pixel rectangles. Spans are clipped to
+        // [clipStart, clipEnd) (the whole line in non-wrap mode, a wrapped row's char range in wrap mode) and
+        // positioned with originPx as the left scroll/row origin. A zero-width result is dropped.
+        private IReadOnlyList<HighlightRect> ComputeHighlights(ILineHighlighter source, LineColumns columns, int clipStart, int clipEnd, double originPx, ILineHighlighter? exclude = null)
+        {
+            IReadOnlyList<(int Start, int Length)> spans = source.Find(columns.Source);
+            if (spans.Count == 0)
+            {
+                return NoHighlights;
+            }
+
+            // The selection-occurrence layer passes the Find highlighter as <paramref name="exclude"/>: any span
+            // that exactly coincides with a Find match is dropped, so selecting the searched word doesn't paint a
+            // second colour over the Find matches, while a different selected word still highlights (#130).
+            IReadOnlyList<(int Start, int Length)>? excludeSpans = exclude?.Find(columns.Source);
+
+            var rects = new List<HighlightRect>(spans.Count);
+            foreach ((int start, int length) in spans)
+            {
+                if (excludeSpans != null && Coincides(excludeSpans, start, length))
+                {
+                    continue;
+                }
+                int s = Math.Max(start, clipStart);
+                int e = Math.Min(start + length, clipEnd);
+                if (e <= s)
+                {
+                    continue;
+                }
+                int startCol = columns.ColumnOfCharIndex(s);
+                int endCol = columns.ColumnOfCharIndex(e);
+                double x0 = startCol * charWidth - originPx + TextOriginX;
+                double x1 = endCol * charWidth - originPx + TextOriginX;
+                if (x1 > x0)
+                {
+                    int displayClipStart = columns.DisplayIndexOfCharIndex(clipStart);
+                    int displayStart = columns.DisplayIndexOfCharIndex(s) - displayClipStart;
+                    int displayEnd = columns.DisplayIndexOfCharIndex(e) - displayClipStart;
+                    rects.Add(new HighlightRect(x0, x1 - x0, displayStart, displayEnd - displayStart));
+                }
+            }
+            return rects.Count > 0 ? rects : NoHighlights;
+        }
+
+        // True when (start, length) exactly matches one of the spans — used to drop a selection-occurrence span
+        // that sits on a Find match so the two highlight layers never double-paint the same run.
+        private static bool Coincides(IReadOnlyList<(int Start, int Length)> spans, int start, int length)
+        {
+            foreach ((int s, int l) in spans)
+            {
+                if (s == start && l == length)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Maps the persistent rule set's coloured character spans to viewport-pixel rectangles (same clip/origin
+        // math as ComputeHighlights), carrying each rule's colour through to the renderer.
+        private IReadOnlyList<RuleHighlightRect> ComputeRuleHighlights(LineColumns columns, int clipStart, int clipEnd, double originPx)
+        {
+            IReadOnlyList<HighlightSpan> spans = highlightRules!.Find(columns.Source);
+            if (spans.Count == 0)
+            {
+                return NoRuleHighlights;
+            }
+
+            var rects = new List<RuleHighlightRect>(spans.Count);
+            foreach (HighlightSpan span in spans)
+            {
+                int s = Math.Max(span.Start, clipStart);
+                int e = Math.Min(span.Start + span.Length, clipEnd);
+                if (e <= s)
+                {
+                    continue;
+                }
+                int startCol = columns.ColumnOfCharIndex(s);
+                int endCol = columns.ColumnOfCharIndex(e);
+                double x0 = startCol * charWidth - originPx + TextOriginX;
+                double x1 = endCol * charWidth - originPx + TextOriginX;
+                if (x1 > x0)
+                {
+                    int displayClipStart = columns.DisplayIndexOfCharIndex(clipStart);
+                    int displayStart = columns.DisplayIndexOfCharIndex(s) - displayClipStart;
+                    int displayEnd = columns.DisplayIndexOfCharIndex(e) - displayClipStart;
+                    rects.Add(new RuleHighlightRect(x0, x1 - x0, span.Argb, displayStart, displayEnd - displayStart));
+                }
+            }
+            return rects.Count > 0 ? rects : NoRuleHighlights;
+        }
+
+        #endregion
+
+        #region Test seams
+
+        /// <summary>Anchor end of the current selection (test/inspection only).</summary>
+        internal TextPosition Anchor => anchor;
+
+        /// <summary>Normalized (start, end) selection endpoints (test/inspection only).</summary>
+        internal (TextPosition start, TextPosition end) Selection => NormalizedSelection();
+
+        #endregion
+
+        private void RaiseViewChanged() => ViewChanged?.Invoke();
+        private void RaiseCaretChanged() => CaretChanged?.Invoke(caret);
+        private void RaiseRedraw() => RedrawRequested?.Invoke();
+        private void RaiseBlinkReset() => CaretBlinkResetRequested?.Invoke();
+    }
+}
