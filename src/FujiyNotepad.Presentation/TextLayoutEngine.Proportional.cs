@@ -536,7 +536,27 @@ public sealed partial class TextLayoutEngine
         double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
         double localX = x - hitRow.TextX;
         double localY = y - layoutTop;
-        TextLayoutHitTestResult hit = layout.HitTest(localX, localY);
+        double hitTestY = localY;
+
+        if (returnCharacter && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
+        {
+            int firstEnd = layout.GetNextCaretIndex(hitRow.SourceStartIndex);
+            if (firstEnd > hitRow.SourceStartIndex)
+            {
+                IReadOnlyList<TextLayoutRect> firstCharacterGeometry = layout.GetRangeGeometry(
+                    hitRow.SourceStartIndex, firstEnd - hitRow.SourceStartIndex);
+                if (firstCharacterGeometry.Count > 0)
+                {
+                    TextLayoutRect firstRectangle = firstCharacterGeometry[0];
+                    hitTestY = firstRectangle.Y + firstRectangle.Height / 2;
+                }
+            }
+        }
+
+        // Resolve the character from its horizontal position on the row's text band, then validate the
+        // actual pointer Y against that character's text rectangle. This prevents line-spacing hits from
+        // being mistaken for glyph hits and keeps the same X mapped to the same character while dragging.
+        TextLayoutHitTestResult hit = layout.HitTest(localX, hitTestY);
 
         if (returnCharacter)
         {
