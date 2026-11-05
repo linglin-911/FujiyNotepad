@@ -32,38 +32,34 @@ namespace FujiyNotepad.WinUI
             if (activeAnnotationStore is null || activeNovelProject is null)
             {
                 SmallAnnotationsItem.IsChecked = false;
-                SmallAnnotationPane.Visibility = Visibility.Collapsed;
+                AnnotationPane.Visibility = Visibility.Collapsed;
                 UpdateReaderToolsRailVisibility();
                 return;
             }
 
-            bool show = SmallAnnotationsItem.IsChecked;
-            if (show)
-                CloseReaderSettingsPanel();
-            SmallAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            if (!show)
-                CancelSmallAnnotationCardSingleTap();
-
-            if (show)
+            if (!SmallAnnotationsItem.IsChecked)
             {
-                ChapterDirectoryItem.IsChecked = false;
-                ChapterDirectoryPane.Visibility = Visibility.Collapsed;
-                ChapterAnnotationsItem.IsChecked = false;
-                ChapterAnnotationPane.Visibility = Visibility.Collapsed;
-                await ReloadSmallAnnotationCategoriesAsync();
-                await RefreshSmallAnnotationsAsync();
+                CloseAnnotationPane_Click(sender, e);
+                return;
             }
 
+            CloseReaderSettingsPanel();
+            ChapterDirectoryItem.IsChecked = false;
+            ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+            annotationPaneChapterManuallySelected = false;
+            selectedChapterAnnotationChapterId = null;
+            AnnotationPane.Visibility = Visibility.Visible;
+            SetAnnotationPaneTab(showChapterAnnotations: false);
+            await LoadChapterAnnotationsAsync();
+            if (LineIndexer.IsCompleted)
+                _ = EnsureChapterIndexAsync();
+            await ReloadSmallAnnotationCategoriesAsync();
+            await RefreshSmallAnnotationsAsync();
             UpdateReaderToolsRailVisibility();
         }
 
         private void CloseSmallAnnotations_Click(object sender, RoutedEventArgs e)
-        {
-            CancelSmallAnnotationCardSingleTap();
-            SmallAnnotationsItem.IsChecked = false;
-            SmallAnnotationPane.Visibility = Visibility.Collapsed;
-            UpdateReaderToolsRailVisibility();
-        }
+            => CloseAnnotationPane_Click(sender, e);
 
         private async void SmallAnnotationSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -194,12 +190,14 @@ namespace FujiyNotepad.WinUI
             Guid? selectedAnnotationId = preferredAnnotationId
                 ?? GetSelectedSmallAnnotationSummary()?.Annotation.Id;
             Guid? categoryId = selectedSmallAnnotationCategoryId;
+            Guid? chapterId = selectedChapterAnnotationChapterId;
             string searchText = SmallAnnotationSearchBox.Text;
 
             try
             {
-                IReadOnlyList<NovelAnnotationSummary> summaries =
-                    await store.GetAnnotationSummariesAsync(categoryId, searchText);
+                IReadOnlyList<NovelAnnotationSummary> summaries = chapterId is Guid selectedChapterId
+                    ? await store.GetAnnotationSummariesForChapterAsync(selectedChapterId, categoryId, searchText)
+                    : Array.Empty<NovelAnnotationSummary>();
 
                 if (requestVersion != smallAnnotationRefreshVersion
                     || !ReferenceEquals(store, activeAnnotationStore))
@@ -222,10 +220,12 @@ namespace FujiyNotepad.WinUI
                     ListViewItem? itemToSelect = null;
                     foreach (NovelAnnotationSummary summary in summaries)
                     {
-                        ListViewItem item = BuildSmallAnnotationListItem(
-                            summary, smallAnnotationCategoryNames,
+                        IReadOnlyList<AnnotationAnchor> chapterAnchors =
                             anchorsByAnnotation.TryGetValue(summary.Annotation.Id, out IReadOnlyList<AnnotationAnchor>? anchors)
-                                ? anchors : Array.Empty<AnnotationAnchor>());
+                                ? anchors.Where(anchor => anchor.ChapterId == chapterId).ToArray()
+                                : Array.Empty<AnnotationAnchor>();
+                        ListViewItem item = BuildSmallAnnotationListItem(
+                            summary, smallAnnotationCategoryNames, chapterAnchors);
                         SmallAnnotationList.Items.Add(item);
                         if (summary.Annotation.Id == selectedAnnotationId)
                             itemToSelect = item;
@@ -234,11 +234,13 @@ namespace FujiyNotepad.WinUI
                     SmallAnnotationCount.Text = $"{summaries.Count} 条批注";
                     SmallAnnotationEmptyState.Text = summaries.Count > 0
                         ? ""
-                        : !string.IsNullOrWhiteSpace(searchText)
-                            ? "没有找到匹配的小批注。"
-                            : categoryId is not null
-                                ? "该分类下暂无小批注。"
-                                : "暂无小批注。";
+                        : chapterId is null
+                            ? "当前没有可用章节。"
+                            : !string.IsNullOrWhiteSpace(searchText)
+                                ? "没有找到匹配的小批注。"
+                                : categoryId is not null
+                                    ? "该分类下暂无小批注。"
+                                    : "本章暂无小批注。";
                     SmallAnnotationEmptyState.Visibility = summaries.Count == 0
                         ? Visibility.Visible
                         : Visibility.Collapsed;
@@ -267,7 +269,6 @@ namespace FujiyNotepad.WinUI
             IReadOnlyList<AnnotationAnchor>? anchors = null)
         {
             NovelAnnotation annotation = summary.Annotation;
-            string title = string.IsNullOrWhiteSpace(annotation.Title) ? "（未命名批注）" : annotation.Title;
             string category = annotation.CategoryId is Guid categoryId
                 && categoryNames.TryGetValue(categoryId, out string? categoryName)
                     ? categoryName
@@ -278,15 +279,9 @@ namespace FujiyNotepad.WinUI
             var content = new StackPanel { Spacing = 4 };
             content.Children.Add(new TextBlock
             {
-                Text = title,
+                Text = CreateSmallAnnotationExcerpt(annotation.Content, 150),
                 FontSize = 14,
-                TextWrapping = TextWrapping.Wrap,
-            });
-            content.Children.Add(new TextBlock
-            {
-                Text = CreateSmallAnnotationExcerpt(annotation.Content, 90),
-                FontSize = 12,
-                Opacity = 0.82,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap,
             });
 
@@ -343,9 +338,7 @@ namespace FujiyNotepad.WinUI
             {
                 content.Children.Add(new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(summary.FirstActiveAnchorQuote)
-                        ? "原文：暂无有效关联"
-                        : $"原文：{CreateSmallAnnotationExcerpt(summary.FirstActiveAnchorQuote, 100)}",
+                    Text = "原文：暂无有效关联",
                     FontSize = 11,
                     Opacity = 0.82,
                     TextWrapping = TextWrapping.Wrap,
@@ -781,83 +774,10 @@ namespace FujiyNotepad.WinUI
         private async void CreateSmallAnnotationFromSelection()
         {
             var selected = await GetCurrentSelectionAnchorAsync();
-            if (selected is null || activeAnnotationStore is not { } store
-                || activeNovelProject is not { } project)
-            {
+            if (selected is null)
                 return;
-            }
 
-            try
-            {
-                SmallAnnotationEditValues? values = await ShowSmallAnnotationEditorAsync(
-                    "新建小批注", null, "", null, selected.Value.Quote);
-                if (values is null
-                    || !ReferenceEquals(store, activeAnnotationStore)
-                    || !ReferenceEquals(project, activeNovelProject))
-                {
-                    return;
-                }
-
-                NovelChapterIndexState? indexState = await store.GetChapterIndexStateAsync();
-                NovelChapter? chapter = await store.GetChapterAtOffsetAsync(selected.Value.StartOffset);
-                if (chapter is null || !chapter.IsActive
-                    || chapter.DocumentRevision != project.Metadata.DocumentRevision
-                    || indexState is null
-                    || indexState.DocumentRevision != project.Metadata.DocumentRevision
-                    || indexState.ParserVersion != NovelChapterIndexBuilder.CurrentParserVersion
-                    || selected.Value.EndOffset > chapter.EndOffset)
-                {
-                    throw new InvalidOperationException(
-                        "当前章节索引尚未就绪，或所选原文没有完整落在一个有效章节内。请等待章节索引完成，并确保选区不跨越章节。");
-                }
-
-                var selectionCheck = new AnnotationAnchor(
-                    Guid.Empty, Guid.Empty,
-                    selected.Value.StartOffset, selected.Value.EndOffset,
-                    selected.Value.Quote, chapter.Id,
-                    DocumentRevision: project.Metadata.DocumentRevision);
-                if (!TryResolveSmallAnnotationAnchor(selectionCheck, out _))
-                    throw new InvalidOperationException("打开批注窗口期间，原文选区发生了变化。请重新选择原文后再创建批注。");
-
-                NovelChapter chapterForMetadata = chapter;
-                long anchorStartOffset = selected.Value.StartOffset;
-                long anchorEndOffset = selected.Value.EndOffset;
-                LineProvider linesForMetadata = provider!;
-                DocumentTextOffsetMap mapForMetadata = annotationOffsetMap!;
-                AnnotationAnchorMetadata metadata = await Task.Run(() =>
-                    AnnotationAnchorMetadataBuilder.Create(
-                        chapterForMetadata, linesForMetadata, mapForMetadata,
-                        anchorStartOffset, anchorEndOffset));
-
-                if (!ReferenceEquals(store, activeAnnotationStore)
-                    || !ReferenceEquals(project, activeNovelProject))
-                {
-                    return;
-                }
-
-                Guid annotationId = await store.CreateAnnotationWithAnchorAsync(
-                    values.Content,
-                    selected.Value.StartOffset,
-                    selected.Value.EndOffset,
-                    selected.Value.Quote,
-                    categoryId: values.CategoryId,
-                    title: values.Title,
-                    chapterId: chapter.Id,
-                    documentRevision: project.Metadata.DocumentRevision,
-                    anchorMetadata: metadata);
-
-                SmallAnnotationsItem.IsChecked = true;
-                SmallAnnotationPane.Visibility = Visibility.Visible;
-                UpdateReaderToolsRailVisibility();
-                selectedSmallAnnotationCategoryId = values.CategoryId;
-                await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
-                await RefreshSmallAnnotationsAsync(annotationId);
-                await RefreshVisibleSmallAnnotationMarkersAsync(force: true);
-            }
-            catch (Exception ex)
-            {
-                await ShowMessageAsync("创建小批注失败", ex.Message);
-            }
+            await OpenSmallAnnotationComposerAsync(selected.Value);
         }
 
         private async void AddSelectionToExistingSmallAnnotation()
@@ -998,20 +918,6 @@ namespace FujiyNotepad.WinUI
                 };
                 return button;
             }
-
-            var titleBox = new TextBox
-            {
-                PlaceholderText = "为这条批注起一个简短标题",
-                Text = initialTitle ?? "",
-                IsReadOnly = readOnlyInitially,
-            };
-            AddFieldHeader("标题（可选）",
-                readOnlyInitially ? CreatePenButton(() =>
-                {
-                    titleBox.IsReadOnly = false;
-                    titleBox.Focus(FocusState.Programmatic);
-                }) : null);
-            panel.Children.Add(titleBox);
 
             var categoryBox = new ComboBox
             {
@@ -1174,8 +1080,7 @@ namespace FujiyNotepad.WinUI
                 return null;
 
             Guid? categoryId = categoryBox.SelectedItem is ComboBoxItem { Tag: Guid id } ? id : null;
-            string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
-            return new SmallAnnotationEditValues(title, contentBox.Text, categoryId);
+            return new SmallAnnotationEditValues(initialTitle, contentBox.Text, categoryId);
         }
 
         private async Task<NovelAnnotationSummary?> SelectExistingSmallAnnotationAsync(NovelAnnotationStore store)
@@ -1185,7 +1090,7 @@ namespace FujiyNotepad.WinUI
                 category => category.Id, category => category.Name);
 
             var panel = new StackPanel { Spacing = 8, MinWidth = 420 };
-            var searchBox = new TextBox { PlaceholderText = "搜索批注标题或内容……" };
+            var searchBox = new TextBox { PlaceholderText = "搜索批注内容或关联原文……" };
             var resultCount = new TextBlock { Text = "正在加载……", FontSize = 12, Opacity = 0.7 };
             var list = new ListView
             {
@@ -1734,7 +1639,8 @@ namespace FujiyNotepad.WinUI
             var dialog = new ContentDialog
             {
                 Title = "删除小批注",
-                Content = $"确定删除“{(string.IsNullOrWhiteSpace(summary.Annotation.Title) ? "未命名批注" : summary.Annotation.Title)}”吗？\n\n"
+                Content = $"确定删除这条小批注吗？\n\n"
+                    + $"内容：{CreateSmallAnnotationExcerpt(summary.Annotation.Content, 100)}\n\n"
                     + $"这将同时删除它关联的 {summary.AnchorCount} 处原文位置，且无法撤销。",
                 PrimaryButtonText = "删除",
                 CloseButtonText = "取消",
