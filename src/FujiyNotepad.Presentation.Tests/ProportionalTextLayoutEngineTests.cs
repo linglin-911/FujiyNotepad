@@ -286,6 +286,19 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PointerDragCharacter_ReturningToTheAnchorSelectsOnlyTheAnchorCharacter()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+        engine.PointerDragCharacter(new TextPosition(0, 3), sourceLength: 1);
+        engine.PointerDragCharacter(new TextPosition(0, 1), sourceLength: 1);
+
+        Assert.Equal(1, engine.SelectionStart.Column);
+        Assert.Equal(2, engine.SelectionEnd.Column);
+    }
+
+    [Fact]
     public void PointerDragBoundary_SelectsTheRestOfTheCurrentVisualRow()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
