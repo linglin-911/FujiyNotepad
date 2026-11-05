@@ -558,6 +558,33 @@ public sealed partial class TextLayoutEngine
         // being mistaken for glyph hits and keeps the same X mapped to the same character while dragging.
         TextLayoutHitTestResult hit = layout.HitTest(localX, hitTestY);
 
+        if (returnCharacter && !hit.IsInside && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
+        {
+            // The text rectangle is intentionally a little wider than DirectWrite's native region. Recover
+            // the first/last character when the pointer lands in that small outer cushion.
+            int firstEnd = layout.GetNextCaretIndex(hitRow.SourceStartIndex);
+            if (firstEnd > hitRow.SourceStartIndex &&
+                IsInsideTextRangeGeometry(
+                    layout, hitRow.SourceStartIndex, firstEnd - hitRow.SourceStartIndex, localX, localY))
+            {
+                hit = new TextLayoutHitTestResult(
+                    hitRow.SourceStartIndex, firstEnd - hitRow.SourceStartIndex,
+                    isTrailingHit: false, isInside: true);
+            }
+            else
+            {
+                int lastStart = layout.GetPreviousCaretIndex(hitRow.SourceEndIndex);
+                if (lastStart < hitRow.SourceEndIndex &&
+                    IsInsideTextRangeGeometry(
+                        layout, lastStart, hitRow.SourceEndIndex - lastStart, localX, localY))
+                {
+                    hit = new TextLayoutHitTestResult(
+                        lastStart, hitRow.SourceEndIndex - lastStart,
+                        isTrailingHit: false, isInside: true);
+                }
+            }
+        }
+
         if (returnCharacter)
         {
             bool hitTextArea = hit.IsInside && hit.SourceLength > 0 &&
