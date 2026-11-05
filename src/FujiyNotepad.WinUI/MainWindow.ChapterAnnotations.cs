@@ -919,6 +919,7 @@ public sealed partial class MainWindow
         SmallAnnotationPane.Visibility = Visibility.Collapsed;
         ChapterAnnotationsItem.IsChecked = true;
         ChapterAnnotationPane.Visibility = Visibility.Visible;
+        UpdateReaderToolsRailVisibility();
         await LoadChapterAnnotationsAsync();
     }
 

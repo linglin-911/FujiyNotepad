@@ -848,6 +848,7 @@ namespace FujiyNotepad.WinUI
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
+                UpdateReaderToolsRailVisibility();
                 selectedSmallAnnotationCategoryId = values.CategoryId;
                 await ReloadSmallAnnotationCategoriesAsync(values.CategoryId);
                 await RefreshSmallAnnotationsAsync(annotationId);
@@ -933,6 +934,7 @@ namespace FujiyNotepad.WinUI
 
                 SmallAnnotationsItem.IsChecked = true;
                 SmallAnnotationPane.Visibility = Visibility.Visible;
+                UpdateReaderToolsRailVisibility();
                 selectedSmallAnnotationCategoryId = target.Annotation.CategoryId;
                 await ReloadSmallAnnotationCategoriesAsync(target.Annotation.CategoryId);
                 await RefreshSmallAnnotationsAsync(target.Annotation.Id);

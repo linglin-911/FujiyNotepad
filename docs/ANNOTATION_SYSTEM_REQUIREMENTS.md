@@ -9,7 +9,7 @@
 > 批注功能基线分支：`feature/novel-project-annotations`
 > Phase 4.2 用户验收代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`
 > 当前基线：`fix/reader-proportional-line-overlap` 已解决比例字体窗口宽度变化时的文字重叠；当前 Phase 4 工作分支从该修复分支建立。
-> 用户最新反馈（2026-11-05）：拉取修复后的代码后，右侧实时阅读设置面板已能打开，程序可正常显示。截图发现两个尚未处理的 UI 问题：BUG-018 面板和右侧按钮背景不够不透明；BUG-019 右侧工具栏没有独立预留布局宽度，正文自适应宽度可能延伸到工具栏下方。用户明确要求本轮只记录，不立即修复。未提供完整构建输出或自动化测试摘要，不推断具体构建/测试结果。
+> 用户最新反馈（2026-11-05）：拉取修复后的代码后，右侧实时阅读设置面板已能打开，程序可正常显示。截图发现两个尚未处理的 UI 问题：BUG-018 面板和右侧按钮背景不够不透明；BUG-019 右侧工具栏没有独立预留布局宽度，正文自适应宽度可能延伸到工具栏下方。用户当时要求先记录问题；随后已确认按本节最终交互方案开始修复。未提供完整构建输出或自动化测试摘要，不推断具体构建/测试结果。
 
 ## 1. 状态标记与维护规则
 
@@ -363,8 +363,8 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 | BUG-015 | 阅读器右键“新建章节批注”无法创建 | P0 | [用户已验证修复]；用户已明确确认阅读器正文右键入口本轮也成功创建章节批注 |
 | BUG-016 | 删除章节标题、修改前文或编辑器统一换行符后，小批注原文锚点因偏移变化无法定位 | P0 | [章节范围恢复已实现/待用户验收]；已有 ChapterId 且章节范围版本有效时，只在该章节内流式查找；不再跨章节匹配；旧版无 ChapterId 锚点才保留一次全文唯一匹配兼容路径；同章重复摘录仍待加入前后文消歧 |
 | BUG-017 | 小批注原文定位虽然成功，但点击后需要等待数秒才跳转 | P1 | [用户已验证修复]；章节范围搜索与先跳转、后异步刷新列表/标记的调整已通过 Windows 实际运行验收，定位等待数秒的问题已解决 |
-| BUG-018 | 右侧实时阅读设置面板及右侧圆形工具按钮背景呈半透明，正文透出后影响文字和控件辨识度 | P1 | [已记录/待修复]；当前分别使用 LayerFillColorDefaultBrush、CardBackgroundFillColorDefaultBrush，用户截图确认实际显示不够不透明；需改为主题适配但不透明的背景，并检查 Paper/Warm/Night 下的对比度 |
-| BUG-019 | 右侧工具栏没有独立预留布局区域；正文使用最大/自适应宽度时可能延伸到右侧按钮下方 | P1 | [已记录/待修复]；当前 ReaderOverlayHost 以覆盖层方式叠在阅读区上方，ReaderViewport 的可用宽度未扣除工具栏占位；需在布局层为工具栏预留固定区域，并确保正文宽度、位置、6 DIP 标记刻度及布局引擎可用宽度采用一致口径。
+| BUG-018 | 右侧实时阅读设置面板及右侧圆形工具按钮背景呈半透明，正文透出后影响文字和控件辨识度 | P1 | [代码已修复/待用户验收]；面板和齿轮按钮已改用主题适配且不透明的 SolidBackgroundFillColorBaseBrush；仍需 Windows 实测 Light/Dark 下的背景、文字和边框对比度 |
+| BUG-019 | 右侧工具栏没有独立预留布局区域；正文使用最大/自适应宽度时可能延伸到右侧按钮下方 | P1 | [代码已修复/待用户验收]；父级阅读 Grid 已增加独立 56 DIP 工具栏列，ReaderViewport 实际宽度自动扣除工具栏占位；设置面板仍覆盖 ReaderViewport，不挤压正文；面板打开时点击工具栏会关闭面板并消费点击，不触发工具命令。
 
 ### 本轮处理顺序
 
@@ -374,8 +374,8 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 4. 实现 BUG-005、BUG-006：可视区内按原文锚点绘制虚线；左键点击标记显示对应批注；正确处理重叠/嵌套锚点。
 5. 添加针对空分类查询、摘要摘录和标记映射的自动化测试。
 6. 用户在 Windows x64 环境构建、运行并验收；没有用户测试证据前不得把这些条目标记为已完成。
-7. BUG-018：让设置面板与工具栏按钮使用真正不透明、且随应用 Light/Dark 主题正确变化的背景；不能让阅读正文透过面板或按钮影响可读性。
-8. BUG-019：为右侧工具栏划分独立布局占位；正文最大宽度/自适应宽度必须基于扣除工具栏区域后的可用宽度计算。统一检查 TextCanvas、TextLayoutEngine、6 DIP 标记刻度、批注标记绘制与命中坐标，不能只给按钮加 Margin 或仅靠遮挡解决。
+7. BUG-018（代码已修复，待验收）：设置面板与齿轮按钮使用不透明应用主题背景；检查 Light/Dark 下的面板、按钮、文字和边框对比度。
+8. BUG-019（代码已修复，待验收）：工具栏独立占用 56 DIP 布局列，正文宽度从扣除工具栏后的 ReaderViewport 取得；设置面板继续覆盖阅读区域，不改变 ReaderViewport 宽度。核对 TextCanvas、TextLayoutEngine、6 DIP 标记刻度、批注标记绘制和命中坐标。
 
 ## 9. 开发、构建与测试约定
 
@@ -423,8 +423,8 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 - Phase 1、Phase 2 已由用户验收；Phase 3 比例字体布局已接入阅读器，首屏显示/崩溃和窗口宽度变化时的文字重叠问题均已解决。Phase 3 其余交互仍按第 12.6 节列出的范围进行必要冒烟测试，不把历史故障重新当作当前故障。
 - Phase 4.1 已验收：全局 ReaderSettings、旧 settings.json 迁移、参数归一化和设置持久化已完成；用户曾确认 Release x64 build 成功、983/983 测试通过。
 - Phase 4.2 已由用户测试通过：ReaderPalette 的 Paper/Warm/Night 独立配色、Windows High Contrast 覆盖、字体/字号/行距接入现有比例布局、排版变化后恢复原文视口锚点均已接入。
-- Phase 4.3 代码已实现：全宽阅读背景、居中正文容器、ContentWidthDip 接入、宽度变化时恢复原文 UTF-16 视口锚点，以及 Night 对软件全局 Dark 主题的临时联动。用户截图已证明最新程序能运行并显示阅读区，但完整宽度、对齐和主题验收仍待完成；BUG-019 说明工具栏占位尚未纳入正文宽度计算。
-- Phase 4.4 已从原先设计的模态 ContentDialog 调整为右侧非模态实时设置面板。当前代码使用 ReaderSettingsPane，设置变化即时应用并防抖保存；面板外点击关闭，左侧阅读区保持鼠标滚轮滚动，右侧工具栏保持可交互。用户截图确认面板可以打开，但 BUG-018（背景不透明）和 BUG-019（工具栏独立占位）仍待修复，故 4.4 尚未验收。
+- Phase 4.3 代码已实现：全宽阅读背景、居中正文容器、ContentWidthDip 接入、宽度变化时恢复原文 UTF-16 视口锚点、Night 对软件全局 Dark 主题的临时联动，以及可见工具栏独立 56 DIP 布局占位。ReaderViewport 宽度自动排除工具栏；完整宽度、对齐和主题验收仍待完成。
+- Phase 4.4 使用右侧非模态实时设置面板。设置变化即时应用并防抖保存；设置面板覆盖阅读区域，不挤压阅读视口；左侧阅读区保持鼠标滚轮滚动。面板打开时只有面板内部可操作；点击工具栏或其他面板外区域均关闭面板并消费点击，工具栏不执行命令。BUG-018/019 代码已修复，仍待用户 Windows 验收。
 - Phase 4.5 为 Phase 4 整体验收；应在 BUG-018、BUG-019 修复并完成 4.3/4.4 冒烟验收后执行。
 
 ### 当前 Git 状态
@@ -439,10 +439,10 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 ### 下一步开发顺序
 
-1. 先处理 BUG-018：设置面板和右侧工具栏按钮必须使用不透明背景；在应用 Light/Dark、阅读 Paper/Warm/Night 组合下检查面板、按钮、文字和边框的辨识度。
-2. 再处理 BUG-019：给右侧工具栏划分独立布局区域。正文宽度上限和自适应可用宽度都必须扣除该区域；正文居中基于扣除工具栏后的可用阅读区域计算。同步核对 6 DIP 标记刻度、TextCanvas、TextLayoutEngine 的宽度参数、小批注标记绘制和命中检测坐标。
-3. 修复时先检查 MainWindow.xaml 当前 ReaderViewport、ReaderContentHost、ReaderOverlayHost、ReaderToolsRail 的真实父子关系及 SizeChanged/宽度刷新调用链；不要仅通过给 TextCanvas 增加 Margin 或在正文上覆盖按钮来应付。
-4. BUG-018/019 修复后，用户执行 Windows x64 build/test 和 Phase 4.3/4.4 冒烟测试：Paper/Warm/Night 背景、正文居中与宽度、工具栏不被正文侵占、面板不透明、滚轮滚动、面板外点击关闭、工具栏按钮可交互、字体/字号/行距/宽度即时生效及重启持久化。
+1. BUG-018/019 已按确认方案实施：面板和齿轮按钮使用不透明应用主题背景；工具栏拥有独立 56 DIP 布局列；设置面板仍覆盖阅读视口，不改变阅读区域宽度。
+2. 当前重点转为 Windows x64 build/test 和针对性冒烟：Paper/Warm/Night 背景、正文居中与宽度、工具栏不被正文侵占、面板不透明、滚轮滚动、面板外点击（包括工具栏）关闭且不触发底层操作、面板打开时工具栏不执行命令、关闭后工具栏恢复、字体/字号/行距/宽度即时生效及重启持久化。
+3. 检查 ReaderViewport、ReaderContentHost、ReaderOverlayHost、ReaderToolsRail 的父子关系及 SizeChanged/宽度刷新调用链；不要仅通过 Margin 或遮挡解决布局问题。
+4. 保持 ReaderSettings 数据模型、SQLite、批注锚点、UTF-16 偏移映射和现有 TextLayoutEngine 不变；不加载整本小说、不进行全书同步重排、不重构无关功能。
 5. 保持 ReaderSettings 数据模型、SQLite、批注锚点、UTF-16 偏移映射和现有 TextLayoutEngine 不变；不加载整本小说、不进行全书同步重排、不重构无关功能。
 6. Phase 4.3 和 4.4 完成用户验收后，再执行 Phase 4.5 整体验收。
 
@@ -461,6 +461,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 | 日期 | 变更 |
 |---|---|
+| 2026-11-05 | BUG-018/019 按用户最终确认方案实施：ReaderSettingsPanel 继续覆盖 ReaderViewport，不挤压阅读区域；ReaderToolsRail 使用独立 56 DIP 布局列，ReaderViewport 宽度自动扣除工具栏。面板与齿轮按钮改用 SolidBackgroundFillColorBaseBrush。面板打开时只有面板内部可操作；点击工具栏或其他面板外区域关闭面板并消费点击，工具栏同时禁用/不可命中，不执行按钮命令。代码与架构文档已更新，等待 Windows x64 build/test 和用户冒烟验收。 |
 | 2026-11-05 | 用户拉取修复提交 d92d16dae231e53ad98f58d0b0a9dd9e5837e79c 后，已能正常运行程序并打开右侧实时阅读设置面板。根据用户截图登记 BUG-018：ReaderSettingsPanel 当前使用 LayerFillColorDefaultBrush、工具按钮使用 CardBackgroundFillColorDefaultBrush，实际视觉呈半透明，需改为主题适配的不透明背景；登记 BUG-019：ReaderOverlayHost 与 ReaderToolsRail 目前覆盖在阅读区域上方，未从正文可用宽度中预留工具栏区域，最大/自适应正文可能侵入按钮区域。用户明确要求本轮只记录，不直接修复。另将 Phase 4.4 的实际设计更新为非模态右侧实时设置面板：无 Preview/Apply/Cancel，设置即时生效并防抖保存；面板外点击关闭且消费点击，左侧阅读区滚轮可用。
 | 2026-11-05 | 用户确认开始 Phase 4.4。开发前架构方案已明确：在 View 菜单增加统一 Reader Settings 对话框入口；复用 ReaderSettings/SettingsStore/ReaderPalette/TextCanvas，不新增设置数据模型；临时副本实时预览，Apply 才持久化，Cancel/Esc/关闭恢复原快照；用 Win2D 获取系统安装字体族；保留 Font/Zoom 快捷操作，并把原全局 Theme 菜单明确标为 Application Theme。Phase 4.3 本地验收仍待执行，不因开始 4.4 而视为通过。 |
 | 2026-11-05 | Phase 4.4 统一阅读设置窗口已实现：新增 View → Reader Settings... ContentDialog，支持系统字体、字号、行距、正文宽度/自适应、Paper/Warm/Night、ReaderPalette 样例预览；预览期间抑制 FontChanged 自动保存，Apply 才持久化，Cancel/Esc/关闭恢复快照；原 Theme 菜单改名 Application Theme；新增 en-US/pt-BR 资源。代码提交 `a3016c61f59265d532746b0e494b8df0da74809b`，主题色复用修正 `1f9b7cebfd4c024919f3a5256752892bec1305e3`，正文宽度预览 `ee3a4f6c8853782480f0924cdcb0f4f60ee92229`，大字号预览适配 `d9b3164320980f03a945e3cc211aef6f71a4bc49`。未运行 Windows x64 build/test，等待用户验收；Phase 4.3 仍待独立验收。2026-11-05 根据用户反馈“点击 Reader Settings 无响应”追加诊断修复：菜单点击入口、XamlRoot、窗口构造、ShowAsync、Apply/Cancel 各阶段增加日志；先让 MenuFlyout 关闭再打开 ContentDialog；异常时显示可见错误提示，不再静默吞掉。提交 `fb32661f2d4baf467313e535f6cc750d16d5476a`，等待用户重新构建和复测。根据用户提供的日志，根因已定位到 `ReaderSettingsDialog` 构造函数第 35 行：将托管字体列表赋给 `ComboBox.ItemsSource` 时 WinUI 抛出 `ArgumentException (E_INVALIDARG)`。本次改为在初始化保护期间逐项填充 `ComboBox.Items`，保留当前字体选择和原有 SelectionChanged 行为；等待 Windows x64 build 与用户实测。 |
@@ -785,8 +786,8 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 在 View 菜单提供统一“阅读设置”入口。
 - View → Reader Settings... 打开/关闭右侧非模态实时设置面板；不使用独立模态对话框，不提供 Preview、Apply、Cancel。
 - 字体、字号、行距、正文宽度/自适应宽度和 Paper/Warm/Night 变化时立即应用；MainWindow 通过防抖自动保存全局 ReaderSettings，关闭面板时强制刷新待保存内容。
-- 面板打开时，左侧阅读区保持可见并允许鼠标滚轮连续滚动；阅读区进入被动交互状态，暂停文字选择、批注点击、右键菜单、双击选词和键盘导航。点击面板及右侧工具栏以外的区域时自动关闭面板，并消费这次点击，避免同时触发底层阅读操作。
-- 右侧工具栏是独立交互入口；面板打开时仍可点击，后续常用功能按钮可继续加入该工具栏。
+- 面板打开时，左侧阅读区保持可见并允许鼠标滚轮连续滚动；阅读区进入被动交互状态，暂停文字选择、批注点击、右键菜单、双击选词和键盘导航。点击面板以外的任何区域（包括右侧工具栏）时自动关闭面板，并消费这次点击，避免触发底层阅读或工具栏操作。
+- 右侧工具栏拥有独立布局区域；面板打开时工具栏不可操作，点击工具栏只关闭设置面板，不执行按钮命令。面板关闭后恢复工具栏交互；后续常用功能按钮继续加入该独立区域。
 - 现有字体选择和 Zoom 快捷操作必须操作同一 ReaderSettings 模型，不得另存一套字体/字号状态。
 - 第一版支持系统安装字体选择、字号、行距、正文最大宽度/自适应宽度、Paper/Warm/Night 三种预设主题；不做自定义 RGB、字体文件导入和每项目覆盖。
 - 切换小说项目不改变阅读设置；重启软件后恢复同一套全局阅读设置。
@@ -795,8 +796,8 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 1. 4.1（用户验收通过）：ReaderSettings 数据模型、默认值、参数归一化、旧 JSON 迁移和 SettingsStore 测试；现有字体/Zoom 快捷操作已以 ReaderSettings 为主数据，不改变可见 UI。Release x64 build 成功，983/983 测试通过。
 2. 4.2（用户测试通过）：接通比例布局字体/字号/行距，新增独立 ReaderPalette，排版变化时恢复原文 UTF-16 视口锚点；用户测试反馈当前代码运行正常、未发现问题。
-3. 4.3（代码已实现，用户验证中）：增加全宽阅读背景视口和居中正文容器；ContentWidthDip 控制 TextCanvas 宽度，6 DIP 标记刻度与正文对齐；窗口宽度变化时恢复原文 UTF-16 视口锚点；Night 临时强制软件主界面 Dark，且不覆盖保存的全局主题。工具栏独立占位尚未实现，见 BUG-019。
-4. 4.4（右侧实时设置面板已实现，用户验证中）：View 菜单与右侧齿轮按钮均可打开/关闭面板；无 Preview/Apply/Cancel，设置即时生效并防抖保存；面板外点击关闭；左侧阅读区滚轮仍可用。当前 BUG-018、BUG-019 尚待修复。
+3. 4.3（代码已实现，用户验证中）：增加全宽阅读背景视口和居中正文容器；ContentWidthDip 控制 TextCanvas 宽度，6 DIP 标记刻度与正文对齐；窗口宽度变化时恢复原文 UTF-16 视口锚点；Night 临时强制软件主界面 Dark，且不覆盖保存的全局主题。当前父级 Grid 为可见工具栏预留独立 56 DIP 列，ReaderViewport 宽度自动扣除该列。
+4. 4.4（右侧实时设置面板已实现，用户验证中）：View 菜单与右侧齿轮按钮均可打开/关闭面板；无 Preview/Apply/Cancel，设置即时生效并防抖保存；面板覆盖阅读区域，不挤压视口；左侧阅读区滚轮仍可用。点击面板外部（包括工具栏）关闭并消费点击；面板打开时工具栏禁用，不执行按钮命令。BUG-018/019 代码修复仍待用户验收。
 5. 4.5：BUG-018、BUG-019 修复后，执行显式 x64 构建、Core/Presentation 测试及 Windows 冒烟测试，覆盖设置即时应用、项目切换、重启持久化、批注显示和 70MB 以上小说。
 
 **禁止事项：** 不增加主界面独立字体/字号/背景颜色设置；Paper/Warm 不改变全局应用主题，Night 仅按上述规则临时强制 Dark 且不得覆盖保存的全局主题；不新增项目级阅读设置；不改 SQLite/锚点模型；不因修改设置而全文同步重排；Phase 4 不顺便重做主窗口整体视觉风格。
@@ -813,25 +814,25 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - TextCanvas 宽度变化时，在更新引擎视口前捕获原文 UTF-16 视口锚点，使用现有 `SetViewportAnchor` 恢复；现有比例布局测试调整为直接改变 ViewportWidth，验证引擎按宽度变化自动更新布局选项。
 - Reader.Theme=Night 时，MainWindow 临时将 `RootGrid.RequestedTheme` 设为 Dark；不修改保存的 `AppSettings.Theme`。Night 期间更改全局主题只更新保存值，离开 Night 后恢复最新值。Paper/Warm 不改变全局主题。
 - 当前实现仍使用 ReaderViewport 全宽背景和居中的 ReaderContentHost；6 DIP 标记刻度位于正文右侧并随正文容器一起定位。
-- 右侧实时设置面板与工具栏目前通过 ReaderOverlayHost 叠加显示，尚未在 ReaderViewport 的测量宽度中扣除工具栏宽度。正文设置为最大/自适应宽度时可能侵入工具栏区域，登记为 BUG-019；后续必须在布局层预留工具栏区域，并将预留后的可用宽度统一传给现有 TextCanvas/TextLayoutEngine。
-- **验证状态：** 用户最新截图证明程序能够运行、右侧设置面板能够显示；全宽背景、居中正文、宽度变化锚点恢复、批注标记对齐和 Night 联动仍需按冒烟清单验证。用户未提供具体 build/test 输出，不记录测试数量；BUG-019 未修复前 Phase 4.3 不标记为验收完成。
+- 右侧工具栏现通过父级 Grid 的独立 56 DIP 列占位；ReaderViewport 实际宽度已排除工具栏。ReaderOverlayHost 移入 ReaderViewport 内部，设置面板右对齐并覆盖阅读区域，不参与宽度测量。面板打开时工具栏禁用且不可命中；点击工具栏区域由透明宿主接收，关闭面板并消费点击。
+- **验证状态：** BUG-018/019 已完成代码修改，尚未完成 Windows x64 build/test 和用户 UI 冒烟。全宽背景、居中正文、宽度变化锚点恢复、批注标记对齐和 Night 联动仍需按冒烟清单验证；因此 Phase 4.3/4.4 均不标记为验收完成。
 
 
 #### 13.9.6 Phase 4.4 右侧实时阅读设置面板——实施架构与当前状态（2026-11-05）
 
 **目标与边界**
 
-- 从 View → Reader Settings... 或阅读区右侧齿轮按钮打开同一个非模态阅读设置面板；面板贴近窗口右侧工具栏，左侧仍露出小说正文。
+- 从 View → Reader Settings... 或阅读区右侧齿轮按钮打开同一个非模态阅读设置面板；面板覆盖阅读区域右侧，右边缘紧挨独立工具栏左侧，左侧仍露出小说正文。面板覆盖正文但不挤压 ReaderViewport，也不改变正文宽度或触发宽度重排。
 - 设置字体、字号、行距、正文最大宽度/自适应宽度和 Paper/Warm/Night 阅读背景；所有值仍是全局 ReaderSettings，对所有小说项目生效。
-- 面板打开期间左侧正文仍可通过鼠标滚轮连续滚动；正文选择、批注点击、右键菜单、双击选词和键盘导航暂停。点击面板或工具栏之外的区域关闭面板，并消费该次点击，不触发底层阅读操作。
-- 右侧工具栏在面板打开期间仍可交互，后续可继续加入目录、批注等常用入口。
+- 面板打开期间左侧正文仍可通过鼠标滚轮连续滚动；正文选择、批注点击、右键菜单、双击选词和键盘导航暂停。点击面板以外的任何区域（包括工具栏）关闭面板，并消费该次点击，不触发底层阅读或工具栏操作。
+- 右侧工具栏在面板打开期间禁用且不可命中；点击工具栏区域只负责关闭设置面板，不执行按钮命令。面板关闭后恢复交互；后续目录、批注等按钮继续加入同一独立工具栏区域。
 - 不增加 SQLite 表、不改变项目文件、不引入项目级阅读设置，不更改文本布局引擎或锚点结构。
 
 **模块职责与文件**
 
 - src/FujiyNotepad.WinUI/ReaderSettingsPane.xaml(.cs)：WinUI UserControl，负责设置控件、系统字体枚举、输入归一化和维护当前编辑快照；通过 SettingsChanged 事件发送独立 ReaderSettings 副本，通过 CloseRequested 请求关闭面板；不直接访问 SettingsStore 或 TextCanvas。
-- src/FujiyNotepad.WinUI/MainWindow.xaml：View 菜单保留 Reader Settings 入口；原全局 Theme 子菜单改名为 Application Theme；阅读区域包含 ReaderViewport、ReaderContentHost，覆盖层包含 ReaderOverlayHost、ReaderSettingsPanel 和 ReaderToolsRail。
-- src/FujiyNotepad.WinUI/MainWindow.xaml.cs：订阅设置变化与关闭事件；通过现有 View.ApplyReaderSettings() 应用；同步 ReaderSettings 与 legacy FontFamily/FontSize 字段；防抖保存并在关闭面板时 flush；处理面板外点击关闭、工具栏交互和窗口主题联动。
+- src/FujiyNotepad.WinUI/MainWindow.xaml：View 菜单保留 Reader Settings 入口；原全局 Theme 子菜单改名为 Application Theme；阅读 Grid 的工具栏列独立占位；ReaderOverlayHost/ReaderSettingsPanel 仅覆盖 ReaderViewport，ReaderToolsRail 位于独立列。
+- src/FujiyNotepad.WinUI/MainWindow.xaml.cs：订阅设置变化与关闭事件；通过现有 View.ApplyReaderSettings() 应用；同步 ReaderSettings 与 legacy FontFamily/FontSize 字段；防抖保存并在关闭面板时 flush；处理面板外点击关闭、工具栏禁用/恢复、工具栏列宽和窗口主题联动。
 - src/FujiyNotepad.WinUI/Controls/TextCanvas.cs：通过 IsReaderInteractionPassive 控制面板打开时的被动交互；鼠标滚轮仍调用现有引擎滚动，Ctrl+滚轮不在后台修改字号，选择/批注命中/右键/双击/键盘导航不触发。
 - src/FujiyNotepad.WinUI/Strings/en-US/Resources.resw 与 Strings/pt-BR/Resources.resw：面板标题、说明、控件标签和工具按钮无障碍名称/提示文案。
 - ReaderSettings、AppSettings.Reader、SettingsStore 和 ReaderPalette 沿用现有实现，不新增持久化模型或序列化路径。
@@ -848,7 +849,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 2. 面板控件更新内部 ReaderSettings 快照；每次变化发出 SettingsChanged 事件和独立副本。
 3. MainWindow 收到副本后，调用现有 View.ApplyReaderSettings(updated)；随后更新 settings.Reader 和 legacy settings.FontFamily/settings.FontSize，安排防抖保存。字体变化触发的 FontChanged 回调由既有抑制标记防止重复/部分持久化。
 4. 保存仍通过既有 SettingsStore.Save(settings)；如果保存失败，保留 pending 标记，关闭面板或窗口时再次尝试。关闭面板前停止防抖计时器并 flush。
-5. 点击面板关闭按钮或面板/工具栏以外的窗口区域时，MainWindow 关闭面板、恢复 TextCanvas 正常交互并将焦点交回阅读器。面板外点击会被消费，避免同一次点击穿透并触发阅读选择/批注。
+5. 点击面板关闭按钮或面板以外的窗口区域（包括工具栏）时，MainWindow 关闭面板、恢复 TextCanvas 正常交互及工具栏交互，并将焦点交回阅读器。面板外点击会被消费，避免同一次点击穿透并触发阅读选择、批注或工具栏命令。
 6. 不存在 Apply/Cancel 事务：调整值已经实时应用；关闭面板不会回滚设置。项目切换不重置全局 ReaderSettings，重启后从 settings.json 恢复。
 
 **控件与交互**
@@ -861,16 +862,17 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - Windows High Contrast 仍由现有 ReaderPalette/TextCanvas 逻辑优先覆盖；不提供自定义 RGB 颜色。
 - 面板没有样例 Preview、Apply 和 Cancel；用户直接观察阅读区域变化。
 
-**当前已知 UI 问题（用户截图确认，尚未修复）**
+**BUG-018/019 实施结果（待用户验收）**
 
-- BUG-018 — 背景不透明：ReaderSettingsPanel 当前使用 LayerFillColorDefaultBrush，右侧齿轮按钮当前使用 CardBackgroundFillColorDefaultBrush。在用户实际运行的主题下，这些资源呈现半透明，导致后方正文透出。两者都必须改为主题适配且真正不透明的背景；需要分别检查 Light/Dark 应用主题与 Paper/Warm/Night 阅读主题组合，确保面板、按钮、边框和文字有足够对比度。
-- BUG-019 — 工具栏独立占位：ReaderOverlayHost 当前是覆盖在主阅读 Grid 上的覆盖层，ReaderToolsRail 没有独立布局列；ReaderViewport 的可用宽度没有扣除工具栏宽度，最大/自适应正文可能侵入工具栏区域。需要在父级布局中为右侧工具栏分配固定宽度区域，再以剩余阅读区域计算居中正文宽度和 TextLayoutOptions.MaxWidth。6 DIP 标记刻度必须与正文同步；小批注标记绘制、命中检测和章节定位不能出现坐标偏移。不能仅靠 Margin、覆盖遮挡或限制按钮点击区解决。
-- 本轮仅将两个问题写入需求与架构文档，按用户要求暂不修改代码。
+- BUG-018 — 背景不透明：ReaderSettingsPanel 和右侧齿轮按钮均改用 SolidBackgroundFillColorBaseBrush，采用应用 Light/Dark 主题资源，不读取 ReaderPalette；仍需 Windows 实测面板、按钮、文字与边框对比度。
+- BUG-019 — 工具栏独立占位：父级阅读 Grid 新增独立 56 DIP 工具栏列；ReaderViewport 的实际宽度自动扣除该列。ReaderOverlayHost 移入 ReaderViewport 列，设置面板右对齐并覆盖阅读区域，不挤压正文、不改变视口宽度。6 DIP 标记刻度与 TextCanvas 保持原有坐标体系；小批注标记绘制、命中检测和章节定位不修改。
+- 面板打开时的最终交互规则：只有设置面板内部可操作；阅读区仍可滚轮滚动；点击工具栏或其他面板外区域均关闭面板并消费点击，不执行工具栏命令。工具栏在面板打开期间禁用/不可命中，关闭后恢复。
+- 上述代码修改已实施，仍待 Windows x64 build/test 和用户 UI 验收。
 
 **测试与验收**
 
 - 用户最新截图确认程序可以运行、右侧面板可打开；此前 Reader Settings 点击无响应和 XAML Panel.ZIndex 编译错误已分别处理。用户未提供当前 build/test 完整输出，因此不记录测试数量或宣称自动化测试通过。
 - Windows x64 build：dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64
 - 自动化测试：dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64
-- UI 冒烟需覆盖：面板开关、面板外点击关闭且不触发底层操作、左侧滚轮滚动、面板打开时工具栏可交互、面板/按钮不透明、正文最大/自适应宽度均避开工具栏、Paper/Warm/Night、字体/字号/行距即时生效、自动保存及重启持久化。
-- Phase 4.3 的全宽背景、正文居中、宽度变化锚点恢复、批注标记与刻度对齐、Night 应用主题联动仍需独立验收；BUG-018/019 修复前 Phase 4.3/4.4 不标记为完成。
+- UI 冒烟需覆盖：面板开关、面板内部控件可操作、点击阅读区/工具栏/其他外部区域均关闭面板且不触发底层阅读或工具栏命令、左侧滚轮滚动、面板打开时工具栏不可操作且关闭后恢复、面板/按钮不透明、正文最大/自适应宽度均避开工具栏、打开/关闭面板不改变 ReaderViewport 宽度、Paper/Warm/Night、字体/字号/行距即时生效、自动保存及重启持久化。
+- Phase 4.3 的全宽背景、正文居中、宽度变化锚点恢复、批注标记与刻度对齐、Night 应用主题联动仍需独立验收；BUG-018/019 代码修复完成但尚未通过 Windows build/test 和用户冒烟验收前，Phase 4.3/4.4 不标记为完成。

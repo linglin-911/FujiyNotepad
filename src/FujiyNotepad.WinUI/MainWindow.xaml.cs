@@ -89,6 +89,7 @@ namespace FujiyNotepad.WinUI
         private bool readerSettingsSavePending;
         private SizeInt32 lastNormalSize;
         private const double ReaderMarkerWidthDip = 6d;
+        private const double ReaderToolsRailWidthDip = 56d;
 
         // Up/Down search-history recall state for the Find and Filter boxes (SearchHistoryNavigator is pure and
         // unit-tested). Each is rebuilt lazily and reset when its bar opens or a search is recorded.
@@ -3524,9 +3525,9 @@ namespace FujiyNotepad.WinUI
             if (ReaderSettingsPanel.Visibility != Visibility.Visible)
                 return;
 
-            // The tool rail is an interactive extension of the panel; clicking it must remain usable.
-            // A click elsewhere closes the panel and is consumed, so it cannot activate the obscured reader.
-            if (IsPointerWithin(ReaderSettingsPanel, e) || IsPointerWithin(ReaderToolsRail, e))
+            // Only the settings panel itself is interactive while open. The reader remains wheel-scrollable,
+            // but every pointer press outside the panel (including on the tool rail) closes it and is consumed.
+            if (IsPointerWithin(ReaderSettingsPanel, e))
                 return;
 
             CloseReaderSettingsPanel();
@@ -3553,10 +3554,20 @@ namespace FujiyNotepad.WinUI
                 || ChapterAnnotationPane.Visibility == Visibility.Visible
                 || ChapterDirectoryPane.Visibility == Visibility.Visible
                 || BigAnnotationWorkspace.Visibility == Visibility.Visible;
+            bool railVisible = !anotherPaneIsOpen;
+            bool settingsPanelOpen = ReaderSettingsPanel.Visibility == Visibility.Visible;
 
-            ReaderToolsRail.Visibility = anotherPaneIsOpen
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            ReaderToolsRail.Visibility = railVisible
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            ReaderToolsRailColumn.Width = railVisible
+                ? new GridLength(ReaderToolsRailWidthDip)
+                : new GridLength(0);
+
+            // While the panel is open, the transparent rail host catches outside clicks, but its buttons
+            // cannot receive pointer or keyboard activation. RootGrid_PointerPressed dismisses the panel.
+            ReaderToolsRail.IsHitTestVisible = !settingsPanelOpen;
+            ReaderToolsRail.IsEnabled = !settingsPanelOpen;
         }
 
         // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
@@ -3633,8 +3644,10 @@ namespace FujiyNotepad.WinUI
         private void ReaderViewport_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateReaderContentHostWidth();
 
-        // ContentWidthDip limits TextCanvas itself. The 6-DIP marker ruler is additional and stays attached
-        // to the centered content group. A value of zero uses all text width available beside the ruler.
+        // ReaderViewport is measured after the visible tool-rail column (56 DIP) and any right annotation
+        // pane have been reserved by the parent Grid. ContentWidthDip limits TextCanvas itself; the 6-DIP
+        // marker ruler is additional and stays attached to the centered content group. A value of zero uses
+        // all text width available beside the ruler. The settings overlay does not change this viewport width.
         private void UpdateReaderContentHostWidth()
         {
             double viewportWidth = ReaderViewport.ActualWidth;
