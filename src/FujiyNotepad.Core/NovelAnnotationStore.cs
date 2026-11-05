@@ -1247,7 +1247,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             LEFT JOIN ChapterAnnotationCategories cat ON cat.Id = a.CategoryId
             WHERE ($chapter IS NULL OR a.ChapterId = $chapter)
               AND ($category IS NULL OR a.CategoryId = $category)
-              AND ($search IS NULL OR a.Content LIKE $search ESCAPE '\\')
+              AND ($search IS NULL OR a.Content LIKE $search ESCAPE '\')
             ORDER BY c.ChapterNumber, c.StartOffset, a.UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$chapter", (object?)chapterId?.ToString("D") ?? DBNull.Value);
