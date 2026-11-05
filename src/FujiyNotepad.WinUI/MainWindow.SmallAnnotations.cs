@@ -654,13 +654,9 @@ namespace FujiyNotepad.WinUI
             {
                 content.Children.Add(new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(note.Title) ? "（未命名批注）" : note.Title,
-                    FontSize = 16,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                content.Children.Add(new TextBlock
-                {
                     Text = note.Content,
+                    FontSize = 14,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap,
                     IsTextSelectionEnabled = true,
                 });
