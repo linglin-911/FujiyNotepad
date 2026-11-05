@@ -49,7 +49,6 @@ namespace FujiyNotepad.WinUI
 
             isInitializing = false;
             UpdateDraftFromControls(notifyPreview: false);
-            UpdateThemeSwatches();
         }
 
         /// <summary>Returns a detached copy of the values currently represented by the controls.</summary>
