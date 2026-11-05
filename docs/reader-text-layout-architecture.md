@@ -1,6 +1,6 @@
 # Reader proportional-font text layout architecture
 
-Status: Phase 1 and Phase 2 are accepted. Phase 3 is integrated into TextLayoutEngine and TextCanvas; the user confirmed the proportional-line overlap fix on the dedicated baseline branch, while remaining Phase 3 interaction checks are pending. Phase 4.1 and 4.2 are implemented and user-tested. Phase 4.3 full-width background/centered content hosting, content-width integration, width-change anchor restoration and Night-to-app-Dark override are implemented on `feature/reader-settings-phase4`; the user's Windows x64 build/test and targeted smoke test are pending. Phase 4.4 unified Reader Settings dialog, system font selector, live sample preview and Apply/Cancel transaction are implemented on the same branch; Windows x64 build/test and targeted UI smoke test are pending. Starting 4.4 does not imply Phase 4.3 acceptance.
+Status: Phase 1 and Phase 2 are accepted. Phase 3 is integrated into TextLayoutEngine and TextCanvas; the user confirmed the proportional-line overlap fix on the dedicated baseline branch, while remaining Phase 3 interaction checks are pending. Phase 4.1 and 4.2 are implemented and user-tested. Phase 4.3 full-width background/centered content hosting, content-width integration, width-change anchor restoration and Night-to-app-Dark override are implemented on `feature/reader-settings-phase4`; user UI verification is in progress. Phase 4.4 is implemented as a non-modal right-side live ReaderSettingsPane (not a ContentDialog): settings apply immediately and are saved with debounce, the left reader remains wheel-scrollable while the pane is open, and outside clicks close the pane. The latest user screenshots confirm the pane opens, but BUG-018 (opaque panel/button backgrounds) and BUG-019 (reserve a dedicated width for the right tool rail) remain unresolved. Phase 4.3/4.4 are not yet accepted.
 
 ## Current implementation status (2026-11-05)
 
@@ -108,7 +108,7 @@ The proportional backend must measure the active font's actual space advance whe
 - The inherited font-family and Zoom quick commands now initialize from and write to ReaderSettings; legacy root FontFamily/FontSize values are still synchronized for backward compatibility.
 - Added SettingsStore tests for nested round-trip, defaults, legacy migration, explicit Reader precedence and invalid-value normalization.
 - **Validation status:** the user ran `dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` successfully and `dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64` passed 983/983 tests (0 failed, 0 skipped). The build reported one non-blocking xUnit2031 analyzer warning at `ProportionalTextLayoutEngineTests.cs(310,42)`; it recommended the predicate overload of `Assert.Single`. The latest branch has changed that assertion to the predicate overload; disappearance of the warning awaits the next user build. The 983-test result covers Phase 4.1 and predates the Phase 4.2 tests below.
-- Phase 4.2 is implemented and user-tested. Phase 4.3 content-width hosting and Night-to-app-Dark linkage are implemented; the user's Windows x64 build/test and targeted smoke test are pending. Phase 4.4 the visible Reader Settings dialog has not started.
+- Phase 4.2 is implemented and user-tested. Phase 4.3 content-width hosting and Night-to-app-Dark linkage are implemented; user UI verification is in progress. Phase 4.4 is implemented as a right-side live settings panel; BUG-018 and BUG-019 remain pending.
 
 ## Phase 4.2 implementation status (2026-11-05; user-tested)
 
@@ -118,7 +118,7 @@ The proportional backend must measure the active font's actual space advance whe
 - Typography refresh captures the first visible row's original-source UTF-16 start position and restores the nearest visual row containing that source position after reflow. Added `TextLayoutEngine.SetViewportAnchor` and regression coverage for wrapping changes; the engine continues to create layouts on demand rather than reflowing the whole novel.
 - Added 11 ReaderPalette tests (three presets, fallback, High Contrast role mapping and preset separation) and two proportional-engine tests (line-spacing option propagation and viewport-anchor restoration). The default `Microsoft YaHei` font is also present in the existing quick Font menu so its selected state is visible.
 - **Validation status:** the user tested the current `feature/reader-settings-phase4` code and reported that the application runs normally with no issues found. The user did not provide an exact build/test summary, test count or analyzer-warning count, so no precise totals are claimed. This user feedback supersedes the earlier pending-validation status; the 13 Phase 4.2 tests are part of the submitted code.
-- Phase 4.3 content-width host and Night-to-app-Dark linkage are implemented, pending user build/test and smoke verification. Phase 4.4 settings dialog remains pending. No new application-chrome typography/theme controls have been added.
+- Phase 4.3 content-width host and Night-to-app-Dark linkage are implemented, pending complete user smoke verification. Phase 4.4 right-side live settings panel is implemented and visible in the user's latest screenshots. BUG-018 (panel/button opacity) and BUG-019 (dedicated right-rail layout reservation) remain unresolved. No new application-chrome typography/theme controls have been added.
 
 ## Phase 4 — global reader settings architecture (agreed)
 
@@ -151,56 +151,67 @@ The proportional backend must measure the active font's actual space advance whe
 - `TextLayoutOptions` already carries `FontFamily`, `FontSize`, `MaxWidth`, `WordWrap` and `LineSpacingMultiplier`. Phase 4 reuses the existing contract/provider path and cache identity/invalidation; do not create a second layout engine.
 - Font, size, line-spacing and width changes invalidate only affected visible/near-visible layout objects. Keep the bounded native-layout cache and the positional LineProvider pipeline; never load or synchronously reflow the entire novel.
 - Width is implemented by a full-width `ReaderViewport` background host and a centered `ReaderContentHost`. `ContentWidthDip` caps the `TextCanvas` width itself; the adjacent 6-DIP find/bookmark marker ruler is additional and remains aligned with the text surface. A value of zero uses all available text width after reserving the ruler. The full viewport keeps one continuous reader background. On width changes, capture the first visible source UTF-16 position before syncing the new viewport width, then restore it with the existing `SetViewportAnchor` path and regenerate visible layouts on demand.
+- Current known gap: `ReaderOverlayHost` and `ReaderToolsRail` are overlaid above the reader and the tool rail width is not yet subtracted from the available content width. BUG-019 requires a dedicated layout region for the right tool rail; the centered content width and `TextLayoutOptions.MaxWidth` must be based on the remaining reader viewport after that reservation. The marker ruler and all annotation geometry/hit testing must stay in the same coordinate system.
 - Reader colors are rendering-only. The Night preset's temporary application-theme override is a window-level presentation effect; it must not alter document offsets, ChapterId values, annotation anchors, SQLite schemas or project files.
 - Keep the current Win2D/DirectWrite layout provider as the single source of truth for drawing, hit testing, caret, selection and annotation geometry.
 
 ### Settings interaction
 
-- Add one unified Reader Settings dialog reachable from the View menu.
-- The dialog edits a temporary settings snapshot. Apply updates the active reader immediately and persists the nested global reader settings; Cancel discards pending changes and leaves the current reader unchanged.
-- The existing font-family and Zoom quick actions, if retained, operate on the same reader settings model. They must not become separate application-chrome settings.
-- The first version provides system-installed font selection, font size, line spacing, maximum content width/adaptive width, and the three preset reader themes. Selecting Night temporarily forces application chrome to Dark while preserving the saved global theme preference; Paper/Warm do not change it. Custom RGB colors, imported font files and per-project overrides are non-goals.
+- `View → Reader Settings...` and the right-edge gear button toggle the same non-modal `ReaderSettingsPane` hosted in the reader overlay.
+- The panel edits the global ReaderSettings directly. Each control change is applied to the existing TextCanvas immediately; MainWindow updates the existing settings object and schedules a debounced SettingsStore save. Closing the panel flushes any pending save. There is no preview transaction, Apply button, Cancel button or rollback-on-close.
+- While the panel is open, the left reader remains visible and wheel-scrollable. TextCanvas enters a passive interaction state: text selection, annotation clicks, context menus, double-tap word selection and keyboard navigation are suppressed; Ctrl+wheel does not change font size behind the panel.
+- A click outside both the panel and the tool rail closes the panel and is consumed so it cannot activate the underlying reader. The tool rail remains interactive while the panel is open.
+- The existing font-family and Zoom quick actions operate on the same ReaderSettings model. They must not become separate application-chrome settings.
+- The panel provides system-installed font selection, font size, line spacing, maximum content width/adaptive width, and the three preset reader themes. Selecting Night temporarily forces application chrome to Dark while preserving the saved global theme preference; Paper/Warm do not change it. Custom RGB colors, imported font files and per-project overrides are non-goals.
 - Switching projects does not change reader settings. Restarting the application restores the same global reader settings.
 
 ### Implementation slices
 
 1. **4.1 Settings model and compatibility:** add nested `ReaderSettings`, defaults, normalization and legacy JSON migration; add SettingsStore tests. No visible UI changes.
 2. **4.2 Layout/render integration — user-tested:** pass reader font, size and line spacing into the existing proportional layout contract; add reader-only palette resolution and preserve the viewport source anchor during re-layout. The user reports the current code runs normally with no issues found.
-3. **4.3 Content width — implemented, user verification pending:** introduce the full-width reader viewport/background and centered content host; `ContentWidthDip` controls `TextCanvas` width excluding the 6-DIP marker ruler; preserve the source UTF-16 viewport anchor on width changes; keep the ruler aligned; and temporarily force application chrome Dark while the reader theme is Night without changing the saved app-theme preference.
-4. **4.4 Settings UI — implemented, user verification pending:** `View → Reader Settings...` opens `ReaderSettingsDialog` (WinUI 3 ContentDialog); Win2D enumerates installed font families; controls edit a cloned ReaderSettings draft; sample preview and theme swatches reuse `ReaderPalette`; MainWindow previews through the existing `TextCanvas.ApplyReaderSettings` path while suppressing `OnFontChanged` persistence; Apply saves the draft and legacy compatibility fields; Cancel/Esc/close restores the original snapshot. The old global Theme submenu is labelled Application Theme. Phase 4.3 local verification remains independently pending.
-5. **4.5 Acceptance:** explicit x64 build, Presentation/Core tests, then targeted Windows smoke tests for font/size/line spacing/width/theme, project switching, restart persistence, annotations and a 70MB+ novel.
+3. **4.3 Content width — implemented, user verification in progress:** full-width reader viewport/background, centered content host, `ContentWidthDip` integration, 6-DIP marker ruler alignment, source UTF-16 viewport-anchor restoration and Night-to-app-Dark linkage. BUG-019 remains: reserve a dedicated right-side tool-rail layout width and exclude it from the available text width before passing width to TextCanvas/TextLayoutEngine.
+4. **4.4 Settings UI — implemented as a live side panel, user verification in progress:** `View → Reader Settings...` and the right-edge gear button open the same `ReaderSettingsPane` UserControl. Win2D enumerates installed font families; controls edit a ReaderSettings snapshot and send changes to MainWindow; MainWindow applies through `TextCanvas.ApplyReaderSettings`, updates legacy compatibility fields and saves with debounce. No preview sample, Apply or Cancel transaction exists. The left reader remains wheel-scrollable in passive mode; outside clicks close the panel; the tool rail remains interactive. BUG-018 and BUG-019 remain unresolved.
+5. **4.5 Acceptance:** explicit x64 build, Presentation/Core tests, then targeted Windows smoke tests for font/size/line spacing/width/theme, opaque panel/button surfaces, dedicated rail reservation, project switching, restart persistence, annotations and a 70MB+ novel.
 
-### Phase 4.4 approved implementation design
+### Phase 4.4 actual implementation architecture and pending UI issues
 
-- Add `View → Reader Settings...`; rename the existing global `Theme` submenu to `Application Theme` so it is visibly distinct from the dialog's `Reading Background` section.
-- Implement `ReaderSettingsDialog.xaml` and its code-behind as a WinUI 3 `ContentDialog`. The dialog owns its controls, cloned draft, installed-font choices and sample preview; it never reads/writes the settings file and never directly owns TextCanvas.
-- Enumerate installed font families with the already-referenced Win2D API `CanvasTextFormat.GetSystemFontFamilies(ApplicationLanguages.Languages)`. Sort and de-duplicate names. If the persisted current family is not found, insert it as the selected first item so opening/cancelling the dialog cannot silently rewrite the user's saved value.
-- Controls: font-family ComboBox; font-size Slider (6–72 DIP); line-spacing Slider (0.8–2.5); content-width NumberBox (480–2400 DIP, with a visible DIP unit) plus an adaptive-width option mapped to `ContentWidthDip=0`; mutually exclusive Paper/Warm/Night choices; and a sample surface preview whose colors come from the existing `ReaderPalette` presets.
-- MainWindow owns the transaction. On open it clones the current ReaderSettings snapshot. Draft changes call the existing `TextCanvas.ApplyReaderSettings` through a preview callback. Because a typography refresh raises `FontChanged` and the existing `OnFontChanged` normally persists immediately, MainWindow must suppress that persistence while previewing while still updating the Zoom label and quick-font menu state.
-- Apply copies the final draft to `settings.Reader`, synchronizes legacy root `FontFamily`/`FontSize` compatibility values and calls the existing `SettingsStore.Save`. Cancel, ESC, close or a failed dialog restores the original snapshot through `ApplyReaderSettings`; no draft value is persisted.
-- Set `XamlRoot` from `RootGrid.XamlRoot` before `ContentDialog.ShowAsync`. Localize the menu and dialog strings in the existing en-US and pt-BR resource files.
-- Keep the current Font and Zoom quick actions; they continue to mutate the same ReaderSettings model through their existing event path. The dialog adds no new settings schema, database migration, layout engine, project-level preference or annotation change.
-- Windows High Contrast continues to override reader palette colors through the existing resolver. The dialog explains this rather than adding custom RGB controls.
-- Actual implementation: `ReaderSettingsDialog.xaml/.xaml.cs` contains the ComboBox, 6–72 DIP font-size slider, 0.8–2.5 line-spacing slider, 480–2400 DIP NumberBox and adaptive-width checkbox, three radio theme cards, and a sample TextBlock. Theme card swatches and sample colors are both derived from `ReaderPalette` at runtime; no palette values are duplicated in XAML. The sample uses a full-width preview viewport plus a centered inner text column whose width changes with `ContentWidthDip` (zero fills the preview width); the preview uses BlockLineHeight to represent the full 0.8–2.5 line-spacing range and can grow vertically at large font/line-spacing values.
-- `MainWindow.ReaderSettings_Click` clones the saved reader settings, assigns `RootGrid.XamlRoot`, subscribes to `PreviewChanged`, and handles `ContentDialogResult.Primary`. The dialog returns a detached final snapshot; Apply updates `settings.Reader`, legacy `FontFamily`/`FontSize`, and `SettingsStore`. All other dialog results restore the original snapshot. The preview guard only suppresses persistence; it still refreshes the status zoom text and quick Font menu tick.
-- Resource keys were added to both existing en-US and pt-BR resource files. The existing Font and Zoom quick actions remain and continue using the same ReaderSettings model.
-- Validation: Release x64 build and solution tests, followed by targeted UI checks for font enumeration/selection, numeric ranges, adaptive width, all three palettes, preview, Apply persistence, Cancel/Esc rollback, Night application-theme override, project switching and restart persistence. Phase 4.3 remains a separate pending user-verification item. The code is submitted but has not yet been built or tested in a Windows environment. After the user reported that clicking Reader Settings produced no visible response, the click handler was hardened in commit `fb32661f2d4baf467313e535f6cc750d16d5476a`: it logs click receipt and each dialog stage, yields once so the MenuFlyout can close before `ContentDialog.ShowAsync`, validates/falls back between the main root and content XamlRoot, and shows a user-visible error dialog if construction or display fails instead of silently swallowing the exception. The user-provided log then isolated the actual failure to assigning the managed font list to `FontFamilyComboBox.ItemsSource` in the dialog constructor (WinUI `ArgumentException: Value does not fall within the expected range`). The implementation now populates the initially empty ComboBox `Items` collection one item at a time while the existing initialization guard is active, retaining the selected current font and suppressing initialization-time selection callbacks. Windows x64 build and user retest remain pending.
+**Control and host ownership**
+
+- `ReaderSettingsPane.xaml/.cs` is a WinUI `UserControl`, not a `ContentDialog`. It owns only its controls and a detached in-memory ReaderSettings snapshot.
+- `MainWindow.xaml` hosts it inside `ReaderSettingsPanel` under `ReaderOverlayHost`; `ReaderToolsRail` is a sibling overlay containing the right-edge settings button. The View menu item and gear button both call `ToggleReaderSettingsPanel()`.
+- `MainWindow.xaml.cs` owns the settings lifecycle: closes mutually exclusive annotation/directory panes, loads the current settings into the control, handles outside clicks, applies changes to TextCanvas, synchronizes legacy fields, debounces persistence and flushes on close.
+- `TextCanvas.IsReaderInteractionPassive` keeps wheel scrolling available while suppressing selection, annotation marker clicks, context menu, double-tap selection and keyboard navigation. The reader does not gain a scrollbar.
+
+**Control and data flow**
+
+1. `ReaderSettingsPane.LoadSettings(settings.Reader)` clones the global settings and populates installed fonts, sliders, width controls and theme radio buttons without emitting a change event.
+2. Each control change updates the pane's draft and raises `SettingsChanged` with a detached ReaderSettings clone.
+3. MainWindow applies the snapshot through the existing `View.ApplyReaderSettings()` path, updates `settings.Reader` and legacy `settings.FontFamily/FontSize`, then schedules the existing SettingsStore save timer.
+4. Saving uses the existing `SettingsStore.Save(settings)`; a failed save leaves the pending flag set for retry. Closing the panel stops the debounce timer and flushes pending changes.
+5. The panel close button raises `CloseRequested`. A root pointer press outside both `ReaderSettingsPanel` and `ReaderToolsRail` closes the panel and marks the event handled. The rail is explicitly exempt so its controls remain interactive.
+6. There is no Apply/Cancel or preview rollback: changes are live and close only hides the panel.
+
+**Controls**
+
+- System font ComboBox via `CanvasTextFormat.GetSystemFontFamilies(ApplicationLanguages.Languages)`, with fallback enumeration and preservation of the currently saved font if it is not found.
+- Font size Slider: 6–72 DIP.
+- Line spacing Slider: 0.8–2.5.
+- Content width NumberBox: 480–2400 DIP; adaptive-width checkbox maps to `ContentWidthDip=0`.
+- Mutually exclusive Paper/Warm/Night radio choices; swatches use the existing `ReaderPalette`.
+- Windows High Contrast continues to override the effective reader palette. No custom RGB picker, imported fonts or per-project settings.
+
+**Pending UI issues confirmed by user screenshots**
+
+- **BUG-018 — opaque panel and tool button backgrounds:** `ReaderSettingsPanel` currently uses `LayerFillColorDefaultBrush`; the gear button uses `CardBackgroundFillColorDefaultBrush`. In the user's actual UI these appear translucent and allow novel text to show through. Replace them with theme-aware but fully opaque surfaces and verify adequate text/border contrast in both application Light and Dark themes.
+- **BUG-019 — reserve a dedicated tool-rail layout region:** the current `ReaderOverlayHost` is layered over the reader and the `ReaderToolsRail` has no reserved layout column. Adaptive/max content width can therefore extend under the right-side button. Reserve a fixed right-side rail width in the parent layout and calculate the centered content width from the remaining reader viewport. Keep the 6-DIP marker ruler, TextCanvas layout width, annotation drawing and hit-testing coordinates aligned. Do not treat a Margin-only adjustment or visual overlay as completion.
+- The user explicitly asked to record these two issues first; do not fix them in the current documentation-only handoff step.
+
+**Validation state**
+
+- The user's latest screenshots show the app running and the live side panel opening/closing. They do not include a full build/test transcript or test counts; do not claim automated tests passed.
+- Next local validation after BUG-018/019 fixes:
+  `dotnet build src/FujiyNotepad.slnx --configuration Release -p:Platform=x64`
+  `dotnet test src/FujiyNotepad.slnx --configuration Release -p:Platform=x64`
+- UI smoke tests: menu and gear toggle; panel outside-click dismissal without triggering the reader; wheel scroll while open; tool rail stays clickable; opaque panel and button in both app themes; adaptive and explicit widths exclude the rail; all reader settings apply immediately and persist after restart.
 
 ### Non-goals and protected behaviour
-
-- No per-project reader settings.
-- No new settings for application menus, toolbar, status bar, annotation panels or dialogs.
-- No SQLite or novel-project schema migration.
-- No changes to durable UTF-16 annotation anchors or chapter offsets.
-- No whole-document in-memory loading/reflow.
-- No full visual redesign of the main window in Phase 4; overall chrome and annotation-workspace visual design remains a later UI-optimization stage.
-
-## Phase 1 acceptance
-
-Phase 1 was locally accepted on 2026-11-04: Release x64 build succeeded and all 501 Presentation tests passed.
-
-- The Presentation project contains no WinUI/Win2D references in the new contract.
-- All public text positions in the contract are explicitly source UTF-16 positions.
-- Hit-test results can represent supplementary characters without splitting surrogate pairs.
-- Empty lines and multi-rectangle selection/annotation geometry are part of the contract.
-- The existing renderer, annotation storage and document-offset mapping remain unchanged.
