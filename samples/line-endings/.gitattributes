@@ -1,3 +1,0 @@
-# Exact byte fixtures for the line-ending indicator (CRLF/LF/BOMs). Treat as binary so git never
-# applies text or end-of-line normalization, which would corrupt the very thing under test.
-*.txt binary

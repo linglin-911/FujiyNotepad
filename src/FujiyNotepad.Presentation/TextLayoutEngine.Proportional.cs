@@ -787,6 +787,12 @@ public sealed partial class TextLayoutEngine
             : localY;
         TextLayoutHitTestResult pointerHit = layout.HitTest(localX, hitTestY);
         int nearestCaret = Math.Clamp(pointerHit.CaretIndex, 0, layout.SourceText.Length);
+        // A multi-unit shaping cluster may expose a trailing caret that is not represented by the generic
+        // grapheme boundary map. Keep the cluster's source start as the marker position so its full range
+        // and trailing-side information can be returned intact.
+        int preferredColumn = pointerHit.IsInside && pointerHit.SourceLength > 1
+            ? pointerHit.SourceStartIndex
+            : nearestCaret;
 
         int intersectStart = 0;
         int intersectEnd = layout.SourceText.Length;
@@ -820,7 +826,6 @@ public sealed partial class TextLayoutEngine
                 intersectEnd = Math.Min(intersectEnd, end);
 
                 int lastCaret = Math.Max(start, layout.GetPreviousCaretIndex(end));
-                int preferredColumn = nearestCaret;
                 int candidateColumn = Math.Clamp(preferredColumn, start, lastCaret);
                 int distance = Math.Abs(candidateColumn - nearestCaret);
                 if (distance < fallbackDistance)
@@ -840,7 +845,6 @@ public sealed partial class TextLayoutEngine
         {
             int lastCommonCaret = Math.Max(
                 intersectStart, layout.GetPreviousCaretIndex(intersectEnd));
-            int preferredColumn = nearestCaret;
             int selectedColumn = Math.Clamp(preferredColumn, intersectStart, lastCommonCaret);
             position = new TextPosition(hitRow.LineIndex, selectedColumn);
             if (pointerHit.IsInside && pointerHit.SourceLength > 0

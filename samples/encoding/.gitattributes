@@ -1,3 +1,0 @@
-# These .txt files are exact byte fixtures for encoding tests (BOMs, UTF-16/32 NULs, CRLF). Treat them
-# as binary so git never applies text or end-of-line normalization, which would corrupt the bytes.
-*.txt binary

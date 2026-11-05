@@ -1,1 +1,0 @@
-- **Text selection now follows the visible characters accurately** — mouse hit-testing, selection highlighting and copying now share the same font layout, avoiding shifted selections in Chinese and mixed-script text.
