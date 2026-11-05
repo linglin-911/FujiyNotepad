@@ -1093,3 +1093,9 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 本轮 Popup 迁移与锚点修复提交：6b20f972f7d2f20033071df916454c58afb5df5e；按钮固定在卡片底部：94981f9fc11f675862966730082593cacd5539b9。
 
 **下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否缩短至上一轮的一半；编辑器是否紧贴选区最后一行下方、靠近阅读区底部时是否自动上移并贴近底边；编辑器底部是否不再出现横向滚动条、X 和保存按钮是否始终可见；编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线；点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若 Popup 定位或输入透传仍有偏差，再根据实际运行截图调整。未完成 Windows 实测前不得标记为验收通过。
+
+
+**2026-11-06 第三轮编译修复：**
+- 用户 Windows x64 Release build 报错 CS0103：MainWindow.SmallAnnotations.cs 第 774 行仍引用旧变量 pendingSmallComposerPosition；上一轮将其重命名为 pendingSmallComposerAnchor 时遗漏了该引用。
+- 已将该处清理逻辑同步改为 pendingSmallComposerAnchor = null，并检查全部 6 个 MainWindow partial C# 文件，确认不再存在旧变量名引用。
+- WMC1509、WMC0001、WMC9999 暂不单独修改；先修复 C# 首要错误后重新构建，再根据剩余错误判断是否存在独立 XAML 问题。
