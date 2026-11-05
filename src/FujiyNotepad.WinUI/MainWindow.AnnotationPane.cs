@@ -211,9 +211,6 @@ public sealed partial class MainWindow
 
     private void OnTextSelectionCompleted(double x, double y)
     {
-        if (activeAnnotationStore is null || activeNovelProject is null || filteredSource is not null)
-            return;
-
         CloseSmallAnnotationComposer();
         selectionActionsFlyout?.Hide();
         lastTextSelectionPoint = new Point(x, y);
@@ -243,27 +240,32 @@ public sealed partial class MainWindow
             selectionActionsFlyout?.Hide();
         };
 
-        var smallContent = new StackPanel
-        {
-            Spacing = 3,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        smallContent.Children.Add(new SymbolIcon(Symbol.Edit));
-        smallContent.Children.Add(new TextBlock { Text = "小批", FontSize = 12 });
-        var smallButton = new Button
-        {
-            Content = smallContent,
-            MinWidth = 68,
-            Padding = new Thickness(10, 7, 10, 7),
-        };
-        smallButton.Click += (_, _) =>
-        {
-            selectionActionsFlyout?.Hide();
-            CreateSmallAnnotationFromSelection();
-        };
-
         actions.Children.Add(copyButton);
-        actions.Children.Add(smallButton);
+
+        if (activeAnnotationStore is not null
+            && activeNovelProject is not null
+            && filteredSource is null)
+        {
+            var smallContent = new StackPanel
+            {
+                Spacing = 3,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            smallContent.Children.Add(new SymbolIcon(Symbol.Edit));
+            smallContent.Children.Add(new TextBlock { Text = "小批", FontSize = 12 });
+            var smallButton = new Button
+            {
+                Content = smallContent,
+                MinWidth = 68,
+                Padding = new Thickness(10, 7, 10, 7),
+            };
+            smallButton.Click += (_, _) =>
+            {
+                selectionActionsFlyout?.Hide();
+                CreateSmallAnnotationFromSelection();
+            };
+            actions.Children.Add(smallButton);
+        }
         selectionActionsFlyout = new Flyout
         {
             Content = new Border
