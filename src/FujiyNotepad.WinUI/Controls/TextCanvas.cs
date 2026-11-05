@@ -81,7 +81,9 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer autoScrollTimer;
 
         private bool isSelecting;
+        private bool hasStartedDragSelection;
         private bool isReaderInteractionPassive;
+        private const double DragSelectionThresholdDip = 4d;
         private Point lastPointer;
         private Point pointerDownPosition;
         private TextPosition contextMenuPosition;
@@ -808,6 +810,7 @@ namespace FujiyNotepad.WinUI.Controls
 
             bool shift = IsDown(VirtualKey.Shift);
             engine.PointerPressCharacter(hit, hitSourceLength, shift);
+            hasStartedDragSelection = false;
             isSelecting = true;
             CapturePointer(e.Pointer);
             e.Handled = true;
@@ -819,8 +822,23 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 return;
             }
-            Ready();
             lastPointer = e.GetCurrentPoint(this).Position;
+            if (!hasStartedDragSelection)
+            {
+                double deltaX = lastPointer.X - pointerDownPosition.X;
+                double deltaY = lastPointer.Y - pointerDownPosition.Y;
+                if (deltaX * deltaX + deltaY * deltaY
+                    <= DragSelectionThresholdDip * DragSelectionThresholdDip)
+                {
+                    return;
+                }
+
+                // A mouse-down is only a pending character anchor. Do not create a selection until
+                // the pointer has moved far enough to represent an intentional drag.
+                hasStartedDragSelection = true;
+            }
+
+            Ready();
             engine.ScrollForPointer(lastPointer.Y);
             TextPosition hit = HitTestTextCharacter(
                 lastPointer.X, lastPointer.Y, out bool hitCharacter, out int hitSourceLength);
@@ -837,10 +855,12 @@ namespace FujiyNotepad.WinUI.Controls
                 return;
 
             Point released = e.GetCurrentPoint(this).Position;
-            bool isClick = Math.Abs(released.X - pointerDownPosition.X) <= 4
-                           && Math.Abs(released.Y - pointerDownPosition.Y) <= 4;
+            bool isClick = !hasStartedDragSelection
+                           && Math.Abs(released.X - pointerDownPosition.X) <= DragSelectionThresholdDip
+                           && Math.Abs(released.Y - pointerDownPosition.Y) <= DragSelectionThresholdDip;
 
             isSelecting = false;
+            hasStartedDragSelection = false;
             autoScrollTimer.Stop();
             ReleasePointerCapture(e.Pointer);
 
@@ -921,7 +941,8 @@ namespace FujiyNotepad.WinUI.Controls
         // extending the selection) on a timer even if the pointer stops moving.
         private void UpdateAutoScroll()
         {
-            if (isSelecting && (lastPointer.Y < 0 || lastPointer.Y > ActualHeight))
+            if (isSelecting && hasStartedDragSelection
+                && (lastPointer.Y < 0 || lastPointer.Y > ActualHeight))
             {
                 autoScrollTimer.Start();
             }
@@ -933,7 +954,8 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void AutoScrollTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
         {
-            if (!isSelecting || (lastPointer.Y >= 0 && lastPointer.Y <= ActualHeight))
+            if (!isSelecting || !hasStartedDragSelection
+                || (lastPointer.Y >= 0 && lastPointer.Y <= ActualHeight))
             {
                 autoScrollTimer.Stop();
                 return;
