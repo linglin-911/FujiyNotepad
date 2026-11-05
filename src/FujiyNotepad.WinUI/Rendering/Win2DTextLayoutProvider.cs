@@ -242,7 +242,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (end <= start)
             return Array.Empty<TextLayoutRect>();
 
-        const double horizontalPadding = 0.75;
+        const double horizontalPadding = 1.25;
         var rectangles = new List<TextLayoutRect>();
         var rowTextBounds = new Dictionary<int, TextLayoutRect>();
 
@@ -353,17 +353,18 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             sampleStart = next;
         }
 
-        double maximumTextHeight = Math.Max(1, fontSize * 1.05);
+        double maximumTextHeight = Math.Max(1, fontSize * 1.2);
         double textHeight = foundTextMetrics
             ? Math.Min(rawHeight, maximumTextHeight)
-            : Math.Min(row.Height, Math.Max(1, fontSize));
+            : Math.Min(row.Height, Math.Max(1, fontSize * 1.1));
         double textTop = foundTextMetrics
             ? rawTop + (rawHeight - textHeight) / 2
             : row.Top + (row.Height - textHeight) / 2;
 
-        // Add only a small hit/selection cushion. Do not expand to fill the remaining baseline distance:
-        // that remainder is the user's configured line spacing, not part of the text rectangle.
-        double verticalPadding = Math.Min(0.5, Math.Max(0, (row.Height - textHeight) / 2));
+        // Keep the selection/hit rectangle slightly larger than the character area so it fully surrounds
+        // the visible glyphs. The available padding is still clamped to the visual row, leaving line spacing
+        // outside the text rectangle even when the user increases line spacing.
+        double verticalPadding = Math.Min(1.25, Math.Max(0, (row.Height - textHeight) / 2));
         textTop = Math.Max(row.Top, textTop - verticalPadding);
         double textBottom = Math.Min(
             row.Top + row.Height,
