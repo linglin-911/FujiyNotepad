@@ -235,15 +235,17 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
-    public void PointerDragCharacter_IncludesBothEndpointCharacters()
+    public void PointerDragCharacter_IncludesBothEndpointCharactersWithoutAddingNeighbours()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
         engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
         engine.PointerDragCharacter(new TextPosition(0, 3), sourceLength: 1);
 
-        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
-        Assert.Equal(new TextPosition(0, 4), engine.SelectionEnd);
+        Assert.Equal(0, engine.SelectionStart.Line);
+        Assert.Equal(1, engine.SelectionStart.Column);
+        Assert.Equal(0, engine.SelectionEnd.Line);
+        Assert.Equal(4, engine.SelectionEnd.Column);
     }
 
     [Fact]
@@ -254,8 +256,22 @@ public sealed class ProportionalTextLayoutEngineTests
         engine.PointerPressCharacter(new TextPosition(0, 3), sourceLength: 1, shift: false);
         engine.PointerDragCharacter(new TextPosition(0, 1), sourceLength: 1);
 
-        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
-        Assert.Equal(new TextPosition(0, 4), engine.SelectionEnd);
+        Assert.Equal(0, engine.SelectionStart.Line);
+        Assert.Equal(1, engine.SelectionStart.Column);
+        Assert.Equal(0, engine.SelectionEnd.Line);
+        Assert.Equal(4, engine.SelectionEnd.Column);
+    }
+
+    [Fact]
+    public void PointerDragCharacter_PreservesTheReportedShapingClusterLength()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 2, shift: false);
+        engine.PointerDragCharacter(new TextPosition(0, 4), sourceLength: 1);
+
+        Assert.Equal(1, engine.SelectionStart.Column);
+        Assert.Equal(5, engine.SelectionEnd.Column);
     }
 
     [Fact]
