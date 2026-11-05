@@ -353,10 +353,11 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             sampleStart = next;
         }
 
-        double maximumTextHeight = Math.Max(1, fontSize * 1.2);
+        double minimumTextHeight = Math.Max(1, fontSize * 1.05);
+        double maximumTextHeight = Math.Max(minimumTextHeight, fontSize * 1.2);
         double textHeight = foundTextMetrics
-            ? Math.Min(rawHeight, maximumTextHeight)
-            : Math.Min(row.Height, Math.Max(1, fontSize * 1.1));
+            ? Math.Min(row.Height, Math.Clamp(rawHeight, minimumTextHeight, maximumTextHeight))
+            : Math.Min(row.Height, maximumTextHeight);
         double textTop = foundTextMetrics
             ? rawTop + (rawHeight - textHeight) / 2
             : row.Top + (row.Height - textHeight) / 2;
