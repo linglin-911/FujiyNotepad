@@ -101,7 +101,7 @@ namespace FujiyNotepad.WinUI.Controls
         public event Action? ReaderThemeChanged;
         public event Action? ContentWidthChanged;
         public event Action<TextPosition>? CaretChanged;
-        public event Action<double, double>? TextSelectionCompleted;
+        public event Action<Point>? TextSelectionCompleted;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
         public event Action<TextPosition>? CreateChapterAnnotationRequested;
@@ -907,6 +907,25 @@ namespace FujiyNotepad.WinUI.Controls
             UpdateAutoScroll();
         }
 
+        private Point GetSelectionMenuAnchorPoint(Point fallback)
+        {
+            IReadOnlyList<VisibleLine> visibleLines =
+                engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            VisibleLine firstSelectedLine = visibleLines.FirstOrDefault(line => line.HasSelection);
+            if (!firstSelectedLine.HasSelection)
+                return fallback;
+
+            // Anchor the selection menu to the first visible row of the selected range, not the
+            // pointer-release position (which is commonly on the last line of a multi-line selection).
+            double x = firstSelectedLine.SelectionWidth > 0
+                ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
+                : fallback.X;
+            double y = Math.Max(4d, firstSelectedLine.Y - 4d);
+            return new Point(
+                Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                y);
+        }
+
         private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
         {
             if (!isSelecting)
@@ -927,7 +946,7 @@ namespace FujiyNotepad.WinUI.Controls
             ReleasePointerCapture(e.Pointer);
 
             if (!isClick && engine.HasSelection)
-                TextSelectionCompleted?.Invoke(released.X, released.Y);
+                TextSelectionCompleted?.Invoke(GetSelectionMenuAnchorPoint(released));
 
             if (isClick && hadSelectionAnchor)
             {
