@@ -145,6 +145,7 @@ internal sealed class Win2DTextLayoutProvider : ITextLayoutProvider
 /// </summary>
 internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 {
+    private const double MaxNativeLayoutDimension = 10_000_000;
     private readonly CanvasTextLayout layout;
     private readonly CanvasTextFormat format;
     private readonly TextElementBoundaryMap boundaryMap;
