@@ -231,7 +231,7 @@ namespace FujiyNotepad.WinUI
                             itemToSelect = item;
                     }
 
-                    SmallAnnotationCount.Text = $"{summaries.Count} 条批注";
+                    SmallAnnotationCount.Text = $"{summaries.Count} 条小批注";
                     SmallAnnotationEmptyState.Text = summaries.Count > 0
                         ? ""
                         : chapterId is null
