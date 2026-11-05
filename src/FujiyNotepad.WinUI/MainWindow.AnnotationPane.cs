@@ -212,12 +212,12 @@ public sealed partial class MainWindow
             await RefreshSmallAnnotationsAsync();
     }
 
-    private void OnTextSelectionCompleted(Point anchor)
+    private void OnTextSelectionCompleted(Point menuAnchor, Point composerAnchor)
     {
         CloseSmallAnnotationComposer();
         pendingSmallComposerPosition = null;
         selectionActionsFlyout?.Hide();
-        lastTextSelectionPoint = anchor;
+        lastTextSelectionPoint = composerAnchor;
         hasLastTextSelectionPoint = true;
 
         Brush menuBackground = GetAnnotationFlyoutBackground();
@@ -354,7 +354,7 @@ public sealed partial class MainWindow
         };
         selectionFlyout.ShowAt(View, new FlyoutShowOptions
         {
-            Position = anchor,
+            Position = menuAnchor,
             Placement = FlyoutPlacementMode.Top,
         });
     }
