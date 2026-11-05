@@ -49,6 +49,7 @@ namespace FujiyNotepad.WinUI
 
             isInitializing = false;
             UpdateDraftFromControls(notifyPreview: false);
+            UpdateThemeSwatches();
         }
 
         /// <summary>Returns a detached copy of the values currently represented by the controls.</summary>
@@ -160,6 +161,7 @@ namespace FujiyNotepad.WinUI
             draftSettings.Normalize();
 
             UpdateValueLabels();
+            UpdateThemeSwatches();
             UpdateSamplePreview();
 
             if (notifyPreview)
@@ -179,6 +181,30 @@ namespace FujiyNotepad.WinUI
         {
             FontSizeValueText.Text = $"{draftSettings.FontSizeDip:0} DIP";
             LineSpacingValueText.Text = $"{draftSettings.LineSpacingMultiplier:0.0}×";
+        }
+
+        private void UpdateThemeSwatches()
+        {
+            var paper = ReaderPalette.Paper;
+            PaperThemeSwatch.Background = new SolidColorBrush(ToColor(paper.Background));
+            PaperThemeSwatch.BorderBrush = new SolidColorBrush(ToColor(
+                draftSettings.Theme == "Paper" ? paper.AnnotationMarker : paper.GutterSeparator));
+            PaperThemeSwatchText.Foreground = new SolidColorBrush(ToColor(paper.Text));
+            PaperThemeSwatch.BorderThickness = new Thickness(draftSettings.Theme == "Paper" ? 2 : 1);
+
+            var warm = ReaderPalette.Warm;
+            WarmThemeSwatch.Background = new SolidColorBrush(ToColor(warm.Background));
+            WarmThemeSwatch.BorderBrush = new SolidColorBrush(ToColor(
+                draftSettings.Theme == "Warm" ? warm.AnnotationMarker : warm.GutterSeparator));
+            WarmThemeSwatchText.Foreground = new SolidColorBrush(ToColor(warm.Text));
+            WarmThemeSwatch.BorderThickness = new Thickness(draftSettings.Theme == "Warm" ? 2 : 1);
+
+            var night = ReaderPalette.Night;
+            NightThemeSwatch.Background = new SolidColorBrush(ToColor(night.Background));
+            NightThemeSwatch.BorderBrush = new SolidColorBrush(ToColor(
+                draftSettings.Theme == "Night" ? night.AnnotationMarker : night.GutterSeparator));
+            NightThemeSwatchText.Foreground = new SolidColorBrush(ToColor(night.Text));
+            NightThemeSwatch.BorderThickness = new Thickness(draftSettings.Theme == "Night" ? 2 : 1);
         }
 
         private void UpdateSamplePreview()

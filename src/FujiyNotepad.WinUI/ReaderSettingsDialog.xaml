@@ -9,7 +9,7 @@
     CloseButtonText="Cancel"
     DefaultButton="Primary">
 
-    <ScrollViewer Width="560" MaxHeight="600"
+    <ScrollViewer Width="500" MaxHeight="600"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
         <StackPanel Padding="4" Spacing="18">
@@ -84,11 +84,9 @@
                     <RadioButton x:Name="PaperThemeRadio" GroupName="ReaderTheme"
                                  Tag="Paper" Checked="ThemeRadio_Checked">
                         <StackPanel Width="112" Spacing="5">
-                            <Border Height="42" CornerRadius="5"
-                                    Background="#FFFFFCF5"
-                                    BorderBrush="#FFE7E0D3" BorderThickness="1">
-                                <TextBlock Text="Aa" FontSize="23"
-                                           Foreground="#FF302D27"
+                            <Border x:Name="PaperThemeSwatch" Height="42" CornerRadius="5"
+                                    BorderThickness="1">
+                                <TextBlock x:Name="PaperThemeSwatchText" Text="Aa" FontSize="23"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
@@ -99,11 +97,9 @@
                     <RadioButton x:Name="WarmThemeRadio" GroupName="ReaderTheme"
                                  Tag="Warm" Checked="ThemeRadio_Checked">
                         <StackPanel Width="112" Spacing="5">
-                            <Border Height="42" CornerRadius="5"
-                                    Background="#FFF2E6D0"
-                                    BorderBrush="#FFDBCEB8" BorderThickness="1">
-                                <TextBlock Text="Aa" FontSize="23"
-                                           Foreground="#FF3D3025"
+                            <Border x:Name="WarmThemeSwatch" Height="42" CornerRadius="5"
+                                    BorderThickness="1">
+                                <TextBlock x:Name="WarmThemeSwatchText" Text="Aa" FontSize="23"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
@@ -114,11 +110,9 @@
                     <RadioButton x:Name="NightThemeRadio" GroupName="ReaderTheme"
                                  Tag="Night" Checked="ThemeRadio_Checked">
                         <StackPanel Width="112" Spacing="5">
-                            <Border Height="42" CornerRadius="5"
-                                    Background="#FF1D2028"
-                                    BorderBrush="#FF373C47" BorderThickness="1">
-                                <TextBlock Text="Aa" FontSize="23"
-                                           Foreground="#FFE3E5EA"
+                            <Border x:Name="NightThemeSwatch" Height="42" CornerRadius="5"
+                                    BorderThickness="1">
+                                <TextBlock x:Name="NightThemeSwatchText" Text="Aa" FontSize="23"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
