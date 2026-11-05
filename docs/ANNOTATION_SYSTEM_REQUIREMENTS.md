@@ -1086,6 +1086,6 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 - 本轮代码提交：c21966e7ce7c49781f2e6a6facc7d9874a1eb281；阅读区输入透传补充：9f08ff6686adeae9295a48f2096c777bded58ff7。
 
-- WinUI 3 API 纠正：FlyoutBase 不提供 IsLightDismissEnabled；现通过 Flyout.Closing + FlyoutBaseClosingEventArgs.Cancel 实现外部关闭拦截，避免使用 Popup 专属属性。
+- WinUI 3 API 纠正：FlyoutBase 不提供 IsLightDismissEnabled；现通过 Flyout.Closing + FlyoutBaseClosingEventArgs.Cancel 实现外部关闭拦截，避免使用 Popup 专属属性。 代码修复提交：ab8e26e0f4de87309acc97ca525ec26678b94a3c。
 
 **下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否明显缩短、输入浮层宽度是否增加约 50%、编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线、编辑图标和缩小后的按钮位置是否正确、点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若滚轮仍被 Flyout 截断，再针对 Popup 输入路由单独处理。未完成 Windows 实测前不得标记为验收通过。
