@@ -3,6 +3,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.UI;
 
@@ -210,38 +212,57 @@ public sealed partial class MainWindow
             await RefreshSmallAnnotationsAsync();
     }
 
-    private void OnTextSelectionCompleted(double x, double y)
+    private void OnTextSelectionCompleted(Point anchor)
     {
         CloseSmallAnnotationComposer();
         pendingSmallComposerPosition = null;
         selectionActionsFlyout?.Hide();
-        lastTextSelectionPoint = new Point(x, y);
+        lastTextSelectionPoint = anchor;
         hasLastTextSelectionPoint = true;
 
+        Brush menuBackground = GetAnnotationFlyoutBackground();
+        Brush menuForeground = new SolidColorBrush(Colors.White);
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
+            Spacing = 2,
         };
+
         var copyContent = new StackPanel
         {
-            Spacing = 3,
+            Spacing = 2,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        copyContent.Children.Add(new SymbolIcon(Symbol.Copy));
-        copyContent.Children.Add(new TextBlock { Text = "复制", FontSize = 12 });
+        copyContent.Children.Add(new SymbolIcon
+        {
+            Symbol = Symbol.Copy,
+            FontSize = 19,
+            Foreground = menuForeground,
+        });
+        copyContent.Children.Add(new TextBlock
+        {
+            Text = "复制",
+            FontSize = 12,
+            Foreground = menuForeground,
+        });
         var copyButton = new Button
         {
             Content = copyContent,
-            MinWidth = 68,
-            Padding = new Thickness(10, 7, 10, 7),
+            Width = 76,
+            Height = 58,
+            Padding = new Thickness(4),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(15),
+            Foreground = menuForeground,
+            UseSystemFocusVisuals = false,
         };
         copyButton.Click += (_, _) =>
         {
             View.CopySelection();
             selectionActionsFlyout?.Hide();
         };
-
         actions.Children.Add(copyButton);
 
         if (activeAnnotationStore is not null
@@ -250,16 +271,33 @@ public sealed partial class MainWindow
         {
             var smallContent = new StackPanel
             {
-                Spacing = 3,
+                Spacing = 2,
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
-            smallContent.Children.Add(new SymbolIcon(Symbol.Edit));
-            smallContent.Children.Add(new TextBlock { Text = "小批", FontSize = 12 });
+            smallContent.Children.Add(new SymbolIcon
+            {
+                Symbol = Symbol.Edit,
+                FontSize = 19,
+                Foreground = menuForeground,
+            });
+            smallContent.Children.Add(new TextBlock
+            {
+                Text = "小批",
+                FontSize = 12,
+                Foreground = menuForeground,
+            });
             var smallButton = new Button
             {
                 Content = smallContent,
-                MinWidth = 68,
-                Padding = new Thickness(10, 7, 10, 7),
+                Width = 76,
+                Height = 58,
+                Padding = new Thickness(4),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderBrush = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(15),
+                Foreground = menuForeground,
+                UseSystemFocusVisuals = false,
             };
             smallButton.Click += (_, _) =>
             {
@@ -269,17 +307,42 @@ public sealed partial class MainWindow
             };
             actions.Children.Add(smallButton);
         }
+
+        var menuRoot = new Grid();
+        menuRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        menuRoot.RowDefinitions.Add(new RowDefinition { Height = new GridLength(7) });
+        var menuBody = new Border
+        {
+            Padding = new Thickness(5, 4, 5, 4),
+            CornerRadius = new CornerRadius(22),
+            Background = menuBackground,
+            BorderThickness = new Thickness(0),
+            Child = actions,
+        };
+        var menuArrow = new Polygon
+        {
+            Points = new PointCollection
+            {
+                new Point(0, 0),
+                new Point(14, 0),
+                new Point(7, 7),
+            },
+            Fill = menuBackground,
+            Width = 14,
+            Height = 7,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false,
+        };
+        Grid.SetRow(menuBody, 0);
+        Grid.SetRow(menuArrow, 1);
+        menuRoot.Children.Add(menuBody);
+        menuRoot.Children.Add(menuArrow);
+
         var selectionFlyout = new Flyout
         {
-            Content = new Border
-            {
-                Padding = new Thickness(6),
-                CornerRadius = new CornerRadius(10),
-                Background = GetAnnotationFlyoutBackground(),
-                BorderBrush = GetAnnotationFlyoutBorderBrush(),
-                BorderThickness = new Thickness(1),
-                Child = actions,
-            },
+            Content = menuRoot,
+            FlyoutPresenterStyle = CreateAnnotationFlyoutPresenterStyle(),
         };
         selectionActionsFlyout = selectionFlyout;
         selectionFlyout.Closed += (_, _) =>
@@ -291,7 +354,7 @@ public sealed partial class MainWindow
         };
         selectionFlyout.ShowAt(View, new FlyoutShowOptions
         {
-            Position = new Point(x, y),
+            Position = anchor,
             Placement = FlyoutPlacementMode.Top,
         });
     }
@@ -313,14 +376,23 @@ public sealed partial class MainWindow
         pendingSmallAnnotationProject = project;
         pendingSmallAnnotationCategoryId = selectedSmallAnnotationCategoryId;
 
+        Brush popupBackground = GetAnnotationFlyoutBackground();
+        Brush popupForeground = new SolidColorBrush(Colors.White);
         var contentBox = new TextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
-            MinHeight = 112,
+            MinHeight = 136,
             MaxHeight = 220,
+            FontSize = 16,
             PlaceholderText = "写下这一刻的想法……",
-            Padding = new Thickness(10),
+            PlaceholderForeground = new SolidColorBrush(Color.FromArgb(165, 255, 255, 255)),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            Foreground = popupForeground,
+            Padding = new Thickness(2, 8, 2, 8),
             VerticalContentAlignment = VerticalAlignment.Top,
         };
         smallAnnotationComposerTextBox = contentBox;
@@ -337,9 +409,18 @@ public sealed partial class MainWindow
         var closeButton = new Button
         {
             Content = "×",
+            Width = 32,
+            Height = 32,
             MinWidth = 32,
-            MinHeight = 30,
-            Padding = new Thickness(4, 0, 4, 0),
+            MinHeight = 32,
+            Padding = new Thickness(0),
+            FontSize = 20,
+            CornerRadius = new CornerRadius(16),
+            Background = new SolidColorBrush(Color.FromArgb(255, 232, 234, 237)),
+            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 45, 48, 52)),
+            UseSystemFocusVisuals = false,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         ToolTipService.SetToolTip(closeButton, "关闭");
@@ -348,15 +429,31 @@ public sealed partial class MainWindow
         var saveButton = new Button
         {
             Content = "保存",
-            MinWidth = 84,
+            MinWidth = 100,
+            Height = 40,
+            Padding = new Thickness(18, 0, 18, 0),
+            FontSize = 14,
+            CornerRadius = new CornerRadius(20),
+            Background = new SolidColorBrush(Color.FromArgb(255, 43, 132, 222)),
+            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            Foreground = new SolidColorBrush(Colors.White),
+            UseSystemFocusVisuals = false,
             IsEnabled = false,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         contentBox.TextChanged += (_, _) =>
-            saveButton.IsEnabled = !string.IsNullOrWhiteSpace(contentBox.Text);
+        {
+            bool hasContent = !string.IsNullOrWhiteSpace(contentBox.Text);
+            saveButton.IsEnabled = hasContent;
+            saveButton.Background = new SolidColorBrush(
+                hasContent
+                    ? Color.FromArgb(255, 43, 132, 222)
+                    : Color.FromArgb(255, 76, 80, 86));
+        };
         saveButton.Click += async (_, _) => await SaveSmallAnnotationComposerAsync();
 
-        var layout = new Grid { RowSpacing = 8, MinWidth = 340, MaxWidth = 440 };
+        var layout = new Grid { RowSpacing = 6, MinWidth = 360, MaxWidth = 440 };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -375,13 +472,13 @@ public sealed partial class MainWindow
         {
             Content = new Border
             {
-                Padding = new Thickness(14),
-                CornerRadius = new CornerRadius(12),
-                Background = GetAnnotationFlyoutBackground(),
-                BorderBrush = GetAnnotationFlyoutBorderBrush(),
-                BorderThickness = new Thickness(1),
+                Padding = new Thickness(10),
+                CornerRadius = new CornerRadius(24),
+                Background = popupBackground,
+                BorderThickness = new Thickness(0),
                 Child = layout,
             },
+            FlyoutPresenterStyle = CreateAnnotationFlyoutPresenterStyle(),
         };
         smallAnnotationComposerFlyout = flyout;
         flyout.Closed += (_, _) =>
@@ -529,17 +626,30 @@ public sealed partial class MainWindow
         hasLastTextSelectionPoint = false;
     }
 
-    private Microsoft.UI.Xaml.Media.Brush GetAnnotationFlyoutBackground()
+    private Brush GetAnnotationFlyoutBackground()
     {
-        bool dark = RootGrid.ActualTheme == ElementTheme.Dark;
-        return new Microsoft.UI.Xaml.Media.SolidColorBrush(
-            dark ? Color.FromArgb(255, 38, 38, 38) : Color.FromArgb(255, 255, 255, 255));
+        Color readerBackground = View.ReaderBackgroundColor;
+        double luminance = (0.2126 * readerBackground.R
+                            + 0.7152 * readerBackground.G
+                            + 0.0722 * readerBackground.B) / 255d;
+        bool readerIsDark = luminance < 0.2d;
+
+        return new SolidColorBrush(
+            readerIsDark
+                ? Color.FromArgb(255, 48, 48, 48)
+                : Color.FromArgb(255, 20, 20, 20));
     }
 
-    private Microsoft.UI.Xaml.Media.Brush GetAnnotationFlyoutBorderBrush()
+    private static Style CreateAnnotationFlyoutPresenterStyle()
     {
-        bool dark = RootGrid.ActualTheme == ElementTheme.Dark;
-        return new Microsoft.UI.Xaml.Media.SolidColorBrush(
-            dark ? Color.FromArgb(255, 75, 75, 75) : Color.FromArgb(255, 220, 220, 220));
+        var style = new Style(typeof(FlyoutPresenter));
+        style.Setters.Add(new Setter(Control.BackgroundProperty,
+            new SolidColorBrush(Colors.Transparent)));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty,
+            new SolidColorBrush(Colors.Transparent)));
+        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(0)));
+        return style;
     }
 }
