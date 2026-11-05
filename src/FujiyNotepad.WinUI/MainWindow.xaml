@@ -361,7 +361,7 @@
                         <StackPanel Spacing="2" VerticalAlignment="Center">
                             <TextBlock Text="批注" FontSize="17" FontWeight="SemiBold" />
                             <TextBlock x:Name="SmallAnnotationCount" Text="0 条小批注"
-                                       Style="{ThemeResource CaptionTextBlockStyle}" />
+                                       FontSize="12" Opacity="0.7" />
                             <TextBlock x:Name="ChapterAnnotationCount" Text="0 条章节批注"
                                        Style="{ThemeResource CaptionTextBlockStyle}" Visibility="Collapsed" />
                         </StackPanel>
