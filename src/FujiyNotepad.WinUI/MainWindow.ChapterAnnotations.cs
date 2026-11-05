@@ -44,6 +44,12 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (ChapterAnnotationEditorView.Visibility == Visibility.Visible)
+        {
+            ChapterAnnotationsItem.IsChecked = true;
+            return;
+        }
+
         if (!ChapterAnnotationsItem.IsChecked)
         {
             CloseAnnotationPane_Click(sender, e);
