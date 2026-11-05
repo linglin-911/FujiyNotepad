@@ -867,6 +867,14 @@ public sealed partial class MainWindow
 
     private async Task CreateChapterAnnotationForChapterAsync(NovelChapter initialChapter)
     {
+        if (ChapterAnnotationEditorView.Visibility == Visibility.Visible)
+        {
+            await ShowNovelProjectMessageAsync(
+                "正在编辑章节批注",
+                "请先保存，或点击编辑器右上角的 X 关闭当前编辑，再新建另一条章节批注。");
+            return;
+        }
+
         NovelAnnotationStore? store = activeAnnotationStore;
         if (store is null)
             return;
