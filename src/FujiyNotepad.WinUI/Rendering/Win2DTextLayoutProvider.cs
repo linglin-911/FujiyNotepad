@@ -312,7 +312,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     {
         ThrowIfDisposed();
         if (VisualLines.Count == 0)
-            return new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
+            return new TextLayoutVerticalGeometry(0, 0, double.NaN, 0);
 
         int rowIndex = FindVisualLineIndexForCaret(sourceUtf16Index);
         return GetTextAreaVerticalBounds(VisualLines[rowIndex], rowIndex);
@@ -328,7 +328,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         TextLayoutVerticalGeometry geometry = TextAreaGeometry.FromBaseline(row, fontSize);
         rowVerticalGeometryCache[rowIndex] = geometry;
         return geometry;
-    }    private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
+    }
+
+    private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
         List<TextLayoutRect> rectangles)
     {
         if (rectangles.Count <= 1)

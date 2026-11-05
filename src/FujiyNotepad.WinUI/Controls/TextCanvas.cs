@@ -1468,8 +1468,8 @@ namespace FujiyNotepad.WinUI.Controls
             if (sourceLength <= 0)
                 return;
 
-            // VisibleLine source ranges are already clipped to this visual row. Preserve the provider's
-            // DrawBounds-derived rectangle: clipping it to the caret-row interval can cut real glyph ink.
+            // VisibleLine source ranges are already clipped to this visual row. Paint the exact shared
+            // text rectangle; the same rectangle is used for pointer hit-testing and annotation clicks.
             foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
             {
                 if (rectangle.Height <= 0 || rectangle.Width <= 0)

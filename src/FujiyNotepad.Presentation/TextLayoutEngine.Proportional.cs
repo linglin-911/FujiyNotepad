@@ -736,8 +736,8 @@ public sealed partial class TextLayoutEngine
 
         if (returnCharacter && !hit.IsInside && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
         {
-            // The text rectangle is intentionally a little wider than DirectWrite's native region. Recover
-            // the first/last character when the pointer lands in that small outer cushion.
+            // DirectWrite can report no character at an exact region edge. Recover the first/last character
+            // only when the pointer is still inside the same exact text rectangle used by selection painting.
             int firstEnd = layout.GetNextCaretIndex(hitRow.SourceStartIndex);
             if (firstEnd > hitRow.SourceStartIndex &&
                 IsInsideTextRangeGeometry(
@@ -1016,8 +1016,8 @@ public sealed partial class TextLayoutEngine
         if (!foundRectangle)
             return false;
 
-        // If the pointer is inside multiple overlapping marker rectangles, prefer a source offset in
-        // their common range so the host can reveal all of the overlapping annotations in one click.
+        // If the pointer is inside multiple overlapping annotation text rectangles, prefer a source offset
+        // in their common range so the host can reveal all overlapping annotations in one click.
         if (intersectEnd > intersectStart)
         {
             int lastCommonCaret = Math.Max(
