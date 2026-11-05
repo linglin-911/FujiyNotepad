@@ -329,7 +329,7 @@ public sealed partial class MainWindow
                     ? "没有找到匹配的章节批注。"
                     : categoryId is not null
                         ? "该分类下暂无章节批注。"
-                        : "本章暂无章节批注。点击右侧工具栏的“新建章节批注”添加。"
+                        : "本章暂无章节批注。点击 + 新建。"
                 : "";
             ChapterAnnotationEmptyState.Visibility = summaries.Count == 0
                 ? Visibility.Visible
