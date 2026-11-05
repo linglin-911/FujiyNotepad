@@ -1767,13 +1767,13 @@ namespace FujiyNotepad.WinUI.Controls
                     engine.TryHitTestAnnotationMarkers(
                         x, y, annotationMarkersByLine, out TextPosition markerPosition))
                 {
-                    ITextLayoutResult? layout = engine.GetLayoutForLine(markerPosition.Line);
-                    if (layout is not null)
+                    ITextLayoutResult? annotationLayout = engine.GetLayoutForLine(markerPosition.Line);
+                    if (annotationLayout is not null)
                     {
-                        int next = layout.GetNextCaretIndex(markerPosition.Column);
+                        int next = annotationLayout.GetNextCaretIndex(markerPosition.Column);
                         if (next <= markerPosition.Column && markerPosition.Column > 0)
                         {
-                            int previous = layout.GetPreviousCaretIndex(markerPosition.Column);
+                            int previous = annotationLayout.GetPreviousCaretIndex(markerPosition.Column);
                             hitSourceLength = markerPosition.Column - previous;
                             markerPosition = new TextPosition(markerPosition.Line, previous);
                         }
