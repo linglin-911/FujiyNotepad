@@ -3564,10 +3564,11 @@ namespace FujiyNotepad.WinUI
                 ? new GridLength(ReaderToolsRailWidthDip)
                 : new GridLength(0);
 
-            // While the panel is open, the transparent rail host catches outside clicks, but its buttons
-            // cannot receive pointer or keyboard activation. RootGrid_PointerPressed dismisses the panel.
+            // While the panel is open, the transparent rail host catches outside clicks. The StackPanel
+            // itself is made non-hit-testable, and each interactive child is disabled for keyboard input.
+            // RootGrid_PointerPressed dismisses the panel without invoking any toolbar command.
             ReaderToolsRail.IsHitTestVisible = !settingsPanelOpen;
-            ReaderToolsRail.IsEnabled = !settingsPanelOpen;
+            ReaderSettingsToggleButton.IsEnabled = !settingsPanelOpen;
         }
 
         // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
