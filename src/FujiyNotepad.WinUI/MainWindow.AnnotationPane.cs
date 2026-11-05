@@ -264,6 +264,9 @@ public sealed partial class MainWindow
         if (activeAnnotationStore is not { } store || activeNovelProject is not { } project)
             return;
 
+        Point position = hasLastTextSelectionPoint
+            ? lastTextSelectionPoint
+            : new Point(Math.Max(24, View.ActualWidth / 2), Math.Max(24, View.ActualHeight / 3));
         CloseSmallAnnotationComposer();
         pendingSmallAnnotationSelection = selected;
         pendingSmallAnnotationStore = store;
@@ -298,8 +301,8 @@ public sealed partial class MainWindow
             MinHeight = 30,
             Padding = new Thickness(4, 0, 4, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
-            ToolTipService = { ToolTip = "关闭" },
         };
+        ToolTipService.SetToolTip(closeButton, "关闭");
         closeButton.Click += (_, _) => CloseSmallAnnotationComposer();
 
         var saveButton = new Button
@@ -356,9 +359,6 @@ public sealed partial class MainWindow
             }
         };
 
-        Point position = hasLastTextSelectionPoint
-            ? lastTextSelectionPoint
-            : new Point(Math.Max(24, View.ActualWidth / 2), Math.Max(24, View.ActualHeight / 3));
         flyout.ShowAt(View, new FlyoutShowOptions
         {
             Position = position,
@@ -478,8 +478,7 @@ public sealed partial class MainWindow
     {
         Flyout? flyout = smallAnnotationComposerFlyout;
         smallAnnotationComposerFlyout = null;
-        if (flyout?.IsOpen == true)
-            flyout.Hide();
+        flyout?.Hide();
         smallAnnotationComposerTextBox = null;
         smallAnnotationComposerValidation = null;
         pendingSmallAnnotationSelection = null;
