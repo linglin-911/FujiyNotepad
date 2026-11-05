@@ -32,7 +32,14 @@ namespace FujiyNotepad.WinUI
                 : ReaderSettings.DefaultContentWidthDip;
 
             IReadOnlyList<string> fonts = GetInstalledFontFamilies(draftSettings.FontFamily);
-            FontFamilyComboBox.ItemsSource = fonts;
+
+            // Populate the ComboBox Items collection directly. Assigning the managed font list to
+            // ItemsSource throws E_INVALIDARG on some WinUI 3 runtimes while constructing this dialog.
+            // Keep initialization guarded because adding/selecting items can raise SelectionChanged.
+            FontFamilyComboBox.Items.Clear();
+            foreach (string font in fonts)
+                FontFamilyComboBox.Items.Add(font);
+
             FontFamilyComboBox.SelectedItem = fonts.FirstOrDefault(
                 font => string.Equals(font, draftSettings.FontFamily, StringComparison.OrdinalIgnoreCase))
                 ?? draftSettings.FontFamily;
