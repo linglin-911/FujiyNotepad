@@ -95,6 +95,7 @@ namespace FujiyNotepad.WinUI.Controls
         private Microsoft.UI.Xaml.Media.SolidColorBrush? caretBrush;
 
         private bool isSelecting;
+        private bool isReaderInteractionPassive;
         private Point lastPointer;
         private Point pointerDownPosition;
         private TextPosition contextMenuPosition;
@@ -750,6 +751,30 @@ namespace FujiyNotepad.WinUI.Controls
             }
         }
 
+        /// <summary>
+        /// When true, the reader surface remains wheel-scrollable but does not accept text selection,
+        /// annotation-marker clicks, context menus, double-tap selection, or keyboard navigation.
+        /// Used while a floating reader-settings panel is open.
+        /// </summary>
+        public bool IsReaderInteractionPassive
+        {
+            get => isReaderInteractionPassive;
+            set
+            {
+                if (isReaderInteractionPassive == value)
+                    return;
+
+                isReaderInteractionPassive = value;
+                if (value)
+                {
+                    isSelecting = false;
+                    autoScrollTimer.Stop();
+                    ReleasePointerCaptures();
+                    hasPointerContextMenuPosition = false;
+                }
+            }
+        }
+
         public void FocusCanvas() => Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
 
         /// <summary>Copies the current selection to the clipboard (no-op when nothing is selected).</summary>
@@ -786,6 +811,12 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
         {
+            if (IsReaderInteractionPassive)
+            {
+                e.Handled = true;
+                return;
+            }
+
             var pointer = e.GetCurrentPoint(this);
             // Keep the text position under a right-click for the chapter-annotation context command.
             if (!pointer.Properties.IsLeftButtonPressed)
@@ -883,6 +914,16 @@ namespace FujiyNotepad.WinUI.Controls
         {
             Ready();
             int delta = e.GetCurrentPoint(this).Properties.MouseWheelDelta;
+            if (IsReaderInteractionPassive)
+            {
+                // Wheel scrolling remains available, but Ctrl+wheel must not change reader settings
+                // behind the open panel.
+                if (!e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control))
+                    engine.ScrollByWheelDelta(delta);
+                e.Handled = true;
+                return;
+            }
+
             if (e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control))
             {
                 // Ctrl + wheel zooms (changes the font size) instead of scrolling.
@@ -904,6 +945,12 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
+            if (IsReaderInteractionPassive)
+            {
+                e.Handled = true;
+                return;
+            }
+
             Ready();
             Point p = e.GetPosition(this);
             engine.SelectWordAt(HitTestText(p.X, p.Y));
@@ -962,6 +1009,12 @@ namespace FujiyNotepad.WinUI.Controls
 
         private void OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (IsReaderInteractionPassive)
+            {
+                e.Handled = true;
+                return;
+            }
+
             bool ctrl = IsDown(VirtualKey.Control);
             NavKey? nav = MapKey(e.Key, ctrl);
             if (nav is null)

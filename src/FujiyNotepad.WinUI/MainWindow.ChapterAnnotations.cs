@@ -40,10 +40,13 @@ public sealed partial class MainWindow
         {
             ChapterAnnotationsItem.IsChecked = false;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            UpdateReaderToolsRailVisibility();
             return;
         }
 
         bool show = ChapterAnnotationsItem.IsChecked;
+        if (show)
+            CloseReaderSettingsPanel();
         ChapterAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show)
         {
@@ -58,6 +61,7 @@ public sealed partial class MainWindow
         await LoadChapterAnnotationsAsync();
         if (LineIndexer.IsCompleted)
             _ = EnsureChapterIndexAsync();
+        UpdateReaderToolsRailVisibility();
     }
 
     private void CloseChapterAnnotations_Click(object sender, RoutedEventArgs e)
@@ -65,6 +69,7 @@ public sealed partial class MainWindow
         chapterAnnotationFilterDebounce?.Cancel();
         ChapterAnnotationsItem.IsChecked = false;
         ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+        UpdateReaderToolsRailVisibility();
     }
 
     private void ChapterAnnotationSearchBox_TextChanged(object sender, TextChangedEventArgs e)

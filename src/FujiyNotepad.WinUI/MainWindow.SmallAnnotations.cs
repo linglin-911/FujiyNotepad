@@ -33,10 +33,13 @@ namespace FujiyNotepad.WinUI
             {
                 SmallAnnotationsItem.IsChecked = false;
                 SmallAnnotationPane.Visibility = Visibility.Collapsed;
+                UpdateReaderToolsRailVisibility();
                 return;
             }
 
             bool show = SmallAnnotationsItem.IsChecked;
+            if (show)
+                CloseReaderSettingsPanel();
             SmallAnnotationPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             if (!show)
                 CancelSmallAnnotationCardSingleTap();
@@ -50,6 +53,8 @@ namespace FujiyNotepad.WinUI
                 await ReloadSmallAnnotationCategoriesAsync();
                 await RefreshSmallAnnotationsAsync();
             }
+
+            UpdateReaderToolsRailVisibility();
         }
 
         private void CloseSmallAnnotations_Click(object sender, RoutedEventArgs e)
@@ -57,6 +62,7 @@ namespace FujiyNotepad.WinUI
             CancelSmallAnnotationCardSingleTap();
             SmallAnnotationsItem.IsChecked = false;
             SmallAnnotationPane.Visibility = Visibility.Collapsed;
+            UpdateReaderToolsRailVisibility();
         }
 
         private async void SmallAnnotationSearchBox_TextChanged(object sender, TextChangedEventArgs e)

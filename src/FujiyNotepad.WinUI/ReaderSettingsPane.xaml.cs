@@ -10,32 +10,35 @@ using Windows.UI;
 namespace FujiyNotepad.WinUI
 {
     /// <summary>
-    /// Edits a temporary ReaderSettings snapshot. It never persists settings directly;
-    /// MainWindow owns preview, Apply and Cancel transaction semantics.
+    /// A live, non-modal reader-settings surface. MainWindow owns applying and persisting each
+    /// changed snapshot; this control only edits and reports a detached ReaderSettings value.
     /// </summary>
-    public sealed partial class ReaderSettingsDialog : ContentDialog
+    public sealed partial class ReaderSettingsPane : UserControl
     {
-        private readonly ReaderSettings draftSettings;
+        private ReaderSettings draftSettings = new();
         private bool isInitializing = true;
         private double lastExplicitWidthDip;
 
-        public event Action<ReaderSettings>? PreviewChanged;
+        public event Action<ReaderSettings>? SettingsChanged;
+        public event Action? CloseRequested;
 
-        public ReaderSettingsDialog(ReaderSettings initialSettings)
+        public ReaderSettingsPane()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>Loads the current global reader settings without raising SettingsChanged.</summary>
+        public void LoadSettings(ReaderSettings initialSettings)
         {
             ArgumentNullException.ThrowIfNull(initialSettings);
-            InitializeComponent();
 
+            isInitializing = true;
             draftSettings = Clone(initialSettings);
             lastExplicitWidthDip = draftSettings.ContentWidthDip > 0
                 ? draftSettings.ContentWidthDip
                 : ReaderSettings.DefaultContentWidthDip;
 
             IReadOnlyList<string> fonts = GetInstalledFontFamilies(draftSettings.FontFamily);
-
-            // Populate the ComboBox Items collection directly. Assigning the managed font list to
-            // ItemsSource throws E_INVALIDARG on some WinUI 3 runtimes while constructing this dialog.
-            // Keep initialization guarded because adding/selecting items can raise SelectionChanged.
             FontFamilyComboBox.Items.Clear();
             foreach (string font in fonts)
                 FontFamilyComboBox.Items.Add(font);
@@ -55,13 +58,13 @@ namespace FujiyNotepad.WinUI
             NightThemeRadio.IsChecked = draftSettings.Theme == "Night";
 
             isInitializing = false;
-            UpdateDraftFromControls(notifyPreview: false);
+            UpdateDraftFromControls(notifySettingsChanged: false);
         }
 
         /// <summary>Returns a detached copy of the values currently represented by the controls.</summary>
         public ReaderSettings GetSelectedSettings()
         {
-            UpdateDraftFromControls(notifyPreview: false);
+            UpdateDraftFromControls(notifySettingsChanged: false);
             return Clone(draftSettings);
         }
 
@@ -111,6 +114,9 @@ namespace FujiyNotepad.WinUI
             return fonts;
         }
 
+        private void Close_Click(object sender, RoutedEventArgs e)
+            => CloseRequested?.Invoke();
+
         private void FontFamilyComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
             => UpdateDraftFromControls();
 
@@ -135,7 +141,7 @@ namespace FujiyNotepad.WinUI
         private void ThemeRadio_Checked(object sender, RoutedEventArgs e)
             => UpdateDraftFromControls();
 
-        private void UpdateDraftFromControls(bool notifyPreview = true)
+        private void UpdateDraftFromControls(bool notifySettingsChanged = true)
         {
             if (isInitializing)
                 return;
@@ -168,10 +174,9 @@ namespace FujiyNotepad.WinUI
 
             UpdateValueLabels();
             UpdateThemeSwatches();
-            UpdateSamplePreview();
 
-            if (notifyPreview)
-                PreviewChanged?.Invoke(Clone(draftSettings));
+            if (notifySettingsChanged)
+                SettingsChanged?.Invoke(Clone(draftSettings));
         }
 
         private string GetSelectedTheme()
@@ -211,41 +216,6 @@ namespace FujiyNotepad.WinUI
                 draftSettings.Theme == "Night" ? night.AnnotationMarker : night.GutterSeparator));
             NightThemeSwatchText.Foreground = new SolidColorBrush(ToColor(night.Text));
             NightThemeSwatch.BorderThickness = new Thickness(draftSettings.Theme == "Night" ? 2 : 1);
-        }
-
-        private void UpdateSamplePreview()
-        {
-            var palette = draftSettings.Theme switch
-            {
-                "Warm" => ReaderPalette.Warm,
-                "Night" => ReaderPalette.Night,
-                _ => ReaderPalette.Paper,
-            };
-
-            var background = new SolidColorBrush(ToColor(palette.Background));
-            PreviewViewport.Background = background;
-            PreviewViewport.BorderBrush = new SolidColorBrush(ToColor(palette.GutterSeparator));
-            PreviewContentSurface.Background = new SolidColorBrush(ToColor(palette.Background));
-            PreviewContentSurface.BorderBrush = new SolidColorBrush(ToColor(palette.GutterSeparator));
-
-            // Map the configured width range to the fixed preview viewport so the user can see
-            // the relative centered text-column width; zero uses the entire available preview width.
-            const double previewAvailableWidth = 444;
-            const double previewMinimumColumnWidth = 150;
-            double previewWidth = draftSettings.ContentWidthDip <= 0
-                ? previewAvailableWidth
-                : previewMinimumColumnWidth +
-                  (draftSettings.ContentWidthDip - ReaderSettings.MinContentWidthDip) /
-                  (ReaderSettings.MaxContentWidthDip - ReaderSettings.MinContentWidthDip) *
-                  (previewAvailableWidth - previewMinimumColumnWidth);
-            PreviewContentSurface.Width = Math.Clamp(
-                previewWidth, previewMinimumColumnWidth, previewAvailableWidth);
-
-            PreviewSampleText.Foreground = new SolidColorBrush(ToColor(palette.Text));
-            PreviewSampleText.FontFamily = new FontFamily(draftSettings.FontFamily);
-            PreviewSampleText.FontSize = draftSettings.FontSizeDip;
-            PreviewSampleText.LineHeight =
-                draftSettings.FontSizeDip * draftSettings.LineSpacingMultiplier;
         }
 
         private static Color ToColor(uint argb)

@@ -25,13 +25,19 @@ public sealed partial class MainWindow
         {
             ChapterDirectoryItem.IsChecked = false;
             ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+            UpdateReaderToolsRailVisibility();
             return;
         }
 
         bool show = ChapterDirectoryItem.IsChecked;
+        if (show)
+            CloseReaderSettingsPanel();
         ChapterDirectoryPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show)
+        {
+            UpdateReaderToolsRailVisibility();
             return;
+        }
 
         CancelSmallAnnotationCardSingleTap();
         SmallAnnotationsItem.IsChecked = false;
@@ -41,12 +47,14 @@ public sealed partial class MainWindow
         chapterAnnotationFilterDebounce?.Cancel();
 
         await LoadChapterDirectoryAsync();
+        UpdateReaderToolsRailVisibility();
     }
 
     private void CloseChapterDirectory_Click(object sender, RoutedEventArgs e)
     {
         ChapterDirectoryItem.IsChecked = false;
         ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+        UpdateReaderToolsRailVisibility();
     }
 
     private async Task LoadChapterDirectoryAsync()

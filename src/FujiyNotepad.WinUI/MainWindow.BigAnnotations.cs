@@ -40,6 +40,7 @@ public sealed partial class MainWindow
             BigAnnotationsItem.IsChecked = false;
             BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
             SetBigAnnotationReturnButtonVisible(false);
+            UpdateReaderToolsRailVisibility();
             return;
         }
 
@@ -58,6 +59,7 @@ public sealed partial class MainWindow
         if (activeAnnotationStore is null || activeNovelProject is null)
             return;
 
+        CloseReaderSettingsPanel();
         SetBigAnnotationReturnButtonVisible(false);
         CancelSmallAnnotationCardSingleTap();
         SmallAnnotationsItem.IsChecked = false;
@@ -70,6 +72,7 @@ public sealed partial class MainWindow
 
         BigAnnotationsItem.IsChecked = true;
         BigAnnotationWorkspace.Visibility = Visibility.Visible;
+        UpdateReaderToolsRailVisibility();
         BigAnnotationListView.Visibility = Visibility.Visible;
         BigAnnotationEditorView.Visibility = Visibility.Collapsed;
         await LoadBigAnnotationListAsync();
@@ -130,6 +133,7 @@ public sealed partial class MainWindow
     {
         BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
         BigAnnotationsItem.IsChecked = false;
+        UpdateReaderToolsRailVisibility();
     }
 
     private void ResetBigAnnotationWorkspaceForProjectClose()
@@ -169,6 +173,7 @@ public sealed partial class MainWindow
         ResetBigAnnotationEditorState();
         BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
         BigAnnotationsItem.IsChecked = false;
+        UpdateReaderToolsRailVisibility();
         BigAnnotationListView.Visibility = Visibility.Visible;
         BigAnnotationEditorView.Visibility = Visibility.Collapsed;
         BigAnnotationList.Items.Clear();

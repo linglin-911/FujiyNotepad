@@ -15,6 +15,7 @@ using Microsoft.Windows.Storage.Pickers;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.UI;
 
 namespace FujiyNotepad.WinUI
 {
@@ -84,6 +85,8 @@ namespace FujiyNotepad.WinUI
         private readonly SettingsStore settingsStore = SettingsStore.Default();
         private AppSettings settings = new();
         private bool suppressReaderSettingsPersistence;
+        private DispatcherQueueTimer? readerSettingsSaveTimer;
+        private bool readerSettingsSavePending;
         private SizeInt32 lastNormalSize;
         private const double ReaderMarkerWidthDip = 6d;
 
@@ -126,6 +129,11 @@ namespace FujiyNotepad.WinUI
         {
             LogDiagnostic("MainWindow: constructor entered");
             this.InitializeComponent();
+            RootGrid.ActualThemeChanged += (_, _) => UpdateWindowTitleBarTheme();
+            RootGrid.AddHandler(UIElement.PointerPressedEvent,
+                new PointerEventHandler(RootGrid_PointerPressed), true);
+            ReaderSettingsControl.SettingsChanged += ReaderSettingsControl_SettingsChanged;
+            ReaderSettingsControl.CloseRequested += CloseReaderSettingsPanel;
             View.ReaderPaletteChanged += UpdateReaderViewportBackground;
             View.ReaderThemeChanged += OnReaderThemeChanged;
             View.ContentWidthChanged += UpdateReaderContentHostWidth;
@@ -143,6 +151,7 @@ namespace FujiyNotepad.WinUI
             BigAnnotationChapterVisibilityToggle.Toggled += BigAnnotationChapterVisibility_Toggled;
 
             UpdateNovelProjectMenu();
+            UpdateReaderToolsRailVisibility();
 
             string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "FujiyNotepad.ico");
             if (File.Exists(iconPath))
@@ -184,9 +193,16 @@ namespace FujiyNotepad.WinUI
             followTailTimer.Interval = TimeSpan.FromMilliseconds(1000);
             followTailTimer.Tick += FollowTailTimer_Tick;
 
+            readerSettingsSaveTimer = DispatcherQueue.CreateTimer();
+            readerSettingsSaveTimer.Interval = TimeSpan.FromMilliseconds(300);
+            readerSettingsSaveTimer.IsRepeating = false;
+            readerSettingsSaveTimer.Tick += (_, _) => SavePendingReaderSettings();
+
             Closed += (_, _) =>
             {
                 LogDiagnostic("MainWindow: Closed event entered");
+                FlushReaderSettingsSave();
+                readerSettingsSaveTimer?.Stop();
                 SaveWindowState();
                 StopWatchingFile();
                 followTailTimer.Stop();
@@ -704,6 +720,8 @@ namespace FujiyNotepad.WinUI
                 BigAnnotationWorkspace.Visibility = Visibility.Collapsed;
                 BigAnnotationsItem.IsChecked = false;
             }
+
+            UpdateReaderToolsRailVisibility();
         }
 
         private async Task ShowNovelProjectMessageAsync(string title, string message)
@@ -3355,9 +3373,9 @@ namespace FujiyNotepad.WinUI
             return clone;
         }
 
-        // The dialog previews a draft through the existing reader settings path. FontChanged normally persists
-        // immediately, so suppress that side effect until the user explicitly presses Apply.
-        private void PreviewReaderSettings(ReaderSettings draft)
+        // Applies a reader-settings snapshot to the live text surface. The suppression flag prevents
+        // the FontChanged callback from writing a partial settings snapshot while ApplyReaderSettings runs.
+        private void ApplyReaderSettingsToView(ReaderSettings draft)
         {
             bool wasSuppressed = suppressReaderSettingsPersistence;
             suppressReaderSettingsPersistence = true;
@@ -3374,99 +3392,171 @@ namespace FujiyNotepad.WinUI
             TickFontMenu(View.FontFamilyName);
         }
 
-        private async void ReaderSettings_Click(object sender, RoutedEventArgs e)
-        {
-            ReaderSettings? original = null;
-            ReaderSettingsDialog? dialog = null;
-            string stage = "click event";
+        private void ReaderSettings_Click(object sender, RoutedEventArgs e)
+            => ToggleReaderSettingsPanel();
 
-            LogDiagnostic("ReaderSettings: menu click event received");
+        private void ReaderSettingsToggle_Click(object sender, RoutedEventArgs e)
+            => ToggleReaderSettingsPanel();
+
+        private void ToggleReaderSettingsPanel()
+        {
+            if (ReaderSettingsPanel.Visibility == Visibility.Visible)
+            {
+                CloseReaderSettingsPanel();
+                return;
+            }
+
+            OpenReaderSettingsPanel();
+        }
+
+        private void OpenReaderSettingsPanel()
+        {
+            // Reader settings belong to the reading surface, not the full-screen big-annotation workspace.
+            if (BigAnnotationWorkspace.Visibility == Visibility.Visible)
+                return;
+
+            CloseReaderSettingsPanel();
+            CancelSmallAnnotationCardSingleTap();
+            SmallAnnotationsItem.IsChecked = false;
+            SmallAnnotationPane.Visibility = Visibility.Collapsed;
+            ChapterAnnotationsItem.IsChecked = false;
+            ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+            ChapterDirectoryItem.IsChecked = false;
+            ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+            chapterAnnotationFilterDebounce?.Cancel();
 
             try
             {
-                stage = "copy current reader settings";
-                original = CloneReaderSettings(settings.Reader);
-
-                // Let the MenuFlyout finish closing before opening a ContentDialog.
-                await Task.Yield();
-
-                stage = "resolve dialog XamlRoot";
-                var xamlRoot = RootGrid.XamlRoot ?? Content.XamlRoot;
-                if (xamlRoot is null)
-                    throw new InvalidOperationException("The main window XamlRoot is not available.");
-
-                stage = "construct ReaderSettingsDialog";
-                dialog = new ReaderSettingsDialog(original)
-                {
-                    XamlRoot = xamlRoot,
-                };
-                dialog.PreviewChanged += PreviewReaderSettings;
-                LogDiagnostic("ReaderSettings: dialog constructed");
-
-                stage = "show ReaderSettingsDialog";
-                ContentDialogResult result = await dialog.ShowAsync();
-                LogDiagnostic($"ReaderSettings: dialog closed with result {result}");
-
-                if (result == ContentDialogResult.Primary)
-                {
-                    stage = "read selected reader settings";
-                    ReaderSettings applied = dialog.GetSelectedSettings();
-
-                    // Finish applying the validated draft before changing the persisted settings object.
-                    // If the reader rejects a setting, the catch path can still restore the untouched snapshot.
-                    stage = "apply selected reader settings";
-                    PreviewReaderSettings(applied);
-
-                    stage = "save reader settings";
-                    settings.Reader = applied;
-                    settings.FontFamily = applied.FontFamily; // keep legacy settings files compatible
-                    settings.FontSize = applied.FontSizeDip;
-                    settingsStore.Save(settings);
-                    LogDiagnostic("ReaderSettings: settings applied and saved");
-                }
-                else
-                {
-                    // Cancel, ESC and the dialog close button all restore the pre-dialog snapshot.
-                    stage = "restore original reader settings";
-                    PreviewReaderSettings(original);
-                    LogDiagnostic("ReaderSettings: original settings restored");
-                }
+                ReaderSettingsControl.LoadSettings(settings.Reader);
+                ReaderSettingsPanel.Visibility = Visibility.Visible;
+                View.IsReaderInteractionPassive = true;
+                UpdateReaderToolsRailVisibility();
             }
             catch (Exception ex)
             {
-                LogDiagnosticException($"ReaderSettings: failed at stage '{stage}'", ex);
+                ReaderSettingsPanel.Visibility = Visibility.Collapsed;
+                View.IsReaderInteractionPassive = false;
+                UpdateReaderToolsRailVisibility();
+                LogDiagnosticException("ReaderSettings: failed to open live panel", ex);
+                _ = ShowMessageAsync("Reader Settings", $"The reader settings panel could not be opened.\n\n{ex.Message}");
+            }
+        }
 
-                if (original is not null)
-                {
-                    try
-                    {
-                        PreviewReaderSettings(original);
-                    }
-                    catch (Exception restoreException)
-                    {
-                        LogDiagnosticException("ReaderSettings: failed to restore original settings", restoreException);
-                    }
-                }
+        private void CloseReaderSettingsPanel()
+        {
+            if (ReaderSettingsPanel.Visibility != Visibility.Visible)
+                return;
 
-                // Do not silently swallow a dialog-construction or display failure.
+            FlushReaderSettingsSave();
+            ReaderSettingsPanel.Visibility = Visibility.Collapsed;
+            View.IsReaderInteractionPassive = false;
+            UpdateReaderToolsRailVisibility();
+            View.FocusCanvas();
+        }
+
+        private void ReaderSettingsControl_SettingsChanged(ReaderSettings updated)
+        {
+            ReaderSettings previous = CloneReaderSettings(settings.Reader);
+            try
+            {
+                ApplyReaderSettingsToView(updated);
+                settings.Reader = CloneReaderSettings(updated);
+                settings.FontFamily = updated.FontFamily; // keep legacy settings files compatible
+                settings.FontSize = updated.FontSizeDip;
+                ScheduleReaderSettingsSave();
+            }
+            catch (Exception ex)
+            {
+                LogDiagnosticException("ReaderSettings: failed to apply live setting", ex);
                 try
                 {
-                    await ShowMessageAsync(
-                        "Reader Settings",
-                        $"The reader settings window could not be opened.\n\nStage: {stage}\n\n{ex.Message}");
+                    ApplyReaderSettingsToView(previous);
+                    ReaderSettingsControl.LoadSettings(previous);
                 }
-                catch (Exception messageException)
+                catch (Exception restoreException)
                 {
-                    LogDiagnosticException("ReaderSettings: failed to display error message", messageException);
+                    LogDiagnosticException("ReaderSettings: failed to restore previous setting", restoreException);
                 }
-            }
-            finally
-            {
-                if (dialog is not null)
-                    dialog.PreviewChanged -= PreviewReaderSettings;
 
-                View.FocusCanvas();
+                _ = ShowMessageAsync("Reader Settings", $"The setting could not be applied.\n\n{ex.Message}");
             }
+        }
+
+        private void ScheduleReaderSettingsSave()
+        {
+            readerSettingsSavePending = true;
+            if (readerSettingsSaveTimer is null)
+            {
+                SavePendingReaderSettings();
+                return;
+            }
+
+            readerSettingsSaveTimer.Stop();
+            readerSettingsSaveTimer.Start();
+        }
+
+        private void SavePendingReaderSettings()
+        {
+            if (!readerSettingsSavePending)
+                return;
+
+            try
+            {
+                settingsStore.Save(settings);
+                readerSettingsSavePending = false;
+                LogDiagnostic("ReaderSettings: live settings saved");
+            }
+            catch (Exception ex)
+            {
+                // Keep the pending flag set so closing the panel or the window can retry the save.
+                LogDiagnosticException("ReaderSettings: failed to save live settings", ex);
+            }
+        }
+
+        private void FlushReaderSettingsSave()
+        {
+            readerSettingsSaveTimer?.Stop();
+            SavePendingReaderSettings();
+        }
+
+        private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (ReaderSettingsPanel.Visibility != Visibility.Visible)
+                return;
+
+            // The tool rail is an interactive extension of the panel; clicking it must remain usable.
+            // A click elsewhere closes the panel and is consumed, so it cannot activate the obscured reader.
+            if (IsPointerWithin(ReaderSettingsPanel, e) || IsPointerWithin(ReaderToolsRail, e))
+                return;
+
+            CloseReaderSettingsPanel();
+            e.Handled = true;
+        }
+
+        private static bool IsPointerWithin(FrameworkElement element, PointerRoutedEventArgs e)
+        {
+            if (element.Visibility != Visibility.Visible
+                || element.ActualWidth <= 0
+                || element.ActualHeight <= 0)
+                return false;
+
+            Windows.Foundation.Point point = e.GetCurrentPoint(element).Position;
+            return point.X >= 0 && point.Y >= 0
+                && point.X <= element.ActualWidth
+                && point.Y <= element.ActualHeight;
+        }
+
+        private void UpdateReaderToolsRailVisibility()
+        {
+            bool anotherPaneIsOpen =
+                SmallAnnotationPane.Visibility == Visibility.Visible
+                || ChapterAnnotationPane.Visibility == Visibility.Visible
+                || ChapterDirectoryPane.Visibility == Visibility.Visible
+                || BigAnnotationWorkspace.Visibility == Visibility.Visible;
+
+            ReaderToolsRail.Visibility = anotherPaneIsOpen
+                ? Visibility.Collapsed
+                : Visibility.Visible;
         }
 
         // Applies the saved application-chrome theme (System = follow the OS). Night reading temporarily
@@ -3484,6 +3574,52 @@ namespace FujiyNotepad.WinUI
                 "Dark" => ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
+
+            UpdateWindowTitleBarTheme();
+        }
+
+        private void UpdateWindowTitleBarTheme()
+        {
+            try
+            {
+                if (!AppWindowTitleBar.IsCustomizationSupported())
+                    return;
+
+                bool dark = RootGrid.ActualTheme == ElementTheme.Dark;
+                Color background = dark
+                    ? Color.FromArgb(255, 31, 31, 31)
+                    : Color.FromArgb(255, 243, 243, 243);
+                Color foreground = dark
+                    ? Color.FromArgb(255, 245, 245, 245)
+                    : Color.FromArgb(255, 32, 32, 32);
+                Color inactiveForeground = dark
+                    ? Color.FromArgb(255, 170, 170, 170)
+                    : Color.FromArgb(255, 120, 120, 120);
+                Color hoverBackground = dark
+                    ? Color.FromArgb(255, 55, 55, 55)
+                    : Color.FromArgb(255, 229, 229, 229);
+                Color pressedBackground = dark
+                    ? Color.FromArgb(255, 75, 75, 75)
+                    : Color.FromArgb(255, 215, 215, 215);
+
+                AppWindowTitleBar titleBar = AppWindow.TitleBar;
+                titleBar.BackgroundColor = background;
+                titleBar.ForegroundColor = foreground;
+                titleBar.ButtonBackgroundColor = background;
+                titleBar.ButtonForegroundColor = foreground;
+                titleBar.ButtonHoverBackgroundColor = hoverBackground;
+                titleBar.ButtonHoverForegroundColor = foreground;
+                titleBar.ButtonPressedBackgroundColor = pressedBackground;
+                titleBar.ButtonPressedForegroundColor = foreground;
+                titleBar.InactiveBackgroundColor = background;
+                titleBar.InactiveForegroundColor = inactiveForeground;
+                titleBar.ButtonInactiveBackgroundColor = background;
+                titleBar.ButtonInactiveForegroundColor = inactiveForeground;
+            }
+            catch (Exception ex)
+            {
+                LogDiagnosticException("Window title bar theme update failed", ex);
+            }
         }
 
         private void OnReaderThemeChanged() => ApplyThemeSetting(settings.Theme);
@@ -3623,7 +3759,8 @@ namespace FujiyNotepad.WinUI
             LblZoom.Text = $"{View.ZoomPercent}%";
             TickFontMenu(View.FontFamilyName);
 
-            // Preview changes must not mutate the global settings object or write settings.json.
+            // Live settings snapshots are persisted by the panel's debounced save path. Avoid writing a
+            // partial font-only snapshot while ApplyReaderSettings is updating the reader.
             if (suppressReaderSettingsPersistence)
                 return;
 

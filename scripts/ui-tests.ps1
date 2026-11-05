@@ -224,6 +224,17 @@ try {
     UiSubMenu 'View' 'Theme' 'System';      Assert (-not $proc.HasExited) "Theme System did not crash"
     UiSubMenu 'View' 'Font' 'Cascadia Mono'; Assert (-not $proc.HasExited) "Font change did not crash"
 
+    # 9a) Reader settings are a live, non-modal panel: no sample preview or Apply/Cancel transaction.
+    UiMenu 'View' 'Reader Settings...' 1200
+    Assert (UiHas 'Changes apply immediately') "Reader settings opens as a live side panel"
+    Assert (-not (UiHas 'Preview')) "Reader settings no longer shows a separate preview"
+    UiInvoke 'ReaderSettingsPaneCloseButton'
+    Assert (-not (UiHas 'Changes apply immediately')) "Reader settings close button dismisses the panel"
+    UiInvoke 'ReaderSettingsToggleButton' 1200
+    Assert (UiHas 'Changes apply immediately') "Right-edge reader settings button opens the panel"
+    UiInvoke 'ReaderSettingsToggleButton'
+    Assert (-not (UiHas 'Changes apply immediately')) "Right-edge reader settings button toggles the panel closed"
+
     # 10) Dialogs open from their menu handlers and dismiss via the ContentDialog's CloseButton (its
     #     AutomationId — using the literal text 'Close' would collide with the title-bar close button).
     UiMenu 'Edit' 'Go To Line...' 900

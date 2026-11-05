@@ -543,6 +543,38 @@
         </Grid>
 
 
+        <!-- A sibling overlay keeps the reader's Grid column measurements unchanged.
+             Its empty area has no background, so mouse-wheel input still reaches the reader underneath. -->
+        <Grid x:Name="ReaderOverlayHost" Grid.Row="3">
+            <Border x:Name="ReaderSettingsPanel"
+                    Width="360" Margin="0,0,56,0"
+                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                    Visibility="Collapsed"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,1,0"
+                    Panel.ZIndex="20">
+                <local:ReaderSettingsPane x:Name="ReaderSettingsControl" />
+            </Border>
+
+            <!-- The right-edge rail stays available while the settings panel is open. Future reader tools
+                 (directory, annotations, etc.) can join this same vertical stack. -->
+            <StackPanel x:Name="ReaderToolsRail"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Margin="0,0,8,0" Spacing="10" Panel.ZIndex="30">
+                <Button x:Uid="ReaderSettingsToggleButton" x:Name="ReaderSettingsToggleButton"
+                        AutomationProperties.AutomationId="ReaderSettingsToggleButton"
+                        Width="44" Height="44" MinWidth="44" MinHeight="44"
+                        Padding="0" CornerRadius="22"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Click="ReaderSettingsToggle_Click">
+                    <FontIcon Glyph="&#xE713;" FontSize="18" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
         <Grid x:Name="BigAnnotationWorkspace" Grid.Row="3" Visibility="Collapsed"
               Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
             <Grid x:Name="BigAnnotationListView" Padding="16" RowSpacing="12">

@@ -120,12 +120,14 @@
   <data name="ThemeLight.Text" xml:space="preserve"><value>Light</value></data>
   <data name="ThemeDark.Text" xml:space="preserve"><value>Dark</value></data>
   <data name="ReaderSettingsItem.Text" xml:space="preserve"><value>Reader Settings...</value></data>
+  <data name="ReaderSettingsPaneTitle.Text" xml:space="preserve"><value>Reader Settings</value></data>
+  <data name="ReaderSettingsPaneCloseButton.AutomationProperties.Name" xml:space="preserve"><value>Close reader settings</value></data>
+  <data name="ReaderSettingsToggleButton.AutomationProperties.Name" xml:space="preserve"><value>Reader settings</value></data>
+  <data name="ReaderSettingsToggleButton.ToolTipService.ToolTip" xml:space="preserve"><value>Reader settings</value></data>
+  <data name="ReaderSettingsLiveNote.Text" xml:space="preserve"><value>Changes apply immediately and are saved automatically.</value></data>
   <data name="HighlightRulesItem.Text" xml:space="preserve"><value>Highlight Rules...</value></data>
 
   <!-- ===== Reader settings dialog ===== -->
-  <data name="ReaderSettingsDialog.Title" xml:space="preserve"><value>Reader Settings</value></data>
-  <data name="ReaderSettingsDialog.PrimaryButtonText" xml:space="preserve"><value>Apply</value></data>
-  <data name="ReaderSettingsDialog.CloseButtonText" xml:space="preserve"><value>Cancel</value></data>
   <data name="ReaderSettingsFontFamilyLabel.Text" xml:space="preserve"><value>Font family</value></data>
   <data name="ReaderSettingsFontSizeLabel.Text" xml:space="preserve"><value>Font size</value></data>
   <data name="ReaderSettingsLineSpacingLabel.Text" xml:space="preserve"><value>Line spacing</value></data>
@@ -135,7 +137,6 @@
   <data name="ReaderSettingsPaperThemeLabel.Text" xml:space="preserve"><value>Paper</value></data>
   <data name="ReaderSettingsWarmThemeLabel.Text" xml:space="preserve"><value>Warm</value></data>
   <data name="ReaderSettingsNightThemeLabel.Text" xml:space="preserve"><value>Night</value></data>
-  <data name="ReaderSettingsPreviewLabel.Text" xml:space="preserve"><value>Preview</value></data>
   <data name="ReaderSettingsHighContrastNote.Text" xml:space="preserve"><value>Windows High Contrast overrides the selected reading background for accessibility.</value></data>
   <data name="ReaderSettingsGlobalNote.Text" xml:space="preserve"><value>These settings apply to all novel projects.</value></data>
 

@@ -1,23 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ContentDialog
-    x:Class="FujiyNotepad.WinUI.ReaderSettingsDialog"
+<UserControl
+    x:Class="FujiyNotepad.WinUI.ReaderSettingsPane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    x:Uid="ReaderSettingsDialog"
-    Title="Reader Settings"
-    PrimaryButtonText="Apply"
-    CloseButtonText="Cancel"
-    DefaultButton="Primary">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer Width="500" MaxHeight="600"
-                  VerticalScrollBarVisibility="Auto"
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Padding="4" Spacing="18">
+        <StackPanel Padding="16" Spacing="18">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Uid="ReaderSettingsPaneTitle"
+                           Text="Reader Settings" FontSize="18" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button x:Uid="ReaderSettingsPaneCloseButton" Grid.Column="1"
+                        AutomationProperties.AutomationId="ReaderSettingsPaneCloseButton"
+                        Content="&#x2715;" MinWidth="32" Padding="6,3"
+                        Click="Close_Click" />
+            </Grid>
+
+            <TextBlock x:Uid="ReaderSettingsLiveNote"
+                       Text="Changes apply immediately and are saved automatically."
+                       TextWrapping="Wrap" Opacity="0.75" />
+
             <StackPanel Spacing="6">
                 <TextBlock x:Uid="ReaderSettingsFontFamilyLabel"
                            Text="Font family" FontWeight="SemiBold" />
                 <ComboBox x:Name="FontFamilyComboBox"
-                          HorizontalAlignment="Stretch"
+                          HorizontalAlignment="Stretch" MaxDropDownHeight="400"
                           SelectionChanged="FontFamilyComboBox_SelectionChanged" />
             </StackPanel>
 
@@ -55,43 +67,40 @@
                         ValueChanged="LineSpacingSlider_ValueChanged" />
             </StackPanel>
 
-            <StackPanel Spacing="6">
+            <StackPanel Spacing="8">
                 <TextBlock x:Uid="ReaderSettingsContentWidthLabel"
                            Text="Content width" FontWeight="SemiBold" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="132" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <NumberBox x:Name="ContentWidthNumberBox" Width="132"
+                    <NumberBox x:Name="ContentWidthNumberBox" Width="128"
                                Minimum="480" Maximum="2400" Value="900"
                                SmallChange="20" LargeChange="100"
                                SpinButtonPlacementMode="Inline"
                                ValueChanged="ContentWidthNumberBox_ValueChanged" />
                     <TextBlock Grid.Column="1" Text="DIP"
                                VerticalAlignment="Center" />
-                    <CheckBox x:Name="AdaptiveWidthCheckBox" Grid.Column="2"
-                              x:Uid="ReaderSettingsAdaptiveWidthCheckBox"
-                              Content="Adapt to available width"
-                              VerticalAlignment="Center"
-                              Checked="AdaptiveWidthCheckBox_Changed"
-                              Unchecked="AdaptiveWidthCheckBox_Changed" />
                 </Grid>
+                <CheckBox x:Name="AdaptiveWidthCheckBox"
+                          x:Uid="ReaderSettingsAdaptiveWidthCheckBox"
+                          Content="Adapt to available width"
+                          Checked="AdaptiveWidthCheckBox_Changed"
+                          Unchecked="AdaptiveWidthCheckBox_Changed" />
             </StackPanel>
 
             <StackPanel Spacing="8">
                 <TextBlock x:Uid="ReaderSettingsThemeLabel"
                            Text="Reading background" FontWeight="SemiBold" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="2">
                     <RadioButton x:Name="PaperThemeRadio" GroupName="ReaderTheme"
                                  Tag="Paper" Checked="ThemeRadio_Checked">
-                        <StackPanel Width="112" Spacing="5">
+                        <StackPanel Width="84" Spacing="5">
                             <Border x:Name="PaperThemeSwatch" Height="42" CornerRadius="5"
                                     BorderThickness="1">
                                 <TextBlock x:Name="PaperThemeSwatchText" Text="Aa" FontSize="23"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <TextBlock x:Uid="ReaderSettingsPaperThemeLabel"
                                        Text="Paper" HorizontalAlignment="Center" />
@@ -99,12 +108,11 @@
                     </RadioButton>
                     <RadioButton x:Name="WarmThemeRadio" GroupName="ReaderTheme"
                                  Tag="Warm" Checked="ThemeRadio_Checked">
-                        <StackPanel Width="112" Spacing="5">
+                        <StackPanel Width="84" Spacing="5">
                             <Border x:Name="WarmThemeSwatch" Height="42" CornerRadius="5"
                                     BorderThickness="1">
                                 <TextBlock x:Name="WarmThemeSwatchText" Text="Aa" FontSize="23"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <TextBlock x:Uid="ReaderSettingsWarmThemeLabel"
                                        Text="Warm" HorizontalAlignment="Center" />
@@ -112,36 +120,17 @@
                     </RadioButton>
                     <RadioButton x:Name="NightThemeRadio" GroupName="ReaderTheme"
                                  Tag="Night" Checked="ThemeRadio_Checked">
-                        <StackPanel Width="112" Spacing="5">
+                        <StackPanel Width="84" Spacing="5">
                             <Border x:Name="NightThemeSwatch" Height="42" CornerRadius="5"
                                     BorderThickness="1">
                                 <TextBlock x:Name="NightThemeSwatchText" Text="Aa" FontSize="23"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <TextBlock x:Uid="ReaderSettingsNightThemeLabel"
                                        Text="Night" HorizontalAlignment="Center" />
                         </StackPanel>
                     </RadioButton>
                 </StackPanel>
-            </StackPanel>
-
-            <StackPanel Spacing="6">
-                <TextBlock x:Uid="ReaderSettingsPreviewLabel"
-                           Text="Preview" FontWeight="SemiBold" />
-                <Border x:Name="PreviewViewport" Width="460" MinHeight="126"
-                        CornerRadius="6"
-                        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                        BorderThickness="1" Padding="8">
-                    <Border x:Name="PreviewContentSurface"
-                            HorizontalAlignment="Center" VerticalAlignment="Stretch"
-                            CornerRadius="4" Padding="8" BorderThickness="1">
-                        <TextBlock x:Name="PreviewSampleText"
-                                   Text="春风拂过街巷，远处的灯火渐渐亮起。"
-                                   TextWrapping="Wrap"
-                                   LineStackingStrategy="BlockLineHeight" />
-                    </Border>
-                </Border>
             </StackPanel>
 
             <TextBlock x:Uid="ReaderSettingsHighContrastNote"
@@ -152,4 +141,4 @@
                        TextWrapping="Wrap" Opacity="0.75" />
         </StackPanel>
     </ScrollViewer>
-</ContentDialog>
+</UserControl>
