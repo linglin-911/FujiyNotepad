@@ -74,7 +74,7 @@ public sealed class ProportionalTextLayoutEngineTests
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        TextPosition beforeText = engine.HitTestCharacter(0, 25, out bool beforeHit);
+        TextPosition beforeText = engine.HitTestCharacter(-5, 25, out bool beforeHit);
         TextPosition afterText = engine.HitTestCharacter(100, 25, out bool afterHit);
 
         Assert.False(beforeHit);
@@ -83,7 +83,7 @@ public sealed class ProportionalTextLayoutEngineTests
         Assert.Equal(new TextPosition(0, 4), afterText);
 
         // Context-menu positioning still uses the nearest source boundary when the pointer is in blank space.
-        Assert.Equal(new TextPosition(0, 2), engine.HitTestCharacter(0, 25));
+        Assert.Equal(new TextPosition(0, 2), engine.HitTestCharacter(-5, 25));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public sealed class ProportionalTextLayoutEngineTests
             [0] = new() { new TextAnnotationMarker(0, 1, 4) },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(25, 19, markers, out TextPosition position);
+        bool hit = engine.TryHitTestAnnotationMarkers(25, 10, markers, out TextPosition position);
 
         Assert.True(hit);
         Assert.Equal(new TextPosition(0, 1), position);
@@ -110,7 +110,7 @@ public sealed class ProportionalTextLayoutEngineTests
             [0] = new() { new TextAnnotationMarker(0, 1, 4) },
         };
 
-        bool hit = engine.TryHitTestAnnotationMarkers(60, 19, markers, out _);
+        bool hit = engine.TryHitTestAnnotationMarkers(60, 10, markers, out _);
 
         Assert.False(hit);
     }
@@ -199,17 +199,62 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
-    public void DoubleClickWordSelection_UsesProportionalHitTestSourcePosition()
+    public void PointerPressCharacter_DoesNotSelectUntilThePointerMoves()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+
+        Assert.False(engine.HasSelection);
+        Assert.Equal(new TextPosition(0, 1), engine.CaretPosition);
+    }
+
+    [Fact]
+    public void PointerDragCharacter_IncludesBothEndpointCharacters()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+        engine.PointerDragCharacter(new TextPosition(0, 3), sourceLength: 1);
+
+        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 4), engine.SelectionEnd);
+    }
+
+    [Fact]
+    public void PointerDragCharacter_IncludesBothEndpointCharactersWhenDraggingBackwards()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 3), sourceLength: 1, shift: false);
+        engine.PointerDragCharacter(new TextPosition(0, 1), sourceLength: 1);
+
+        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 4), engine.SelectionEnd);
+    }
+
+    [Fact]
+    public void PointerDragBoundary_SelectsTheRestOfTheCurrentVisualRow()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+        engine.PointerDragBoundary(new TextPosition(0, 6));
+
+        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 6), engine.SelectionEnd);
+    }
+
+    [Fact]
+    public void HitTestCharacter_DoesNotTreatLineSpacingAsTextAndReturnsTheRowEnd()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
         engine.WordWrap = true;
 
-        // Click the middle visual row of a word that spans all three wrapped rows.
-        TextPosition clicked = engine.HitTest(25, 25);
-        engine.SelectWordAt(clicked);
+        TextPosition position = engine.HitTestCharacter(15, 18, out bool hitCharacter);
 
-        Assert.Equal(new TextPosition(0, 0), engine.SelectionStart);
-        Assert.Equal(new TextPosition(0, 6), engine.SelectionEnd);
+        Assert.False(hitCharacter);
+        Assert.Equal(new TextPosition(0, 2), position);
     }
 
     [Fact]
@@ -540,8 +585,7 @@ public sealed class ProportionalTextLayoutEngineTests
 
             // Simulate DirectWrite returning no glyph hit in the lower row padding. The selection
             // rectangle still spans the complete visual row and must remain clickable.
-            if (x < 0 || y < row.Top || y >= row.Top + row.Height
-                || y >= row.Top + row.Height * 0.75)
+            if (x < 0 || y < row.Top + 2.5 || y >= row.Top + 17.5)
             {
                 return new TextLayoutHitTestResult(row.SourceStartIndex, 0, false, false);
             }
@@ -568,10 +612,10 @@ public sealed class ProportionalTextLayoutEngineTests
                 if (overlapEnd > overlapStart)
                 {
                     result.Add(new TextLayoutRect(
-                        (overlapStart - row.SourceStartIndex) * 10,
-                        row.Top,
-                        (overlapEnd - overlapStart) * 10,
-                        row.Height));
+                        (overlapStart - row.SourceStartIndex) * 10 - 0.75,
+                        row.Top + 2.5,
+                        (overlapEnd - overlapStart) * 10 + 1.5,
+                        15));
                 }
             }
             return result;
