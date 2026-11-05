@@ -9,7 +9,7 @@
 > 批注功能基线分支：`feature/novel-project-annotations`
 > Phase 4.2 用户验收代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`
 > 当前基线：`fix/reader-proportional-line-overlap` 已解决比例字体窗口宽度变化时的文字重叠；当前 Phase 4 工作分支从该修复分支建立。
-> 用户最新确认（2026-11-05）：用户同意先分析真实 DrawBounds/布局坐标链路，再修复 BUG-020；随后修复 BUG-021，并增加字符中线选字规则。BUG-020、BUG-021、S-063 已提交代码和回归测试，但尚未执行本轮 Windows x64 build/test，也尚未完成用户实际运行验收。
+> 用户最新实测反馈（2026-11-05）：用户运行首轮提交 `8c88e23573e671778c5896d5be4a96aa29d9c611` 后，截图显示小批注虚线仍穿过字形上半部，拖动选字无法命中文字。自动化测试 1011 项中 1004 项成功、7 项失败，均在 Presentation.Tests。复核确认首轮 DrawBounds 临时布局坐标转换方案不可靠；另发现命中测试使用选区留白、批注位置优先级错误，以及两组测试漏计 TextPadding=8 DIP。本轮已提交第二轮修正 `e79a58d0c1be54b64d2dd29d529826a144c95b71`，改用原始布局 LayoutBounds 并拆分文字命中区/选区矩形；尚未执行第二轮 Windows x64 build/test，也未完成用户实测验收。
 
 ## 1. 状态标记与维护规则
 
@@ -153,7 +153,7 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 | S-054 | 如果一个原文片段关联多条批注，点击后应能够查看全部匹配批注或选择其中一条 | [已实现/待验收]；同一位置匹配到的批注会一起显示 |
 | S-055 | 标记的绘制和点击检测不能明显影响大文件滚动、阅读和选择性能 | [部分完成]；按可视范围查询、90ms 合并刷新并在后台完成偏移映射，仍需长篇实测 |
 | S-056 | 点击较大批注原文区域时，除命中的锚点外，还应显示完全包含在该锚点范围内的嵌套/较小批注 | [已实现/待验收]；点击命中后查询父范围内的锚点并合并去重，新增数据库查询回归测试 |
-| S-057 | 阅读器的文字区应按实际字符排版范围生成矩形；只覆盖文字及少量留白，不覆盖行间距/段间距；连续字符的水平命中与选区矩形必须连续；选区背景和批注虚线应与实际字形垂直对齐 | [代码已实现/待Windows构建与用户验收]；改为使用 Win2D DrawBounds 测量每个视觉行的实际字形范围；自动换行行通过同字体格式的临时单行布局测量，并以临时布局与原布局的 caret-row 原点差进行坐标对齐；选区与批注共用 TextLayoutVerticalGeometry；不再以 LayoutBounds/字号比例猜测字形高度，也不再把真实字形裁剪回 caret 行区间 |
+| S-057 | 阅读器的文字区应按实际字符排版范围生成矩形；只覆盖文字及少量留白，不覆盖行间距/段间距；连续字符的水平命中与选区矩形必须连续；选区背景和批注虚线应与实际字形垂直对齐 | [第二轮代码已提交/待Windows构建与用户验收]；使用原始 CanvasTextLayoutRegion.LayoutBounds 的 DIP 坐标生成每个视觉行的文字带；不再对可见文字行创建临时布局或换算 caret 原点；原始文字命中带与带留白的选区/批注矩形分开；虚线仅使用文字带下方可用空间 |
 | S-058 | 阅读器只允许通过鼠标拖动选字；选区边界按鼠标命中字符的前/后半边决定；单击不产生选区；双击不执行选词或其他动作；不显示文本插入光标 | [代码已实现/待Windows构建与用户验收]；仅当鼠标移动超过4 DIP拖动阈值后开始选字；字符中线规则决定端点边界；保留完整字形簇和 UTF-16 范围；双击选词入口和可见插入光标均已移除 |
 | S-059 | 跨行拖动选字时，离开当前行文字区后应选至该行末尾；进入下一行后按起点的水平投影确定该行选区；继续离开该行后再选中整行 | [代码已实现/待Windows构建与用户验收]；增加字符范围拖动、行边界拖动和正反向选择逻辑 |
 | S-060 | 阅读区域整体水平居中，但阅读区域内部文本必须左对齐；不额外添加首行缩进，不擅自删除原文空白字符 | [现有布局已满足/待本轮复测]；ReaderContentHost 居中，TextCanvas 与 DirectWrite 均为左对齐，保留原文内容 |
@@ -372,7 +372,7 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 | BUG-017 | 小批注原文定位虽然成功，但点击后需要等待数秒才跳转 | P1 | [用户已验证修复]；章节范围搜索与先跳转、后异步刷新列表/标记的调整已通过 Windows 实际运行验收，定位等待数秒的问题已解决 |
 | BUG-018 | 右侧实时阅读设置面板及右侧圆形工具按钮背景呈半透明，正文透出后影响文字和控件辨识度 | P1 | [代码已修复/待用户验收]；面板和齿轮按钮已改用主题适配且不透明的 SolidBackgroundFillColorBaseBrush；仍需 Windows 实测 Light/Dark 下的背景、文字和边框对比度 |
 | BUG-019 | 右侧工具栏没有独立预留布局区域；正文使用最大/自适应宽度时可能延伸到右侧按钮下方 | P1 | [代码已修复/待用户验收]；父级阅读 Grid 已增加独立 56 DIP 工具栏列，ReaderViewport 实际宽度自动扣除工具栏占位；设置面板仍覆盖 ReaderViewport，不挤压正文；面板打开时点击工具栏会关闭面板并消费点击，不触发工具命令。
-| BUG-020 | 选区背景和小批注虚线的垂直位置明显偏上，批注虚线穿过正文文字；当前文字区垂直几何与实际字形绘制位置不一致 | P1 | [代码已修复/待Windows构建与用户验收]；以 DrawBounds 实际字形范围替换 LayoutBounds/字号推算；自动换行逐视觉行测量并按 caret 原点换算；统一选区/批注垂直几何，取消错误行区间裁剪和二次 Y 像素对齐 |
+| BUG-020 | 选区背景和小批注虚线的垂直位置明显偏上，批注虚线穿过正文文字；当前文字区垂直几何与实际字形绘制位置不一致 | P1 | [第二轮代码已提交/待Windows构建与用户验收]；废弃首轮 DrawBounds 临时布局/caret 原点换算；直接读取原始布局中字符的 LayoutBounds，分别生成 TextTop/TextBottom 与 SelectionTop/Height；文字命中使用实际鼠标 Y，批注点击保留选区留白矩形，虚线置于文字带下方的可用空间 |
 | BUG-021 | 已有文字选区时，鼠标左键点击阅读器空白区域不能取消选区，只有点击文字才会取消 | P1 | [代码已实现/待Windows构建与用户验收]；左键按下在字符命中前清理旧选区，右键和设置面板被动交互不调用清理；批注标记点击仍可继续命中并显示批注 |
 
 ### 历史首轮小批注问题处理顺序（保留追溯）
@@ -388,7 +388,7 @@ Fujiy Notepad 是面向长篇 TXT 小说阅读、剧情分析、人物研究和�
 
 ### 当前处理顺序（2026-11-05）
 
-1. BUG-020 已完成代码修改：实际 DrawBounds 测量、视觉行 caret 原点换算、统一选区/批注垂直几何和绘制坐标对齐；新增几何单元测试。等待 Windows x64 构建、自动化测试和用户视觉验收。
+1. BUG-020 第二轮代码修改已提交：可见文字行直接使用原始布局 LayoutBounds，不再做临时布局 DrawBounds/caret 原点换算；新增文字带与选区留白分离测试。等待 Windows x64 构建、自动化测试和用户视觉验收。
 2. BUG-021 已完成代码修改：左键按下先清理旧选区，再执行字符/批注标记命中；等待 Windows x64 构建和空白点击、正文点击、批注标记点击回归。
 3. S-063 已完成代码修改：将 DirectWrite leading/trailing hit 信息传递至按下锚点和拖动端点；按命中字符中线决定选区边界；增加正反向拖动、端点中线和 shaping cluster 测试。
 4. 代码与需求文档已提交到当前分支，但本执行环境没有 .NET SDK/Windows App SDK，未能运行指定的 Windows x64 build/test；不得宣称构建或自动化测试通过。由用户拉取后执行显式 x64 Release build 和全量自动化测试，再做 Windows 实际运行验收。
@@ -442,7 +442,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 - Phase 4.2 已由用户测试通过：ReaderPalette 的 Paper/Warm/Night 独立配色、Windows High Contrast 覆盖、字体/字号/行距接入现有比例布局、排版变化后恢复原文视口锚点均已接入。
 - Phase 4.3 代码已实现：全宽阅读背景、居中正文容器、ContentWidthDip 接入、宽度变化时恢复原文 UTF-16 视口锚点、Night 对软件全局 Dark 主题的临时联动，以及可见工具栏独立 56 DIP 布局占位。ReaderViewport 宽度自动排除工具栏；完整宽度、对齐和主题验收仍待完成。
 - Phase 4.4 使用右侧非模态实时设置面板。设置变化即时应用并防抖保存；设置面板覆盖阅读区域，不挤压阅读视口；左侧阅读区保持鼠标滚轮滚动。面板打开时只有面板内部可操作；点击工具栏或其他面板外区域均关闭面板并消费点击，工具栏不执行命令。BUG-018/019 代码已修复，仍待用户 Windows 验收。
-- 最近一轮文字选择、BUG-020/021 与字符中线规则代码已推送：选区垂直几何使用实际 DrawBounds；空白左键清除选区；起点/终点按字符半边设置 caret 边界；小批注矩形命中保留完整 shaping cluster。当前仍未获得本轮 Windows 构建、自动化测试和用户视觉验收结果，不得宣称通过；通过后再继续 Phase 4.3/4.4 剩余验收。
+- 最近一轮首版 BUG-020/021 与字符中线规则代码已推送，但用户实测首版 BUG-020 失败且自动化测试 7 项失败；第二轮已将可见文字行几何改为原始 LayoutBounds、文字命中与选区留白分离，并修正批注位置优先级及测试坐标。第二轮仍未获得 Windows 构建、自动化测试和用户视觉验收结果，不得宣称通过；通过后再继续 Phase 4.3/4.4 剩余验收。
 - Phase 4.5 为 Phase 4 整体验收；应在 BUG-018/019、BUG-020/021 和 S-063 完成代码验收与用户实测，并完成 4.3/4.4 冒烟验收后执行。
 
 ### 当前 Git 状态
@@ -480,6 +480,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 |---|---|
 | 2026-11-05 | 完成 BUG-020、BUG-021 和 S-063 的代码修改。BUG-020 使用 DrawBounds 真实字形范围与临时视觉行布局测量，统一选区背景/批注虚线几何并修正绘制原点与裁剪；BUG-021 在左键字符命中前清理旧选区；S-063 将 DirectWrite leading/trailing hit 中线规则用于按下与拖动端点，并保留 shaping cluster 长度。新增几何、中线、空白点击清理和批注字形簇测试。代码提交：b685f42a996d77516b9f1b5f7430bc499a590a5e、97ea31363ceeff130c9e23fdd6d0a4b224d1dbbc、72ef36e9f19454fa06f3aa2b299bf113e7279970。当前未运行 Windows x64 build/test，等待用户本地构建、自动化测试与视觉/交互验收。 |
 | 2026-11-05 | 用户实测上一轮文字选择修复后，新增并暂缓 BUG-020/021：选区背景和小批注虚线均明显偏上，虚线穿过字形；已有选区时点击阅读器空白区域不能取消选区。S-057 更新为存在用户实测缺陷，新增 S-062 记录空白点击取消选区的交互要求。用户要求本轮只更新需求文档并交接，不立即修复。当前功能代码基准 HEAD：`f8897dc1183b702b8e5c1c05396b694104c81b85`；未提供本轮 build/test 完整结果，不推断测试通过。 |
+| 2026-11-05 | 用户实测首轮 DrawBounds 垂直几何后，批注虚线仍穿过字形上半部，拖动选字失效；本地自动化测试 1011 项中 7 项失败、1004 项通过。复核发现临时布局 caret 原点换算不可靠、文字命中错误使用选区留白、批注位置错误优先使用 SourceStartIndex，以及测试漏计 8 DIP TextPadding。第二轮改用原始布局 LayoutBounds、分离 TextTop/TextBottom 与 SelectionTop/Height、恢复 nearestCaret 批注位置并修正测试坐标。代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`；第二轮测试与用户实测待执行。 |
 
 | 2026-11-05 | BUG-018/019 按用户最终确认方案实施：ReaderSettingsPanel 继续覆盖 ReaderViewport，不挤压阅读区域；ReaderToolsRail 使用独立 56 DIP 布局列，ReaderViewport 宽度自动扣除工具栏。面板与齿轮按钮改用 SolidBackgroundFillColorBaseBrush。面板打开时只有面板内部可操作；点击工具栏或其他面板外区域关闭面板并消费点击，工具栏容器不可命中，齿轮按钮禁用，不执行按钮命令。代码与架构文档已更新，等待 Windows x64 build/test 和用户冒烟验收。 |
 | 2026-11-05 | 用户拉取修复提交 d92d16dae231e53ad98f58d0b0a9dd9e5837e79c 后，已能正常运行程序并打开右侧实时阅读设置面板。根据用户截图登记 BUG-018：ReaderSettingsPanel 当前使用 LayerFillColorDefaultBrush、工具按钮使用 CardBackgroundFillColorDefaultBrush，实际视觉呈半透明，需改为主题适配的不透明背景；登记 BUG-019：ReaderOverlayHost 与 ReaderToolsRail 目前覆盖在阅读区域上方，未从正文可用宽度中预留工具栏区域，最大/自适应正文可能侵入按钮区域。用户明确要求本轮只记录，不直接修复。另将 Phase 4.4 的实际设计更新为非模态右侧实时设置面板：无 Preview/Apply/Cancel，设置即时生效并防抖保存；面板外点击关闭且消费点击，左侧阅读区滚轮可用。
@@ -579,7 +580,7 @@ Phase 1 新增 Presentation 层 UI 无关契约：
 - TextLayoutVisualLine：以半开区间表示视觉行对应的原文 UTF-16 范围。
 - TextLayoutHitTestResult：返回原文字符/字形簇的 UTF-16 起点和长度，兼容代理对及多 UTF-16 单元字符，并携带 leading/trailing 命中侧。
 - TextCaretGeometry / TextLayoutRect：表达布局局部坐标中的光标和范围几何。
-- TextLayoutVerticalGeometry：表达单个视觉行的实际 DrawBounds、选区留白范围和安全批注虚线位置；由 WinUI 后端测量，Presentation 层只消费 UI 无关数值。
+- TextLayoutVerticalGeometry：表达单个视觉行的原始 LayoutBounds 文字带、选区留白范围和安全批注虚线位置；由 WinUI 后端测量，Presentation 层只消费 UI 无关数值。
 
 Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult，基于 CanvasTextLayout 实现字体测量、真实字形换行、视觉行指标、鼠标命中、光标位置和范围矩形。Presentation 仍不引用 WinUI、Win2D 或 WinRT 类型。布局结果负责释放原生布局和字体格式资源，并要求在 UI 线程创建、查询和释放。
 
@@ -628,7 +629,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 本次修复后的新 grapheme 边界测试是否全部执行通过，尚未收到独立测试结果；不得擅自补写测试通过数量。
 
-### 12.8 BUG-020/021 与字符中线选字实现记录（2026-11-05）
+### 12.8 BUG-020/021 与字符中线选字首轮实现记录（2026-11-05，已被 12.9 第二轮方案取代）
 
 **BUG-020：实际字形垂直几何**
 
@@ -660,6 +661,37 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - BUG-021 + S-063：97ea31363ceeff130c9e23fdd6d0a4b224d1dbbc
 - 批注标记命中保留 shaping cluster 长度：72ef36e9f19454fa06f3aa2b299bf113e7279970
 - 本执行环境没有 .NET SDK/Windows App SDK，尚未执行用户指定的 Windows x64 Release build/test。以上均为代码已提交，不代表编译、自动化测试或 Windows 实际验收通过。
+
+
+### 12.9 BUG-020 第二轮几何修正与首轮测试回归分析（2026-11-05）
+
+**用户实测与自动化测试反馈**
+
+- 用户运行首轮提交 `8c88e23573e671778c5896d5be4a96aa29d9c611` 后，批注虚线仍处于正文字符上半部，拖动选字无法命中文字；该版本不得验收。
+- 用户本地自动化测试：总计 1011 项，成功 1004 项，失败 7 项；7 项均来自 `ProportionalTextLayoutEngineTests`。Core.Tests 已通过。
+- 失败覆盖字符左右半区、批注矩形位置、跨软换行映射、行间距误命中、shaping cluster 和重叠批注位置。
+
+**首轮方案复核**
+
+- 首轮方案把临时单行布局 DrawBounds 与 caret-row Y 进行换算，再映射回原始布局；用户截图表明这条垂直坐标链路仍然错误，故不再用于可见文字行。
+- 首轮文字命中把鼠标 Y 强制替换为视觉行中心，再用带留白的选区矩形验证真实 Y；这混淆了文字命中带与装饰性选区矩形。
+- 批注位置计算错误地优先使用 pointerHit.SourceStartIndex，导致普通字符 trailing hit、跨行和重叠批注没有按最近 caret 边界定位。
+- 两组字符左右半区测试未计入 TextLayoutEngine.TextPadding=8 DIP，导致测试点击位置落在正文起点左侧；已修正测试坐标，不把该测试设置问题误判为运行时缺陷。
+
+**第二轮实现**
+
+- 可见文字行直接从原始 CanvasTextLayout.GetCharacterRegions() 读取 CanvasTextLayoutRegion.LayoutBounds。该矩形本身处于原始布局坐标系（DIP），与 DrawTextLayout 使用同一布局原点；不再创建临时单行布局，也不再做 DrawBounds/caret 原点换算。
+- TextLayoutVerticalGeometry 改为 TextTop/TextBottom、SelectionTop/SelectionHeight、AnnotationUnderlineY/Thickness。TextTop/TextBottom 表示原始布局文字带；选区和批注矩形在其基础上增加行内可用留白；虚线只能绘制在文字带下方的剩余空间，不足时隐藏。
+- 普通文字命中直接使用鼠标实际 localY，并以未加垂直留白的 TextTop/TextBottom 验证；不能把选区 padding 或行间距视为文字。
+- 小批注点击仍使用带留白的 GetRangeGeometry 矩形；仅为解析矩形内的水平字符位置，使用文字带中心做 DirectWrite hit-test。批注目标位置优先按 nearestCaret 夹取到共同范围，保留完整 shaping cluster 的 sourceLength 和 trailing hit。
+- 空白行/纯空格行仍使用同字体的代表性文字布局作为回退；该回退不参与正常可见文字行的坐标计算。
+- 新增/调整几何测试：原始布局坐标直用、行距变化不移动文字带、选区 padding 不侵入行间距、文字带超出 caret-row 时不裁剪、无效 LayoutBounds 处理；增加批注矩形垂直留白命中测试；修正遗漏 8 DIP TextPadding 的字符左右半区测试坐标。
+- BUG-021 左键按下先清除旧选区的逻辑未改动；右键章节批注和设置面板被动交互规则未改动。
+
+**第二轮提交与验证状态**
+
+- 代码提交：`e79a58d0c1be54b64d2dd29d529826a144c95b71`。
+- 本轮没有可用的 Windows/.NET SDK 执行环境；尚未获得第二轮 x64 build/test 结果，也尚未获得用户对虚线位置和拖动选字的复测结果。不得标记 BUG-020、S-057、BUG-021 或 S-063 为用户验收完成。
 
 ## 13. 整体界面优化阶段：仓库盘点与功能归属
 
@@ -758,7 +790,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 ### 13.6 尚未开发或尚未完成的功能
 
-- Phase 4 尚未完成：4.1 ReaderSettings 数据模型和持久化兼容已验收；4.2 ReaderPalette、字体/字号/行距接入和视口锚点恢复已由用户测试通过；4.3 全宽背景/居中正文容器、ContentWidthDip、宽度变化锚点恢复和 Night 全局 Dark 临时联动已实现，等待用户 Windows x64 build/test 与冒烟验收；4.4 统一阅读设置窗口尚未开发；4.5 最终验收尚未执行。详细架构见第 13.9 节和 docs/reader-text-layout-architecture.md。
+- Phase 4 尚未完成：4.1 ReaderSettings 数据模型和持久化兼容已验收；4.2 ReaderPalette、字体/字号/行距接入和视口锚点恢复已由用户测试通过；4.3 全宽背景/居中正文容器、ContentWidthDip、宽度变化锚点恢复和 Night 全局 Dark 临时联动已实现，等待用户 Windows x64 build/test 与冒烟验收；4.4 右侧实时阅读设置面板已实现，等待用户 Windows x64 build/test 与冒烟验收；4.5 最终验收尚未执行。详细架构见第 13.9 节和 docs/reader-text-layout-architecture.md。
 - 外部编辑后的完整差异生成、差异预览、标记清理、锚点重映射、确认应用和失败恢复。
 - 大批注 Markdown/TXT 导出。
 - 批注和大批注之间的关联关系。
@@ -872,7 +904,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 当前实现仍使用 ReaderViewport 全宽背景和居中的 ReaderContentHost；6 DIP 标记刻度位于正文右侧并随正文容器一起定位。
 - 右侧工具栏现通过父级 Grid 的独立 56 DIP 列占位；ReaderViewport 实际宽度已排除工具栏。ReaderOverlayHost 移入 ReaderViewport 内部，设置面板右对齐并覆盖阅读区域，不参与宽度测量。面板打开时工具栏容器不可命中，齿轮按钮禁用；点击工具栏区域由透明宿主接收，关闭面板并消费点击。
 - **验证状态：** BUG-018/019 已完成代码修改，尚未完成 Windows x64 build/test 和用户 UI 冒烟。全宽背景、居中正文、宽度变化锚点恢复、批注标记对齐和 Night 联动仍需按冒烟清单验证；因此 Phase 4.3/4.4 均不标记为验收完成。
-- **本轮新增实测缺陷及修复状态：** 用户截图显示选区背景与小批注虚线均相对字形偏上（BUG-020）。现已按 DrawBounds 真实字形范围提交共同几何修复和自动化测试；但用户尚未在 Windows 上复测，因此“批注标记对齐”仍未通过视觉验收，S-057 维持待验收。
+- **本轮实测缺陷及第二轮修复状态：** 用户运行首轮 DrawBounds 临时布局换算方案后，虚线仍穿过字形上半部且拖动选字失效；首轮自动化测试 7 项失败。第二轮已改用原始布局 LayoutBounds，并拆分文字命中带与选区留白矩形，代码提交 `e79a58d0c1be54b64d2dd29d529826a144c95b71`；尚未执行第二轮 Windows x64 build/test 和用户实测，因此“批注标记对齐”仍未通过视觉验收，S-057 维持待验收。
 
 
 #### 13.9.6 Phase 4.4 右侧实时阅读设置面板——实施架构与当前状态（2026-11-05）
