@@ -363,7 +363,7 @@
                             <TextBlock x:Name="SmallAnnotationCount" Text="0 条小批注"
                                        FontSize="12" Opacity="0.7" />
                             <TextBlock x:Name="ChapterAnnotationCount" Text="0 条章节批注"
-                                       Style="{ThemeResource CaptionTextBlockStyle}" Visibility="Collapsed" />
+                                       FontSize="12" Opacity="0.7" Visibility="Collapsed" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                             <Button x:Name="RebuildChapterIndexButton" Content="重新识别"
