@@ -961,8 +961,11 @@ public sealed partial class MainWindow
 
     private async void NewChapterAnnotationForSelectedChapter_Click(object sender, RoutedEventArgs e)
     {
-        if (selectedChapterAnnotationChapterId is not Guid chapterId)
+        if (selectedChapterAnnotationChapterId is not Guid chapterId
+            || !await EnsureChapterIndexAvailableForCreationAsync())
+        {
             return;
+        }
 
         NovelChapter? chapter = chapterAnnotationChapters.FirstOrDefault(item => item.Id == chapterId);
         if (chapter is null || !chapter.IsActive)
