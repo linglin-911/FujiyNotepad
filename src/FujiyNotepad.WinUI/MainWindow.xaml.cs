@@ -642,6 +642,8 @@ namespace FujiyNotepad.WinUI
             bool hadActiveProject = activeNovelProject is not null || activeAnnotationStore is not null;
             selectionActionsFlyout?.Hide();
             CloseSmallAnnotationComposer();
+            annotationPaneChapterFollowTimer?.Stop();
+            annotationPaneChapterManuallySelected = false;
             ResetBigAnnotationWorkspaceForProjectClose();
             NovelAnnotationStore? store = activeAnnotationStore;
             activeAnnotationStore = null;
