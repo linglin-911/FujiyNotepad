@@ -214,12 +214,6 @@ public sealed partial class MainWindow
             }
 
             UpdateChapterAnnotationActionButtons();
-            await RefreshChapterAnnotationsAsync();            finally
-            {
-                refreshingChapterAnnotationUi = false;
-            }
-
-            UpdateChapterAnnotationActionButtons();
             await RefreshChapterAnnotationsAsync();
         }
         catch (Exception ex)
