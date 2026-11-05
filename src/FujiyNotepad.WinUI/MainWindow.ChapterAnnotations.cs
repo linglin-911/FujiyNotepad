@@ -314,7 +314,7 @@ public sealed partial class MainWindow
             }
 
             ChapterAnnotationList.SelectedItem = selectedItem;
-            ChapterAnnotationCount.Text = $"{summaries.Count} 条批注";
+            ChapterAnnotationCount.Text = $"{summaries.Count} 条章节批注";
             ChapterAnnotationEmptyState.Text = summaries.Count == 0
                 ? !string.IsNullOrWhiteSpace(searchText)
                     ? "没有找到匹配的章节批注。"
