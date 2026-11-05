@@ -237,9 +237,8 @@ namespace FujiyNotepad.WinUI
             PreviewSampleText.Foreground = new SolidColorBrush(ToColor(palette.Text));
             PreviewSampleText.FontFamily = new FontFamily(draftSettings.FontFamily);
             PreviewSampleText.FontSize = draftSettings.FontSizeDip;
-            PreviewSampleText.LineHeight = Math.Max(
-                draftSettings.FontSizeDip,
-                draftSettings.FontSizeDip * draftSettings.LineSpacingMultiplier);
+            PreviewSampleText.LineHeight =
+                draftSettings.FontSizeDip * draftSettings.LineSpacingMultiplier;
         }
 
         private static Color ToColor(uint argb)

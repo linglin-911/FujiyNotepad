@@ -138,7 +138,8 @@
                             CornerRadius="4" Padding="8" BorderThickness="1">
                         <TextBlock x:Name="PreviewSampleText"
                                    Text="春风拂过街巷，远处的灯火渐渐亮起。"
-                                   TextWrapping="Wrap" />
+                                   TextWrapping="Wrap"
+                                   LineStackingStrategy="BlockLineHeight" />
                     </Border>
                 </Border>
             </StackPanel>
