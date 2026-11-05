@@ -3391,11 +3391,15 @@ namespace FujiyNotepad.WinUI
                 if (result == ContentDialogResult.Primary)
                 {
                     ReaderSettings applied = dialog.GetSelectedSettings();
+
+                    // Finish applying the validated draft before changing the persisted settings object.
+                    // If the reader rejects a setting, the catch path can still restore the untouched snapshot.
+                    PreviewReaderSettings(applied);
+
                     settings.Reader = applied;
                     settings.FontFamily = applied.FontFamily; // keep legacy settings files compatible
                     settings.FontSize = applied.FontSizeDip;
                     settingsStore.Save(settings);
-                    PreviewReaderSettings(applied);
                 }
                 else
                 {
