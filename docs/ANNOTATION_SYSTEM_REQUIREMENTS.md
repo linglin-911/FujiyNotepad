@@ -1090,4 +1090,6 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 - 历史实现曾尝试通过 Flyout.Closing 拦截外部关闭；本轮编辑器改为 Popup 后，直接使用 Popup.IsLightDismissEnabled=false，不再需要 Closing 事件拦截。
 
+- 本轮 Popup 迁移与锚点修复提交：6b20f972f7d2f20033071df916454c58afb5df5e；按钮固定在卡片底部：94981f9fc11f675862966730082593cacd5539b9。
+
 **下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否缩短至上一轮的一半；编辑器是否紧贴选区最后一行下方、靠近阅读区底部时是否自动上移并贴近底边；编辑器底部是否不再出现横向滚动条、X 和保存按钮是否始终可见；编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线；点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若 Popup 定位或输入透传仍有偏差，再根据实际运行截图调整。未完成 Windows 实测前不得标记为验收通过。

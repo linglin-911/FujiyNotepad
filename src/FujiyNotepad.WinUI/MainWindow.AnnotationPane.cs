@@ -16,8 +16,8 @@ public sealed partial class MainWindow
     private bool annotationPaneChapterManuallySelected;
     private DispatcherQueueTimer? annotationPaneChapterFollowTimer;
     private bool hasLastTextSelectionPoint;
-    private Point lastTextSelectionPoint;
-    private Point? pendingSmallComposerPosition;
+    private Point lastTextSelectionComposerAnchor;
+    private Point? pendingSmallComposerAnchor;
     private Flyout? selectionActionsFlyout;
     private Popup? smallAnnotationComposerPopup;
     private TextBox? smallAnnotationComposerTextBox;
@@ -221,9 +221,9 @@ public sealed partial class MainWindow
             return;
 
         CloseSmallAnnotationComposer();
-        pendingSmallComposerPosition = null;
+        pendingSmallComposerAnchor = null;
         selectionActionsFlyout?.Hide();
-        lastTextSelectionPoint = composerAnchor;
+        lastTextSelectionComposerAnchor = composerAnchor;
         hasLastTextSelectionPoint = true;
 
         Brush menuBackground = GetAnnotationFlyoutBackground();
@@ -315,7 +315,7 @@ public sealed partial class MainWindow
             };
             smallButton.Click += (_, _) =>
             {
-                pendingSmallComposerPosition = lastTextSelectionPoint;
+                pendingSmallComposerAnchor = lastTextSelectionComposerAnchor;
                 selectionActionsFlyout?.Hide();
                 CreateSmallAnnotationFromSelection();
             };
@@ -363,7 +363,7 @@ public sealed partial class MainWindow
         {
             if (ReferenceEquals(selectionActionsFlyout, selectionFlyout))
                 selectionActionsFlyout = null;
-            if (pendingSmallComposerPosition is null)
+            if (pendingSmallComposerAnchor is null)
                 hasLastTextSelectionPoint = false;
         };
         selectionFlyout.ShowAt(View, new FlyoutShowOptions
@@ -379,11 +379,11 @@ public sealed partial class MainWindow
         if (activeAnnotationStore is not { } store || activeNovelProject is not { } project)
             return Task.CompletedTask;
 
-        Point anchor = pendingSmallComposerPosition
+        Point anchor = pendingSmallComposerAnchor
             ?? (hasLastTextSelectionPoint
-                ? lastTextSelectionPoint
+                ? lastTextSelectionComposerAnchor
                 : new Point(Math.Max(24, View.ActualWidth / 2), Math.Max(24, View.ActualHeight / 3)));
-        pendingSmallComposerPosition = null;
+        pendingSmallComposerAnchor = null;
         CloseSmallAnnotationComposer();
         pendingSmallAnnotationSelection = selected;
         pendingSmallAnnotationStore = store;
@@ -703,7 +703,7 @@ public sealed partial class MainWindow
         pendingSmallAnnotationStore = null;
         pendingSmallAnnotationProject = null;
         pendingSmallAnnotationCategoryId = null;
-        pendingSmallComposerPosition = null;
+        pendingSmallComposerAnchor = null;
         hasLastTextSelectionPoint = false;
         View.FocusCanvas();
     }
