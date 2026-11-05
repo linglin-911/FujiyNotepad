@@ -96,6 +96,8 @@ public sealed class NovelAnnotationStoreTests
                 await store.GetAnnotationSummariesForChapterAsync(firstChapter, searchText: "second chapter quote");
             IReadOnlyList<NovelAnnotationSummary> titleSearch =
                 await store.GetAnnotationSummariesForChapterAsync(firstChapter, searchText: "legacy hidden title");
+            IReadOnlyList<NovelAnnotationSummary> globalTitleSearch =
+                await store.GetAnnotationSummariesAsync(searchText: "legacy hidden title");
 
             Assert.Equal(2, firstChapterNotes.Count);
             NovelAnnotationSummary firstShared = Assert.Single(
@@ -105,6 +107,7 @@ public sealed class NovelAnnotationStoreTests
             Assert.Equal(shared, secondChapterNotes[0].Annotation.Id);
             Assert.Equal(0, quoteSearch.Count);
             Assert.Equal(0, titleSearch.Count);
+            Assert.Equal(0, globalTitleSearch.Count);
         }
         finally
         {
