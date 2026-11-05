@@ -1115,69 +1115,7 @@ namespace FujiyNotepad.Presentation
             return new TextPosition(position.Line, endColumn);
         }
 
-        /// <summary>Selects the whole word (or run of same-class characters) under a double-clicked point.</summary>
-        public void SelectWordAt(double x, double y)
-        {
-            if (lineHeight <= 0)
-            {
-                return;
-            }
-            SelectWordAt(HitTest(x, y));
-        }
-
-        /// <summary>Selects the whole word (or run of same-class characters) at a source position.</summary>
-        public void SelectWordAt(TextPosition pos)
-        {
-            if (provider == null || totalLines == 0)
-            {
-                return;
-            }
-
-            pos = ClampPosition(pos);
-            string line = GetSourceLine(pos.Line);
-            (int start, int end) = WordBoundaries(line, pos.Column);
-            anchor = new TextPosition(pos.Line, start);
-            caret = new TextPosition(pos.Line, end);
-            desiredColumn = -1;
-            desiredProportionalX = -1;
-            RaiseBlinkReset();
-            RaiseCaretChanged();
-            RaiseRedraw();
-        }
-
-        private enum CharClass { Word, Whitespace, Other }
-
-        private static CharClass ClassOf(char c)
-        {
-            if (char.IsWhiteSpace(c)) return CharClass.Whitespace;
-            if (char.IsLetterOrDigit(c) || c == '_') return CharClass.Word;
-            return CharClass.Other;
-        }
-
-        // Expands from a character index to the surrounding run of same-class characters (word, whitespace,
-        // or other), giving familiar double-click word selection. Returns [start, end) source-char columns.
-        internal static (int start, int end) WordBoundaries(string line, int index)
-        {
-            if (line.Length == 0)
-            {
-                return (0, 0);
-            }
-            index = Math.Clamp(index, 0, line.Length - 1);
-
-            CharClass cls = ClassOf(line[index]);
-            int start = index;
-            while (start > 0 && ClassOf(line[start - 1]) == cls)
-            {
-                start--;
-            }
-            int end = index + 1;
-            while (end < line.Length && ClassOf(line[end]) == cls)
-            {
-                end++;
-            }
-            return (start, end);
-        }
-        /// <summary>Scrolls one display row when a drag pointer is held beyond the viewport edge.</summary>
+        /// <summary>Scrolls one display row when a drag pointer is held beyond the top/bottom edges.</summary>
         public void ScrollForPointer(double y)
         {
             if (provider == null || totalLines == 0)
