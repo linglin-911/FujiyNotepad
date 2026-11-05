@@ -176,6 +176,29 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void TextDragEntry_RecordsTheBoundaryOnASubThresholdPointerMove()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        bool hit = engine.TryHitTestTextRectangleEntry(
+            7.5, 10, 8.5, 10,
+            out TextPosition position,
+            out int sourceLength,
+            out bool isTrailingHit,
+            out double entryX,
+            out double entryY);
+
+        // This one-DIP segment is shorter than the UI drag threshold, but its first text-boundary
+        // intersection still has to be remembered until a later movement crosses that threshold.
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.Equal(1, sourceLength);
+        Assert.False(isTrailingHit);
+        Assert.Equal(8, entryX);
+        Assert.Equal(10, entryY);
+    }
+
+    [Fact]
     public void TextDragEntry_FromHorizontalBlankUsesTheFirstTextRectangleEdge()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
