@@ -2,7 +2,8 @@
 
 > 本文档是小说批注系统的唯一维护型需求清单。新增需求、需求变更、功能完成、测试结论和开发顺序调整，都必须同步更新本文档。
 >
-> 最后更新：2026-11-05
+> 最后更新：2026-11-06
+> 最新编译修复提交：a70943b548043c0a20b414e024ca4ee43c1f9197
 > 当前仓库：`linglin-911/FujiyNotepad`
 > 当前开发分支：`feature/reader-settings-phase4`（全局阅读设置与阅读器布局改造）
 > 本轮功能代码基准（需求文档更新前）：`9b6a41916ea570e76d050d0139af48433252a93f`
@@ -1066,4 +1067,12 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - NovelAnnotationStore.cs 新增按章节查询小批注摘要的方法；章节批注搜索不再匹配隐藏标题。NovelAnnotationStoreTests 新增多章节锚点筛选及隐藏标题搜索测试。未新增或删除数据库表、列。
 - 大批注中的小批注/章节批注参考卡片也不再显示这两类批注的标题；大批注自身标题功能不受影响。
 
-**验证状态：** Phase 5 基础功能此前已由用户实测运行正常；2026-11-06 新增选区菜单/小批注输入浮层视觉重构及菜单锚点调整，尚未执行本轮 Windows x64 Release build、自动化测试和用户视觉验收，不得标记为验收通过。下一轮先编译并实测：菜单是否位于多行选区第一条可见行上方、箭头是否贴合、浅色/暗色阅读背景配色、按钮无多余边框、输入卡片无套框、X 圆形、保存按钮药丸形，以及输入浮层仍位于选区末端下方且不滚动原文。之后再验证跨章节筛选、多锚点小批注、章节自动跟随/手动固定、章节编辑器 X/保存和项目切换状态清理。
+**验证状态：** Phase 5 基础功能此前已由用户实测运行正常；2026-11-06 新增选区菜单/小批注输入浮层视觉重构及菜单锚点调整，尚未完成本轮 Windows x64 Release build、自动化测试和用户视觉验收，不得标记为验收通过。
+
+**2026-11-06 编译问题与修复记录：**
+- 用户在 Windows x64 Release build 中反馈 MainWindow.AnnotationPane.cs 多处 Colors 未定义。检查确认该文件使用 Windows.UI.Color，但缺少 Microsoft.UI 命名空间；已补充 using Microsoft.UI;，与 TextCanvas.cs 当前的颜色引用方式保持一致。
+- 两处 SymbolIcon 错误设置了不存在的 FontSize 属性。已保留原有 Symbol.Copy / Symbol.Edit 图标语义，改用 19×19 DIP 的 Viewbox 控制显示尺寸。
+- 用户日志中的 XAML WMC0001（ReaderSettingsPane、TextCanvas）及 WMC1509（MarkupCompilePass2 未提供 LocalAssembly）暂按 C# 编译失败后的连带类型解析问题处理。已检查两个控件的实际类声明、命名空间和 XAML 映射，当前均能对应；本次没有修改 XAML。若修复 C# 后这些错误仍存在，再单独检查 XAML 编译管线。
+- 修复代码提交：a70943b548043c0a20b414e024ca4ee43c1f9197（fix(reader): correct WinUI annotation popup icons and colors）。
+
+**下一步：** 用户拉取修复提交后重新执行 Windows x64 Release build；通过后执行 Core.Tests。只有构建与测试通过后，才进入菜单/输入浮层视觉实测：菜单是否位于多行选区第一条可见行上方、箭头是否贴合、Paper/Warm/Night 背景配色、按钮无多余边框、输入卡片无套框、X 圆形、保存按钮药丸形，以及输入浮层仍位于选区末端下方且不滚动原文。之后再验证跨章节筛选、多锚点小批注、章节自动跟随/手动固定、章节编辑器 X/保存和项目切换状态清理。
