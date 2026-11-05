@@ -37,6 +37,15 @@ namespace FujiyNotepad.WinUI
                 return;
             }
 
+            if (ChapterAnnotationEditorView.Visibility == Visibility.Visible)
+            {
+                SmallAnnotationsItem.IsChecked = false;
+                await ShowNovelProjectMessageAsync(
+                    "正在编辑章节批注",
+                    "请先保存，或点击编辑器右上角的 X 关闭编辑，再切换批注类型。");
+                return;
+            }
+
             if (!SmallAnnotationsItem.IsChecked)
             {
                 CloseAnnotationPane_Click(sender, e);
