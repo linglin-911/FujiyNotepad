@@ -339,7 +339,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             SELECT Id, CategoryId, Title, Content, CreatedAt, UpdatedAt
             FROM Annotations
             WHERE ($category IS NULL OR CategoryId = $category)
-              AND ($search IS NULL OR Title LIKE $search ESCAPE '\' OR Content LIKE $search ESCAPE '\')
+              AND ($search IS NULL OR Content LIKE $search ESCAPE '\')
             ORDER BY UpdatedAt DESC;
             """;
         command.Parameters.AddWithValue("$category", (object?)categoryId?.ToString("D") ?? DBNull.Value);
@@ -363,7 +363,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
 
     /// <summary>
     /// Returns note summaries with anchor counts in one query, including optional text search across note
-    /// content, titles and linked source quotations.
+    /// content and linked source quotations.
     /// </summary>
     public async Task<IReadOnlyList<NovelAnnotationSummary>> GetAnnotationSummariesAsync(
         Guid? categoryId = null, string? searchText = null, CancellationToken cancellationToken = default)
@@ -383,7 +383,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             LEFT JOIN AnnotationAnchors a ON a.AnnotationId = n.Id
             WHERE ($category IS NULL OR n.CategoryId = $category)
               AND ($search IS NULL
-                   OR n.Title LIKE $search ESCAPE '\'
+                   
                    OR n.Content LIKE $search ESCAPE '\'
                    OR EXISTS (
                        SELECT 1 FROM AnnotationAnchors q
@@ -1642,7 +1642,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
                   AND matchAnchor.IsOrphaned = 0
                   AND ($category IS NULL OR n.CategoryId = $category)
                   AND ($search IS NULL
-                       OR n.Title LIKE $search ESCAPE '\'
+                       
                        OR n.Content LIKE $search ESCAPE '\'
                        OR matchAnchor.Quote LIKE $search ESCAPE '\')
             )
@@ -1733,7 +1733,7 @@ public sealed class NovelAnnotationStore : IAsyncDisposable
             WHERE a.ChapterId IN ({chapterIn})
               AND ($category IS NULL OR a.CategoryId = $category)
               AND ($search IS NULL
-                   OR a.Title LIKE $search ESCAPE '\'
+                   
                    OR a.Content LIKE $search ESCAPE '\'
                    OR c.Title LIKE $search ESCAPE '\')
             ORDER BY c.StartOffset, a.UpdatedAt DESC;
