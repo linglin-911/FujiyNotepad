@@ -126,12 +126,17 @@
             <StackPanel Spacing="6">
                 <TextBlock x:Uid="ReaderSettingsPreviewLabel"
                            Text="Preview" FontWeight="SemiBold" />
-                <Border x:Name="PreviewSurface" CornerRadius="6"
+                <Border x:Name="PreviewViewport" Width="460" Height="126"
+                        CornerRadius="6"
                         BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                        BorderThickness="1" Padding="12">
-                    <TextBlock x:Name="PreviewSampleText"
-                               Text="春风拂过街巷，远处的灯火渐渐亮起。阅读字体、字号和行距会在这里预览。&#10;这一段文字用于观察正文排版与阅读背景的搭配效果。"
-                               TextWrapping="Wrap" />
+                        BorderThickness="1" Padding="8">
+                    <Border x:Name="PreviewContentSurface"
+                            HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                            CornerRadius="4" Padding="8" BorderThickness="1">
+                        <TextBlock x:Name="PreviewSampleText"
+                                   Text="春风拂过街巷，远处的灯火渐渐亮起。阅读字体、字号和行距会在这里预览。&#10;这一段文字用于观察正文排版与阅读背景的搭配效果。"
+                                   TextWrapping="Wrap" />
+                    </Border>
                 </Border>
             </StackPanel>
 

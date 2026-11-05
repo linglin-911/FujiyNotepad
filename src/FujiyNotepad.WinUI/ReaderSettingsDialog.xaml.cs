@@ -216,7 +216,25 @@ namespace FujiyNotepad.WinUI
                 _ => ReaderPalette.Paper,
             };
 
-            PreviewSurface.Background = new SolidColorBrush(ToColor(palette.Background));
+            var background = new SolidColorBrush(ToColor(palette.Background));
+            PreviewViewport.Background = background;
+            PreviewViewport.BorderBrush = new SolidColorBrush(ToColor(palette.GutterSeparator));
+            PreviewContentSurface.Background = new SolidColorBrush(ToColor(palette.Background));
+            PreviewContentSurface.BorderBrush = new SolidColorBrush(ToColor(palette.GutterSeparator));
+
+            // Map the configured width range to the fixed preview viewport so the user can see
+            // the relative centered text-column width; zero uses the entire available preview width.
+            const double previewAvailableWidth = 444;
+            const double previewMinimumColumnWidth = 150;
+            double previewWidth = draftSettings.ContentWidthDip <= 0
+                ? previewAvailableWidth
+                : previewMinimumColumnWidth +
+                  (draftSettings.ContentWidthDip - ReaderSettings.MinContentWidthDip) /
+                  (ReaderSettings.MaxContentWidthDip - ReaderSettings.MinContentWidthDip) *
+                  (previewAvailableWidth - previewMinimumColumnWidth);
+            PreviewContentSurface.Width = Math.Clamp(
+                previewWidth, previewMinimumColumnWidth, previewAvailableWidth);
+
             PreviewSampleText.Foreground = new SolidColorBrush(ToColor(palette.Text));
             PreviewSampleText.FontFamily = new FontFamily(draftSettings.FontFamily);
             PreviewSampleText.FontSize = draftSettings.FontSizeDip;
