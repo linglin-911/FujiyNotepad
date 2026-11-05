@@ -866,11 +866,13 @@ public sealed partial class MainWindow
             return;
 
         selectedChapterAnnotationChapterId = initialChapter.Id;
-        SetAnnotationPaneChapter(initialChapter.Id, pinToChapter: true);
+        annotationPaneChapterManuallySelected = true;
         AnnotationPane.Visibility = Visibility.Visible;
         SetAnnotationPaneTab(showChapterAnnotations: true);
         ChapterDirectoryItem.IsChecked = false;
         ChapterDirectoryPane.Visibility = Visibility.Collapsed;
+        await LoadChapterAnnotationsAsync();
+        SetAnnotationPaneChapter(initialChapter.Id, pinToChapter: true);
         await OpenChapterAnnotationEditorAsync(initialChapter.Id, initialChapter, null);
     }
 
