@@ -1004,8 +1004,9 @@ namespace FujiyNotepad.Presentation
 
             if (shift)
             {
+                // Shift-click is not a selection gesture in the reader. Preserve the current selection;
+                // a subsequent intentional drag will extend it from the existing anchor.
                 pointerAnchorIsCharacter = false;
-                caret = position < anchor ? position : characterEnd;
             }
             else
             {
