@@ -300,7 +300,7 @@ public sealed partial class MainWindow
         (long StartOffset, long EndOffset, string Quote) selected)
     {
         if (activeAnnotationStore is not { } store || activeNovelProject is not { } project)
-            return;
+            return Task.CompletedTask;
 
         Point position = pendingSmallComposerPosition
             ?? (hasLastTextSelectionPoint
