@@ -83,6 +83,11 @@ namespace FujiyNotepad.WinUI.Controls
         private bool isSelecting;
         private bool hasStartedDragSelection;
         private bool hasSelectionAnchor;
+        private bool hasPendingTextEntry;
+        private TextPosition pendingTextEntryPosition;
+        private int pendingTextEntrySourceLength;
+        private bool pendingTextEntryTrailingHit;
+        private Point pendingTextEntryPoint;
         private bool isReaderInteractionPassive;
         private const double DragSelectionThresholdDip = 4d;
         private Point lastPointer;
@@ -800,6 +805,8 @@ namespace FujiyNotepad.WinUI.Controls
             Focus(Microsoft.UI.Xaml.FocusState.Pointer);
             Ready();
             engine.ClearSelection();
+            hasPendingTextEntry = false;
+            pendingTextEntrySourceLength = 0;
             lastPointer = e.GetCurrentPoint(this).Position;
             pointerDownPosition = lastPointer;
             TextPosition hit = HitTestTextCharacter(
@@ -829,6 +836,29 @@ namespace FujiyNotepad.WinUI.Controls
             }
             Point previousPointer = lastPointer;
             lastPointer = e.GetCurrentPoint(this).Position;
+
+            // Capture the first entry point even before the 4-DIP drag threshold is crossed. Otherwise a
+            // slow drag could enter the text band while still below threshold, and the next event would
+            // incorrectly use an already-inside point instead of the original rectangle boundary A.
+            if (!hasSelectionAnchor && !hasPendingTextEntry)
+            {
+                Ready();
+                if (engine.TryHitTestTextRectangleEntry(
+                        previousPointer.X, previousPointer.Y,
+                        lastPointer.X, lastPointer.Y,
+                        out TextPosition entry,
+                        out int entrySourceLength,
+                        out bool entryTrailingHit,
+                        out double entryX, out double entryY))
+                {
+                    hasPendingTextEntry = true;
+                    pendingTextEntryPosition = entry;
+                    pendingTextEntrySourceLength = entrySourceLength;
+                    pendingTextEntryTrailingHit = entryTrailingHit;
+                    pendingTextEntryPoint = new Point(entryX, entryY);
+                }
+            }
+
             if (!hasStartedDragSelection)
             {
                 double deltaX = lastPointer.X - pointerDownPosition.X;
@@ -836,6 +866,7 @@ namespace FujiyNotepad.WinUI.Controls
                 if (Math.Abs(deltaX) <= DragSelectionThresholdDip
                     && Math.Abs(deltaY) <= DragSelectionThresholdDip)
                 {
+                    UpdateAutoScroll();
                     return;
                 }
 
@@ -845,26 +876,23 @@ namespace FujiyNotepad.WinUI.Controls
             Ready();
             if (!hasSelectionAnchor)
             {
-                if (!engine.TryHitTestTextRectangleEntry(
-                        previousPointer.X, previousPointer.Y,
-                        lastPointer.X, lastPointer.Y,
-                        out TextPosition entry,
-                        out int entrySourceLength,
-                        out bool entryTrailingHit,
-                        out double entryX, out double entryY))
+                if (!hasPendingTextEntry || pendingTextEntrySourceLength <= 0)
                 {
-                    // Do not create an anchor from blank space. Keep waiting until the pointer trajectory
-                    // crosses a real text rectangle; the engine returns the first boundary point A.
                     UpdateAutoScroll();
                     return;
                 }
 
-                // Record A as the effective start of this gesture. The source caret was resolved just
-                // inside this boundary by the engine, so the original blank-space mouse-down is discarded.
-                pointerDownPosition = new Point(entryX, entryY);
+                // Point A, captured on the first rectangle crossing, replaces the blank mouse-down as the
+                // effective start of this drag. The resolved source boundary is just inside A.
+                pointerDownPosition = pendingTextEntryPoint;
                 engine.PointerPressCharacter(
-                    entry, entrySourceLength, entryTrailingHit, shift: false);
+                    pendingTextEntryPosition,
+                    pendingTextEntrySourceLength,
+                    pendingTextEntryTrailingHit,
+                    shift: false);
                 hasSelectionAnchor = true;
+                hasPendingTextEntry = false;
+                pendingTextEntrySourceLength = 0;
             }
 
             engine.ScrollForPointer(lastPointer.Y);
@@ -892,6 +920,8 @@ namespace FujiyNotepad.WinUI.Controls
             isSelecting = false;
             hasStartedDragSelection = false;
             hasSelectionAnchor = false;
+            hasPendingTextEntry = false;
+            pendingTextEntrySourceLength = 0;
             autoScrollTimer.Stop();
             ReleasePointerCapture(e.Pointer);
 
@@ -1417,11 +1447,6 @@ namespace FujiyNotepad.WinUI.Controls
                 DrawSourceTextRangeHighlight(
                     ds, layout, line, line.SelectionStartIndex, line.SelectionLength,
                     selectionColor, layoutTopPx);
-                if (line.SelectionContinuesPastRow)
-                {
-                    DrawSourceSelectionContinuation(
-                        ds, layout, line, selectionColor, layoutTopPx);
-                }
             }
         }
 
@@ -1488,39 +1513,6 @@ namespace FujiyNotepad.WinUI.Controls
                     (float)rectangle.Height,
                     color);
             }
-        }
-
-        private void DrawSourceSelectionContinuation(
-            CanvasDrawingSession ds,
-            ITextLayoutResult layout,
-            VisibleLine line,
-            Color color,
-            float layoutTop)
-        {
-            if (line.SourceEndIndex <= line.SourceStartIndex)
-                return;
-
-            int lastCharacter = layout.GetPreviousCaretIndex(line.SourceEndIndex);
-            TextCaretGeometry leading = layout.GetCaretGeometry(lastCharacter);
-            TextCaretGeometry trailing = layout.GetCaretGeometry(
-                lastCharacter, trailingSideOfCharacter: true);
-            double advance = Math.Abs(trailing.X - leading.X);
-            if (!double.IsFinite(advance) || advance <= 0)
-                advance = Math.Max(1, textFormat.FontSize * 0.25);
-
-            IReadOnlyList<TextLayoutRect> textGeometry = layout.GetRangeGeometry(
-                lastCharacter, line.SourceEndIndex - lastCharacter);
-            if (textGeometry.Count == 0)
-                return;
-
-            TextLayoutRect textRectangle = textGeometry[0];
-            float y = layoutTop + (float)textRectangle.Y;
-            ds.FillRectangle(
-                (float)(line.TextX + trailing.X),
-                y,
-                (float)advance,
-                (float)textRectangle.Height,
-                color);
         }
 
         private void DrawProportionalAnnotationMarkers(
