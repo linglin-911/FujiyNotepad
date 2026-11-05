@@ -746,7 +746,7 @@
                                        VerticalAlignment="Center" />
                         </Grid>
                         <TextBox x:Name="BigAnnotationReferenceSearchBox" Grid.Row="1"
-                                 PlaceholderText="搜索参考批注标题、正文或原文..."
+                                 PlaceholderText="搜索参考批注正文或原文..."
                                  TextChanged="BigAnnotationReferenceSearchBox_TextChanged" />
                         <Grid Grid.Row="2" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
