@@ -1101,18 +1101,18 @@ namespace FujiyNotepad.Presentation
                 position.Column + Math.Max(1, sourceLength),
                 position.Column,
                 LineLength(position.Line));
-            int endColumn = requestedEnd;
 
             if (UsesProportionalLayout)
             {
-                // Preserve the complete DirectWrite shaping cluster (which may contain more than one
-                // grapheme, such as a ligature), then snap outward if the reported end splits a text element.
-                int nextBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(requestedEnd);
-                if (nextBoundary > position.Column)
-                    endColumn = nextBoundary;
+                // HitTestCharacter already returns the complete UTF-16 range reported by DirectWrite,
+                // expanded to valid grapheme boundaries. Only repair a range that ends before the first
+                // valid boundary; asking for the *next* boundary after requestedEnd would include a neighbour.
+                int firstBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(position.Column);
+                if (firstBoundary > position.Column && requestedEnd < firstBoundary)
+                    requestedEnd = firstBoundary;
             }
 
-            return new TextPosition(position.Line, endColumn);
+            return new TextPosition(position.Line, requestedEnd);
         }
 
         /// <summary>Scrolls one display row when a drag pointer is held beyond the top/bottom edges.</summary>
