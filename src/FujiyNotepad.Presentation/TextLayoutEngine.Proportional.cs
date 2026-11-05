@@ -544,24 +544,10 @@ public sealed partial class TextLayoutEngine
         double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
         double localX = x - hitRow.TextX;
         double localY = y - layoutTop;
-        double hitTestY = localY;
 
-        if (returnCharacter && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
-        {
-            // Use the actual DrawBounds center of this visual row only to resolve the horizontal hit and
-            // DirectWrite leading/trailing side. The real pointer Y is validated against the target
-            // character's own shared text rectangle immediately below.
-            TextLayoutVerticalGeometry rowGeometry =
-                layout.GetVisualRowVerticalGeometry(hitRow.SourceStartIndex);
-            if (rowGeometry.GlyphBottom > rowGeometry.GlyphTop)
-                hitTestY = rowGeometry.GlyphTop
-                           + (rowGeometry.GlyphBottom - rowGeometry.GlyphTop) / 2;
-        }
-
-        // Resolve the character from its horizontal position on the row's text band, then validate the
-        // actual pointer Y against that character's text rectangle. This prevents line-spacing hits from
-        // being mistaken for glyph hits and keeps the same X mapped to the same character while dragging.
-        TextLayoutHitTestResult hit = layout.HitTest(localX, hitTestY);
+        // DirectWrite hit-tests the original layout's LayoutBounds. Keep the real pointer Y so the line gap
+        // cannot be converted into a character hit by sampling the visual-row center.
+        TextLayoutHitTestResult hit = layout.HitTest(localX, localY);
 
         if (returnCharacter && !hit.IsInside && hitRow.SourceEndIndex > hitRow.SourceStartIndex)
         {
@@ -652,6 +638,14 @@ public sealed partial class TextLayoutEngine
         double y)
     {
         const double tolerance = 0.25;
+        TextLayoutVerticalGeometry vertical = layout.GetVisualRowVerticalGeometry(sourceStart);
+        if (!double.IsFinite(vertical.TextTop) ||
+            !double.IsFinite(vertical.TextBottom) ||
+            vertical.TextBottom <= vertical.TextTop)
+        {
+            return false;
+        }
+
         foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
         {
             if (rectangle.Width <= 0 || rectangle.Height <= 0)
@@ -659,8 +653,8 @@ public sealed partial class TextLayoutEngine
 
             if (x >= rectangle.X - tolerance &&
                 x <= rectangle.X + rectangle.Width + tolerance &&
-                y >= rectangle.Y - tolerance &&
-                y <= rectangle.Y + rectangle.Height + tolerance)
+                y >= vertical.TextTop - tolerance &&
+                y <= vertical.TextBottom + tolerance)
             {
                 return true;
             }
@@ -698,25 +692,22 @@ public sealed partial class TextLayoutEngine
         {
             double firstLeft = firstRects.Min(rectangle => rectangle.X);
             double firstRight = firstRects.Max(rectangle => rectangle.X + rectangle.Width);
-            double firstTop = firstRects.Min(rectangle => rectangle.Y);
-            double firstBottom = firstRects.Max(rectangle => rectangle.Y + rectangle.Height);
-
             double lastLeft = lastRects.Min(rectangle => rectangle.X);
             double lastRight = lastRects.Max(rectangle => rectangle.X + rectangle.Width);
-            double lastTop = lastRects.Min(rectangle => rectangle.Y);
-            double lastBottom = lastRects.Max(rectangle => rectangle.Y + rectangle.Height);
 
             double textLeft = Math.Min(firstLeft, lastLeft);
             double textRight = Math.Max(firstRight, lastRight);
-            double textTop = Math.Min(firstTop, lastTop);
-            double textBottom = Math.Max(firstBottom, lastBottom);
+            TextLayoutVerticalGeometry vertical = layout.GetVisualRowVerticalGeometry(rowStart);
 
-            // Leaving the text rectangle vertically selects to the corresponding visual-row boundary.
-            // This is what makes a downward drag finish the current row before entering the next one.
-            if (localY < textTop)
-                return rowStart;
-            if (localY > textBottom)
-                return rowEnd;
+            // Leaving the unpadded original-layout text band vertically selects to the corresponding row
+            // boundary. Selection padding is intentionally not treated as text for drag hit-testing.
+            if (vertical.TextBottom > vertical.TextTop)
+            {
+                if (localY < vertical.TextTop)
+                    return rowStart;
+                if (localY > vertical.TextBottom)
+                    return rowEnd;
+            }
 
             if (localX < textLeft)
                 return rowStart;
@@ -791,7 +782,9 @@ public sealed partial class TextLayoutEngine
         double localY = y - layoutTop;
         TextLayoutVerticalGeometry rowGeometry =
             layout.GetVisualRowVerticalGeometry(hitRow.SourceStartIndex);
-        double hitTestY = rowGeometry.GlyphTop + (rowGeometry.GlyphBottom - rowGeometry.GlyphTop) / 2;
+        double hitTestY = rowGeometry.TextBottom > rowGeometry.TextTop
+            ? rowGeometry.TextTop + (rowGeometry.TextBottom - rowGeometry.TextTop) / 2
+            : localY;
         TextLayoutHitTestResult pointerHit = layout.HitTest(localX, hitTestY);
         int nearestCaret = Math.Clamp(pointerHit.CaretIndex, 0, layout.SourceText.Length);
 
@@ -827,9 +820,7 @@ public sealed partial class TextLayoutEngine
                 intersectEnd = Math.Min(intersectEnd, end);
 
                 int lastCaret = Math.Max(start, layout.GetPreviousCaretIndex(end));
-                int preferredColumn = pointerHit.IsInside && pointerHit.SourceLength > 0
-                    ? pointerHit.SourceStartIndex
-                    : nearestCaret;
+                int preferredColumn = nearestCaret;
                 int candidateColumn = Math.Clamp(preferredColumn, start, lastCaret);
                 int distance = Math.Abs(candidateColumn - nearestCaret);
                 if (distance < fallbackDistance)
@@ -849,9 +840,7 @@ public sealed partial class TextLayoutEngine
         {
             int lastCommonCaret = Math.Max(
                 intersectStart, layout.GetPreviousCaretIndex(intersectEnd));
-            int preferredColumn = pointerHit.IsInside && pointerHit.SourceLength > 0
-                ? pointerHit.SourceStartIndex
-                : nearestCaret;
+            int preferredColumn = nearestCaret;
             int selectedColumn = Math.Clamp(preferredColumn, intersectStart, lastCommonCaret);
             position = new TextPosition(hitRow.LineIndex, selectedColumn);
             if (pointerHit.IsInside && pointerHit.SourceLength > 0

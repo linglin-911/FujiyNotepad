@@ -55,8 +55,8 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Theory]
-    [InlineData(2, false)]
-    [InlineData(8, true)]
+    [InlineData(10, false)]
+    [InlineData(16, true)]
     public void HitTestCharacter_ReportsWhichHalfOfTheCharacterWasHit(
         double x, bool expectedTrailingHit)
     {
@@ -128,13 +128,28 @@ public sealed class ProportionalTextLayoutEngineTests
         };
 
         bool hit = engine.TryHitTestAnnotationMarkers(
-            8, 10, markers, out TextPosition position,
+            16, 10, markers, out TextPosition position,
             out int sourceLength, out bool isTrailingHit);
 
         Assert.True(hit);
         Assert.Equal(new TextPosition(0, 0), position);
         Assert.Equal(2, sourceLength);
         Assert.True(isTrailingHit);
+    }
+
+    [Fact]
+    public void AnnotationMarkerHitTest_StillAcceptsThePaddedVerticalTextRectangle()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 1, 4) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(25, 1.5, markers, out TextPosition position);
+
+        Assert.True(hit);
+        Assert.Equal(new TextPosition(0, 2), position);
     }
 
     [Fact]
@@ -779,8 +794,8 @@ public sealed class ProportionalTextLayoutEngineTests
         public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)
         {
             TextLayoutVisualLine row = FindRow(boundaries.SnapToNearestBoundary(sourceUtf16Index));
-            return TextAreaGeometry.FromDrawBounds(
-                row, measurementCaretTop: 0, drawTop: 2.5, drawHeight: 15);
+            return TextAreaGeometry.FromLayoutBounds(
+                row, layoutBoundsTop: row.Top + 2.5, layoutBoundsHeight: 15);
         }
 
         public TextLayoutHitTestResult HitTest(double x, double y)
@@ -820,8 +835,8 @@ public sealed class ProportionalTextLayoutEngineTests
                 int overlapEnd = Math.Min(end, row.SourceEndIndex);
                 if (overlapEnd > overlapStart)
                 {
-                    TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromDrawBounds(
-                        row, measurementCaretTop: 0, drawTop: 2.5, drawHeight: 15);
+                    TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromLayoutBounds(
+                        row, layoutBoundsTop: row.Top + 2.5, layoutBoundsHeight: 15);
                     result.Add(new TextLayoutRect(
                         (overlapStart - row.SourceStartIndex) * 10 - 0.75,
                         vertical.SelectionTop,

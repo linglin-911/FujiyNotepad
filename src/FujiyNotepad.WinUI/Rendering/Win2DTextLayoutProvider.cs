@@ -153,8 +153,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     private readonly double lineSpacingMultiplier;
     private readonly int[] trailingWhitespaceCounts;
     private readonly Dictionary<int, TextLayoutVerticalGeometry> rowVerticalGeometryCache = new();
-    private Rect? fallbackGlyphDrawBounds;
-    private double fallbackGlyphCaretTop;
+    private Rect? fallbackTextLayoutBoundsRelativeToCaret;
+    private double fallbackTextCaretTop;
     private bool disposed;
 
     internal Win2DTextLayoutResult(
@@ -251,8 +251,8 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         const double horizontalPadding = 1.25;
         var rectangles = new List<TextLayoutRect>();
 
-        // DirectWrite can return one region per glyph, shaping cluster or visual run. LayoutBounds supplies
-        // horizontal advance only; every region in a visual row receives the same DrawBounds-derived band.
+        // DirectWrite can return one region per glyph, shaping cluster or visual run. LayoutBounds are already
+        // in the original layout's DIP coordinate space; normalize every region in a row to its shared band.
         foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(start, end - start))
         {
             Rect bounds = region.LayoutBounds;
@@ -328,49 +328,78 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (rowVerticalGeometryCache.TryGetValue(rowIndex, out TextLayoutVerticalGeometry cached))
             return cached;
 
-        (Rect drawBounds, double measurementCaretTop) = GetVisualRowDrawBounds(row);
-        TextLayoutVerticalGeometry geometry = drawBounds.Height > 0 &&
-                                              double.IsFinite(drawBounds.Y) &&
-                                              double.IsFinite(drawBounds.Height)
-            ? TextAreaGeometry.FromDrawBounds(row, measurementCaretTop, drawBounds.Y, drawBounds.Height)
+        Rect textBounds = GetVisualRowLayoutBounds(row, rowIndex);
+        TextLayoutVerticalGeometry geometry = textBounds.Height > 0 &&
+                                              double.IsFinite(textBounds.Y) &&
+                                              double.IsFinite(textBounds.Height)
+            ? TextAreaGeometry.FromLayoutBounds(row, textBounds.Y, textBounds.Height)
             : new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
 
         rowVerticalGeometryCache[rowIndex] = geometry;
         return geometry;
     }
 
-    private (Rect DrawBounds, double CaretTop) GetVisualRowDrawBounds(TextLayoutVisualLine row)
+    private Rect GetVisualRowLayoutBounds(TextLayoutVisualLine row, int rowIndex)
     {
-        if (VisualLines.Count == 1)
+        // LayoutBounds from the original layout already use the same coordinates as DrawTextLayout. A single
+        // non-whitespace text element is sufficient: DirectWrite aligns layout bounds to the visual-row band.
+        int visibleEnd = Math.Max(
+            row.SourceStartIndex,
+            row.SourceEndIndex - trailingWhitespaceCounts[rowIndex]);
+        int sampleStart = row.SourceStartIndex;
+        while (sampleStart < visibleEnd)
         {
-            Rect singleRowBounds = layout.DrawBounds;
-            if (singleRowBounds.Height > 0)
-                return (singleRowBounds, GetCharacterRowTop(layout, row.SourceStartIndex));
+            int next = boundaryMap.SnapToNextBoundary(sampleStart);
+            if (next <= sampleStart)
+                break;
+
+            if (!char.IsWhiteSpace(SourceText[sampleStart]))
+            {
+                foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(
+                             sampleStart, next - sampleStart))
+                {
+                    Rect bounds = region.LayoutBounds;
+                    if (bounds.Height > 0 &&
+                        double.IsFinite(bounds.Y) &&
+                        double.IsFinite(bounds.Height))
+                    {
+                        return bounds;
+                    }
+                }
+            }
+
+            sampleStart = next;
         }
 
-        if (row.SourceLength > 0)
-        {
-            string rowText = SourceText.Substring(row.SourceStartIndex, row.SourceLength);
-            using CanvasTextLayout rowLayout = CreateSingleRowMeasurementLayout(rowText);
-            Rect rowBounds = rowLayout.DrawBounds;
-            if (rowBounds.Height > 0)
-                return (rowBounds, GetCharacterRowTop(rowLayout, 0));
-        }
-
-        // Empty and whitespace-only rows have no ink DrawBounds. Measure a representative glyph using the
-        // same device and CanvasTextFormat so selected advance whitespace still receives a stable text band.
-        if (!fallbackGlyphDrawBounds.HasValue)
+        // Empty and whitespace-only rows have no character LayoutBounds. Use a representative glyph only
+        // for this fallback case, then align it to the original row's caret origin. Visible text rows never
+        // pass through this temporary-layout conversion.
+        if (!fallbackTextLayoutBoundsRelativeToCaret.HasValue)
         {
             using CanvasTextLayout sampleLayout = CreateSingleRowMeasurementLayout("中M");
-            Rect sampleBounds = sampleLayout.DrawBounds;
-            if (sampleBounds.Height > 0)
+            Rect sampleBounds = sampleLayout.LayoutBounds;
+            if (sampleBounds.Height > 0 &&
+                double.IsFinite(sampleBounds.Y) &&
+                double.IsFinite(sampleBounds.Height))
             {
-                fallbackGlyphDrawBounds = sampleBounds;
-                fallbackGlyphCaretTop = GetCharacterRowTop(sampleLayout, 0);
+                fallbackTextCaretTop = GetCharacterRowTop(sampleLayout, 0);
+                fallbackTextLayoutBoundsRelativeToCaret = new Rect(
+                    sampleBounds.X,
+                    sampleBounds.Y - fallbackTextCaretTop,
+                    sampleBounds.Width,
+                    sampleBounds.Height);
             }
         }
 
-        return (fallbackGlyphDrawBounds ?? default, fallbackGlyphCaretTop);
+        if (!fallbackTextLayoutBoundsRelativeToCaret.HasValue)
+            return default;
+
+        Rect fallback = fallbackTextLayoutBoundsRelativeToCaret.Value;
+        return new Rect(
+            fallback.X,
+            row.Top + fallback.Y,
+            fallback.Width,
+            fallback.Height);
     }
 
     private CanvasTextLayout CreateSingleRowMeasurementLayout(string text)

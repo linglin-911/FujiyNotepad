@@ -118,13 +118,13 @@ public readonly record struct TextCaretGeometry(double X, double Y, double Heigh
 public readonly record struct TextLayoutRect(double X, double Y, double Width, double Height);
 
 /// <summary>
-/// Shared vertical geometry for one visual row. Glyph bounds come from the renderer's actual draw bounds;
-/// selection bounds add only the padding available inside that visual row. The annotation underline is
-/// placed within the remaining lower padding and is disabled when no safe space exists.
+/// Shared vertical geometry for one visual row. TextTop/TextBottom come from the original layout's
+/// LayoutBounds; SelectionTop/SelectionHeight add only the padding available inside that visual row.
+/// The annotation underline is placed below the text band and omitted when no safe space exists.
 /// </summary>
 public readonly record struct TextLayoutVerticalGeometry(
-    double GlyphTop,
-    double GlyphBottom,
+    double TextTop,
+    double TextBottom,
     double SelectionTop,
     double SelectionHeight,
     double AnnotationUnderlineY,
@@ -177,15 +177,15 @@ public interface ITextLayoutResult : IDisposable
     TextLayoutHitTestResult HitTest(double x, double y);
 
     /// <summary>
-    /// Returns one or more rectangles for an original-source UTF-16 range. Advance whitespace is included,
-    /// so selection backgrounds and annotation markers cover spaces as well as visible glyph ink.
+    /// Returns padded rectangles for an original-source UTF-16 range. Advance whitespace is included,
+    /// so selection backgrounds and annotation markers cover spaces as well as visible text.
     /// The vertical band is shared with GetVisualRowVerticalGeometry for the corresponding visual row.
     /// </summary>
     IReadOnlyList<TextLayoutRect> GetRangeGeometry(int sourceUtf16Start, int sourceUtf16Length);
 
     /// <summary>
-    /// Returns actual glyph bounds, the padded selection band and a safe annotation underline position for
-    /// the visual row containing the supplied original-source UTF-16 index.
+    /// Returns the unpadded text-layout band, padded selection band and safe annotation underline position
+    /// for the visual row containing the supplied original-source UTF-16 index.
     /// </summary>
     TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index);
 
