@@ -101,6 +101,7 @@ namespace FujiyNotepad.WinUI.Controls
         public event Action? ReaderThemeChanged;
         public event Action? ContentWidthChanged;
         public event Action<TextPosition>? CaretChanged;
+        public event Action<double, double>? TextSelectionCompleted;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
         public event Action<TextPosition>? CreateChapterAnnotationRequested;
@@ -924,6 +925,9 @@ namespace FujiyNotepad.WinUI.Controls
             pendingTextEntrySourceLength = 0;
             autoScrollTimer.Stop();
             ReleasePointerCapture(e.Pointer);
+
+            if (!isClick && engine.HasSelection)
+                TextSelectionCompleted?.Invoke(released.X, released.Y);
 
             if (isClick && hadSelectionAnchor)
             {
