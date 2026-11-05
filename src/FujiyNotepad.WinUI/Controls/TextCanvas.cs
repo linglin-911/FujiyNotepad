@@ -798,10 +798,12 @@ namespace FujiyNotepad.WinUI.Controls
 
             Focus(Microsoft.UI.Xaml.FocusState.Pointer);
             Ready();
+            engine.ClearSelection();
             lastPointer = e.GetCurrentPoint(this).Position;
             pointerDownPosition = lastPointer;
             TextPosition hit = HitTestTextCharacter(
-                lastPointer.X, lastPointer.Y, out bool hitCharacter, out int hitSourceLength);
+                lastPointer.X, lastPointer.Y,
+                out bool hitCharacter, out int hitSourceLength, out bool isTrailingHit);
             if (!hitCharacter || hitSourceLength <= 0)
             {
                 e.Handled = true;
@@ -809,7 +811,7 @@ namespace FujiyNotepad.WinUI.Controls
             }
 
             bool shift = IsDown(VirtualKey.Shift);
-            engine.PointerPressCharacter(hit, hitSourceLength, shift);
+            engine.PointerPressCharacter(hit, hitSourceLength, isTrailingHit, shift);
             hasStartedDragSelection = false;
             isSelecting = true;
             CapturePointer(e.Pointer);
@@ -841,9 +843,10 @@ namespace FujiyNotepad.WinUI.Controls
             Ready();
             engine.ScrollForPointer(lastPointer.Y);
             TextPosition hit = HitTestTextCharacter(
-                lastPointer.X, lastPointer.Y, out bool hitCharacter, out int hitSourceLength);
+                lastPointer.X, lastPointer.Y,
+                out bool hitCharacter, out int hitSourceLength, out bool isTrailingHit);
             if (hitCharacter && hitSourceLength > 0)
-                engine.PointerDragCharacter(hit, hitSourceLength);
+                engine.PointerDragCharacter(hit, hitSourceLength, isTrailingHit);
             else
                 engine.PointerDragBoundary(hit);
             UpdateAutoScroll();
@@ -963,9 +966,10 @@ namespace FujiyNotepad.WinUI.Controls
             Ready();
             engine.ScrollForPointer(lastPointer.Y);
             TextPosition hit = HitTestTextCharacter(
-                lastPointer.X, lastPointer.Y, out bool hitCharacter, out int hitSourceLength);
+                lastPointer.X, lastPointer.Y,
+                out bool hitCharacter, out int hitSourceLength, out bool isTrailingHit);
             if (hitCharacter && hitSourceLength > 0)
-                engine.PointerDragCharacter(hit, hitSourceLength);
+                engine.PointerDragCharacter(hit, hitSourceLength, isTrailingHit);
             else
                 engine.PointerDragBoundary(hit);
         }
@@ -1774,20 +1778,31 @@ namespace FujiyNotepad.WinUI.Controls
         // Legacy fixed-cell fallback only: returns the source column of the glyph under the pointer,
         // not the nearest caret boundary. The proportional reader uses selection-like range rectangles.
         private TextPosition HitTestTextCharacter(double x, double y)
-            => HitTestTextCharacter(x, y, out _, out _);
+            => HitTestTextCharacter(x, y, out _, out _, out _);
+
+        private TextPosition HitTestTextCharacter(
+            double x, double y, out bool hitCharacter, out int hitSourceLength)
+            => HitTestTextCharacter(x, y, out hitCharacter, out hitSourceLength, out _);
 
         // Marker activation is stricter than context-menu positioning: a nearest-boundary result from a
         // click in the blank area before/after a line must not activate an annotation on the boundary glyph.
         private TextPosition HitTestTextCharacter(
-            double x, double y, out bool hitCharacter, out int hitSourceLength)
+            double x, double y,
+            out bool hitCharacter,
+            out int hitSourceLength,
+            out bool isTrailingHit)
         {
+            hitCharacter = false;
+            hitSourceLength = 0;
+            isTrailingHit = false;
             if (engine.UsesProportionalLayout)
             {
                 TextPosition position = engine.HitTestCharacter(
-                    x, y, out hitCharacter, out hitSourceLength);
+                    x, y, out hitCharacter, out hitSourceLength, out isTrailingHit);
                 if (!hitCharacter &&
                     engine.TryHitTestAnnotationMarkers(
-                        x, y, annotationMarkersByLine, out TextPosition markerPosition))
+                        x, y, annotationMarkersByLine, out TextPosition markerPosition,
+                        out bool markerTrailingHit))
                 {
                     ITextLayoutResult? annotationLayout = engine.GetLayoutForLine(markerPosition.Line);
                     if (annotationLayout is not null)
@@ -1805,6 +1820,7 @@ namespace FujiyNotepad.WinUI.Controls
                         }
 
                         hitCharacter = hitSourceLength > 0;
+                        isTrailingHit = markerTrailingHit;
                         if (hitCharacter)
                             return markerPosition;
                     }
@@ -1818,6 +1834,7 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 hitCharacter = false;
                 hitSourceLength = 0;
+                isTrailingHit = false;
                 return engine.HitTest(x, y);
             }
 
@@ -1838,6 +1855,7 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 hitCharacter = false;
                 hitSourceLength = 0;
+                isTrailingHit = false;
                 return engine.PositionFromDisplayIndex(
                     hitLine.LineIndex, hitLine.DisplayStartIndex, trailing: false);
             }
@@ -1847,12 +1865,13 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 hitCharacter = false;
                 hitSourceLength = 0;
+                isTrailingHit = false;
                 return HitTestText(x, y);
             }
 
             float localX = (float)(x - hitLine.TextX);
             float localY = (float)Math.Max(0, lineHeight / 2.0);
-            if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out _))
+            if (layout.HitTest(localX, localY, out CanvasTextLayoutRegion region, out isTrailingHit))
             {
                 hitCharacter = true;
                 int localIndex = Math.Clamp(region.CharacterIndex, 0, hitLine.Display.Length);
@@ -1873,6 +1892,7 @@ namespace FujiyNotepad.WinUI.Controls
 
             hitCharacter = false;
             hitSourceLength = 0;
+            isTrailingHit = false;
             int boundary = localX <= layout.GetCaretPosition(0, trailingSideOfCharacter: false).X
                 ? 0
                 : hitLine.Display.Length;

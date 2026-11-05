@@ -486,7 +486,7 @@ public sealed partial class TextLayoutEngine
 
     /// <summary>Returns the source character under a point, rather than the nearest trailing caret boundary.</summary>
     public TextPosition HitTestCharacter(double x, double y)
-        => HitTestCharacter(x, y, out _, out _);
+        => HitTestCharacter(x, y, out _, out _, out _);
 
     /// <summary>
     /// Hit-tests the source character under a point and reports whether the pointer actually landed on a
@@ -502,25 +502,33 @@ public sealed partial class TextLayoutEngine
     /// </summary>
     public TextPosition HitTestCharacter(
         double x, double y, out bool isInside, out int sourceLength)
+        => HitTestCharacter(x, y, out isInside, out sourceLength, out _);
+
+    public TextPosition HitTestCharacter(
+        double x, double y, out bool isInside, out int sourceLength, out bool isTrailingHit)
     {
         if (!UsesProportionalLayout)
         {
             isInside = false;
             sourceLength = 0;
+            isTrailingHit = false;
             return HitTest(x, y);
         }
 
-        return HitTestProportional(x, y, returnCharacter: true, out isInside, out sourceLength);
+        return HitTestProportional(
+            x, y, returnCharacter: true, out isInside, out sourceLength, out isTrailingHit);
     }
 
     private TextPosition HitTestProportional(
-        double x, double y, bool returnCharacter, out bool isInside, out int sourceLength)
+        double x, double y, bool returnCharacter,
+        out bool isInside, out int sourceLength, out bool isTrailingHit)
     {
         IReadOnlyList<VisibleLine> visible = GetVisibleLinesProportional(hasFocus: false, caretVisible: false);
         if (visible.Count == 0)
         {
             isInside = false;
             sourceLength = 0;
+            isTrailingHit = false;
             return new TextPosition(0, 0);
         }
 
@@ -579,7 +587,9 @@ public sealed partial class TextLayoutEngine
             {
                 hit = new TextLayoutHitTestResult(
                     hitRow.SourceStartIndex, firstEnd - hitRow.SourceStartIndex,
-                    isTrailingHit: false, isInside: true);
+                    isTrailingHit: IsTrailingHalfOfCharacter(
+                        layout, hitRow.SourceStartIndex, localX),
+                    isInside: true);
             }
             else
             {
@@ -590,7 +600,8 @@ public sealed partial class TextLayoutEngine
                 {
                     hit = new TextLayoutHitTestResult(
                         lastStart, hitRow.SourceEndIndex - lastStart,
-                        isTrailingHit: false, isInside: true);
+                        isTrailingHit: IsTrailingHalfOfCharacter(layout, lastStart, localX),
+                        isInside: true);
                 }
             }
         }
@@ -606,6 +617,7 @@ public sealed partial class TextLayoutEngine
                     layout, hitRow, localX, localY, hit.CaretIndex);
                 isInside = false;
                 sourceLength = 0;
+                isTrailingHit = false;
                 return new TextPosition(
                     hitRow.LineIndex,
                     Math.Clamp(boundary, hitRow.SourceStartIndex, hitRow.SourceEndIndex));
@@ -613,6 +625,7 @@ public sealed partial class TextLayoutEngine
 
             isInside = true;
             sourceLength = hit.SourceLength;
+            isTrailingHit = hit.IsTrailingHit;
             return new TextPosition(
                 hitRow.LineIndex,
                 Math.Clamp(hit.SourceStartIndex, 0, layout.SourceText.Length));
@@ -620,8 +633,28 @@ public sealed partial class TextLayoutEngine
 
         isInside = hit.IsInside && hit.SourceLength > 0;
         sourceLength = isInside ? hit.SourceLength : 0;
+        isTrailingHit = hit.IsTrailingHit;
         int sourceIndex = Math.Clamp(hit.CaretIndex, 0, layout.SourceText.Length);
         return new TextPosition(hitRow.LineIndex, sourceIndex);
+    }
+
+    private static bool IsTrailingHalfOfCharacter(
+        ITextLayoutResult layout,
+        int sourceStart,
+        double localX)
+    {
+        TextCaretGeometry leading = layout.GetCaretGeometry(sourceStart);
+        TextCaretGeometry trailing = layout.GetCaretGeometry(
+            sourceStart, trailingSideOfCharacter: true);
+        if (!double.IsFinite(leading.X) ||
+            !double.IsFinite(trailing.X) ||
+            Math.Abs(trailing.X - leading.X) < 0.001)
+        {
+            return false;
+        }
+
+        double midpoint = (leading.X + trailing.X) / 2;
+        return trailing.X > leading.X ? localX >= midpoint : localX <= midpoint;
     }
 
     private static bool IsInsideTextRangeGeometry(
@@ -717,8 +750,17 @@ public sealed partial class TextLayoutEngine
         double y,
         IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
         out TextPosition position)
+        => TryHitTestAnnotationMarkers(x, y, markersByLine, out position, out _);
+
+    public bool TryHitTestAnnotationMarkers(
+        double x,
+        double y,
+        IReadOnlyDictionary<int, List<TextAnnotationMarker>> markersByLine,
+        out TextPosition position,
+        out bool isTrailingHit)
     {
         position = default;
+        isTrailingHit = false;
         if (!UsesProportionalLayout || markersByLine.Count == 0
             || !double.IsFinite(x) || !double.IsFinite(y))
         {
@@ -750,7 +792,10 @@ public sealed partial class TextLayoutEngine
         double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
         double localX = x - hitRow.TextX;
         double localY = y - layoutTop;
-        TextLayoutHitTestResult pointerHit = layout.HitTest(localX, localY);
+        TextLayoutVerticalGeometry rowGeometry =
+            layout.GetVisualRowVerticalGeometry(hitRow.SourceStartIndex);
+        double hitTestY = rowGeometry.GlyphTop + (rowGeometry.GlyphBottom - rowGeometry.GlyphTop) / 2;
+        TextLayoutHitTestResult pointerHit = layout.HitTest(localX, hitTestY);
         int nearestCaret = Math.Clamp(pointerHit.CaretIndex, 0, layout.SourceText.Length);
 
         int intersectStart = 0;
@@ -771,13 +816,11 @@ public sealed partial class TextLayoutEngine
 
             foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(start, end - start))
             {
-                double top = Math.Max(hitRow.LayoutRowTop, rectangle.Y);
-                double bottom = Math.Min(
-                    hitRow.LayoutRowTop + hitRow.LayoutRowHeight,
-                    rectangle.Y + rectangle.Height);
+                double top = rectangle.Y;
+                double bottom = rectangle.Y + rectangle.Height;
                 if (rectangle.Width <= 0 || bottom <= top
                     || localX < rectangle.X || localX > rectangle.X + rectangle.Width
-                    || localY < top || localY > bottom)
+                    || localY < top || localY >= bottom)
                 {
                     continue;
                 }
@@ -787,7 +830,10 @@ public sealed partial class TextLayoutEngine
                 intersectEnd = Math.Min(intersectEnd, end);
 
                 int lastCaret = Math.Max(start, layout.GetPreviousCaretIndex(end));
-                int candidateColumn = Math.Clamp(nearestCaret, start, lastCaret);
+                int preferredColumn = pointerHit.IsInside && pointerHit.SourceLength > 0
+                    ? pointerHit.SourceStartIndex
+                    : nearestCaret;
+                int candidateColumn = Math.Clamp(preferredColumn, start, lastCaret);
                 int distance = Math.Abs(candidateColumn - nearestCaret);
                 if (distance < fallbackDistance)
                 {
@@ -806,9 +852,15 @@ public sealed partial class TextLayoutEngine
         {
             int lastCommonCaret = Math.Max(
                 intersectStart, layout.GetPreviousCaretIndex(intersectEnd));
-            position = new TextPosition(
-                hitRow.LineIndex,
-                Math.Clamp(nearestCaret, intersectStart, lastCommonCaret));
+            int preferredColumn = pointerHit.IsInside && pointerHit.SourceLength > 0
+                ? pointerHit.SourceStartIndex
+                : nearestCaret;
+            int selectedColumn = Math.Clamp(preferredColumn, intersectStart, lastCommonCaret);
+            position = new TextPosition(hitRow.LineIndex, selectedColumn);
+            isTrailingHit = pointerHit.IsInside && pointerHit.SourceLength > 0
+                            && selectedColumn == pointerHit.SourceStartIndex
+                ? pointerHit.IsTrailingHit
+                : IsTrailingHalfOfCharacter(layout, selectedColumn, localX);
             return true;
         }
 
@@ -816,6 +868,10 @@ public sealed partial class TextLayoutEngine
             return false;
 
         position = new TextPosition(hitRow.LineIndex, fallbackColumn);
+        isTrailingHit = pointerHit.IsInside && pointerHit.SourceLength > 0
+                        && fallbackColumn == pointerHit.SourceStartIndex
+            ? pointerHit.IsTrailingHit
+            : IsTrailingHalfOfCharacter(layout, fallbackColumn, localX);
         return true;
     }
 

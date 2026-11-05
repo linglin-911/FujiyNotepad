@@ -54,6 +54,23 @@ public sealed class ProportionalTextLayoutEngineTests
         Assert.Equal(new TextPosition(0, 3), position);
     }
 
+    [Theory]
+    [InlineData(2, false)]
+    [InlineData(8, true)]
+    public void HitTestCharacter_ReportsWhichHalfOfTheCharacterWasHit(
+        double x, bool expectedTrailingHit)
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        TextPosition position = engine.HitTestCharacter(
+            x, 10, out bool hitCharacter, out int sourceLength, out bool isTrailingHit);
+
+        Assert.True(hitCharacter);
+        Assert.Equal(new TextPosition(0, 0), position);
+        Assert.Equal(1, sourceLength);
+        Assert.Equal(expectedTrailingHit, isTrailingHit);
+    }
+
     [Fact]
     public void HitTestCharacter_PreservesTheFullSourceRangeOfAShapingCluster()
     {
@@ -228,10 +245,26 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
 
         Assert.False(engine.HasSelection);
         Assert.Equal(new TextPosition(0, 1), engine.CaretPosition);
+    }
+
+    [Fact]
+    public void PointerPressCharacter_UsesTheHitHalfAsTheInitialCaretBoundary()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
+        Assert.Equal(new TextPosition(0, 1), engine.CaretPosition);
+
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: true, shift: false);
+        Assert.Equal(new TextPosition(0, 2), engine.CaretPosition);
+        Assert.False(engine.HasSelection);
     }
 
     [Fact]
@@ -239,7 +272,8 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: true);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: true);
 
         Assert.False(engine.HasSelection);
         Assert.Equal(new TextPosition(0, 0), engine.CaretPosition);
@@ -250,8 +284,10 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
-        engine.PointerDragCharacter(new TextPosition(0, 3), sourceLength: 1);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 3), sourceLength: 1, isTrailingHit: true);
 
         Assert.Equal(0, engine.SelectionStart.Line);
         Assert.Equal(1, engine.SelectionStart.Column);
@@ -264,8 +300,10 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 3), sourceLength: 1, shift: false);
-        engine.PointerDragCharacter(new TextPosition(0, 1), sourceLength: 1);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 3), sourceLength: 1, isTrailingHit: true, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false);
 
         Assert.Equal(0, engine.SelectionStart.Line);
         Assert.Equal(1, engine.SelectionStart.Column);
@@ -274,12 +312,48 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PointerDragCharacter_SelectsTheStartingCharacterOnlyAfterCrossingItsMidpoint()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: true);
+        Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 2), engine.SelectionEnd);
+
+        engine.PointerDragCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false);
+        Assert.False(engine.HasSelection);
+    }
+
+    [Fact]
+    public void PointerDragCharacter_ExcludesTheStartingCharacterWhenDraggingRightFromItsTrailingHalf()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: true, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 2), sourceLength: 1, isTrailingHit: false);
+        Assert.False(engine.HasSelection);
+
+        engine.PointerDragCharacter(
+            new TextPosition(0, 2), sourceLength: 1, isTrailingHit: true);
+        Assert.Equal(new TextPosition(0, 2), engine.SelectionStart);
+        Assert.Equal(new TextPosition(0, 3), engine.SelectionEnd);
+    }
+
+    [Fact]
     public void PointerDragCharacter_PreservesTheReportedShapingClusterLength()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 2, shift: false);
-        engine.PointerDragCharacter(new TextPosition(0, 4), sourceLength: 1);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 2, isTrailingHit: false, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 4), sourceLength: 1, isTrailingHit: true);
 
         Assert.Equal(1, engine.SelectionStart.Column);
         Assert.Equal(5, engine.SelectionEnd.Column);
@@ -290,9 +364,12 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
-        engine.PointerDragCharacter(new TextPosition(0, 3), sourceLength: 1);
-        engine.PointerDragCharacter(new TextPosition(0, 1), sourceLength: 1);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 3), sourceLength: 1, isTrailingHit: true);
+        engine.PointerDragCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: true);
 
         Assert.Equal(1, engine.SelectionStart.Column);
         Assert.Equal(2, engine.SelectionEnd.Column);
@@ -303,11 +380,28 @@ public sealed class ProportionalTextLayoutEngineTests
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
 
-        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: false);
+        engine.PointerPressCharacter(
+            new TextPosition(0, 1), sourceLength: 1, isTrailingHit: false, shift: false);
         engine.PointerDragBoundary(new TextPosition(0, 6));
 
         Assert.Equal(new TextPosition(0, 1), engine.SelectionStart);
         Assert.Equal(new TextPosition(0, 6), engine.SelectionEnd);
+    }
+
+    [Fact]
+    public void ClearSelection_CollapsesAnExistingSelectionAtTheActiveCaret()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        engine.SelectMatch(0, 1, 4);
+        TextPosition activeCaret = engine.CaretPosition;
+
+        Assert.True(engine.HasSelection);
+        engine.ClearSelection();
+
+        Assert.False(engine.HasSelection);
+        Assert.Equal(activeCaret, engine.CaretPosition);
+        Assert.Equal(activeCaret, engine.SelectionStart);
+        Assert.Equal(activeCaret, engine.SelectionEnd);
     }
 
     [Fact]
@@ -636,7 +730,14 @@ public sealed class ProportionalTextLayoutEngineTests
         {
             int index = boundaries.SnapToNearestBoundary(sourceUtf16Index);
             TextLayoutVisualLine row = FindRow(index);
-            return new TextCaretGeometry((index - row.SourceStartIndex) * 10, row.Top, row.Height);
+            int caretIndex = trailingSideOfCharacter
+                ? SourceText == "fi" && index == 0
+                    ? 2
+                    : boundaries.SnapToNextBoundary(index)
+                : index;
+            caretIndex = Math.Clamp(caretIndex, row.SourceStartIndex, row.SourceEndIndex);
+            return new TextCaretGeometry(
+                (caretIndex - row.SourceStartIndex) * 10, row.Top, row.Height);
         }
 
         public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)

@@ -236,9 +236,6 @@ namespace FujiyNotepad.Presentation
 
         private TextPosition caret;
         private TextPosition anchor;
-        private TextPosition pointerAnchorStart;
-        private TextPosition pointerAnchorEnd;
-        private bool pointerAnchorIsCharacter;
         private int desiredColumn = -1;
 
         /// <summary>Raised when the scroll position or horizontal extent changes (host re-syncs scrollbars).</summary>
@@ -973,9 +970,6 @@ namespace FujiyNotepad.Presentation
             }
 
             pos = ClampPosition(pos);
-            pointerAnchorIsCharacter = false;
-            pointerAnchorStart = pos;
-            pointerAnchorEnd = pos;
             if (!shift)
             {
                 anchor = pos;
@@ -989,10 +983,31 @@ namespace FujiyNotepad.Presentation
         }
 
         /// <summary>
-        /// Starts a drag selection from the complete source character or shaping cluster under the pointer.
-        /// The character is included if either endpoint of the drag lands inside its text rectangle.
+        /// Collapses the current selection at its active caret. The reader calls this before hit-testing
+        /// every left-click, so clicks in blank space also clear an existing selection.
         /// </summary>
-        public void PointerPressCharacter(TextPosition position, int sourceLength, bool shift)
+        public void ClearSelection()
+        {
+            if (!HasSelection)
+                return;
+
+            anchor = caret;
+            desiredColumn = -1;
+            desiredProportionalX = -1;
+            RaiseBlinkReset();
+            RaiseCaretChanged();
+            RaiseRedraw();
+        }
+
+        /// <summary>
+        /// Starts a pointer gesture at the leading or trailing caret boundary of the hit character/cluster.
+        /// A trailing-side press anchors after the complete source cluster; a leading-side press anchors before it.
+        /// </summary>
+        public void PointerPressCharacter(TextPosition position, int sourceLength, bool shift) =>
+            PointerPressCharacter(position, sourceLength, isTrailingHit: false, shift: shift);
+
+        public void PointerPressCharacter(
+            TextPosition position, int sourceLength, bool isTrailingHit, bool shift)
         {
             if (provider is null || totalLines == 0 || sourceLength <= 0)
                 return;
@@ -1002,19 +1017,11 @@ namespace FujiyNotepad.Presentation
             if (characterEnd <= position)
                 return;
 
-            if (shift)
+            if (!shift)
             {
-                // Shift-click is not a selection gesture in the reader. Preserve the current selection;
-                // a subsequent intentional drag will extend it from the existing anchor.
-                pointerAnchorIsCharacter = false;
-            }
-            else
-            {
-                pointerAnchorStart = position;
-                pointerAnchorEnd = characterEnd;
-                pointerAnchorIsCharacter = true;
-                anchor = pointerAnchorStart;
-                caret = pointerAnchorStart;
+                TextPosition boundary = isTrailingHit ? characterEnd : position;
+                anchor = boundary;
+                caret = boundary;
             }
 
             desiredColumn = -1;
@@ -1024,8 +1031,11 @@ namespace FujiyNotepad.Presentation
             RaiseRedraw();
         }
 
-        /// <summary>Extends a pointer selection to include the complete character under the pointer.</summary>
-        public void PointerDragCharacter(TextPosition position, int sourceLength)
+        /// <summary>Moves the active selection boundary to the leading or trailing edge of the hit cluster.</summary>
+        public void PointerDragCharacter(TextPosition position, int sourceLength) =>
+            PointerDragCharacter(position, sourceLength, isTrailingHit: true);
+
+        public void PointerDragCharacter(TextPosition position, int sourceLength, bool isTrailingHit)
         {
             if (provider is null || totalLines == 0 || sourceLength <= 0)
                 return;
@@ -1038,24 +1048,7 @@ namespace FujiyNotepad.Presentation
                 return;
             }
 
-            if (pointerAnchorIsCharacter)
-            {
-                if (position < pointerAnchorStart)
-                {
-                    anchor = pointerAnchorEnd;
-                    caret = position;
-                }
-                else
-                {
-                    anchor = pointerAnchorStart;
-                    caret = characterEnd;
-                }
-            }
-            else
-            {
-                caret = position < anchor ? position : characterEnd;
-            }
-
+            caret = isTrailingHit ? characterEnd : position;
             desiredColumn = -1;
             desiredProportionalX = -1;
             RaiseCaretChanged();
@@ -1071,25 +1064,7 @@ namespace FujiyNotepad.Presentation
             if (provider is null || totalLines == 0)
                 return;
 
-            position = ClampPosition(position);
-            if (pointerAnchorIsCharacter)
-            {
-                if (position < pointerAnchorStart)
-                {
-                    anchor = pointerAnchorEnd;
-                    caret = position;
-                }
-                else
-                {
-                    anchor = pointerAnchorStart;
-                    caret = position;
-                }
-            }
-            else
-            {
-                caret = position;
-            }
-
+            caret = ClampPosition(position);
             desiredColumn = -1;
             desiredProportionalX = -1;
             RaiseCaretChanged();
@@ -1174,7 +1149,7 @@ namespace FujiyNotepad.Presentation
         public TextPosition HitTest(double x, double y)
         {
             if (UsesProportionalLayout)
-                return HitTestProportional(x, y, returnCharacter: false, out _, out _);
+                return HitTestProportional(x, y, returnCharacter: false, out _, out _, out _);
 
             if (provider == null || totalLines == 0 || lineHeight <= 0)
             {
