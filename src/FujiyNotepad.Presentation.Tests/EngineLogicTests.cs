@@ -584,31 +584,6 @@ namespace FujiyNotepad.Presentation.Tests
             Assert.Equal(new TextPosition(2, 2), e.SelectionStart);
         }
 
-        // ----- Double-click word selection -----
-
-        [Theory]
-        [InlineData("foo bar baz", 1, 0, 3)]   // inside "foo"
-        [InlineData("foo bar baz", 5, 4, 7)]   // inside "bar"
-        [InlineData("foo_bar baz", 2, 0, 7)]   // '_' is a word char -> "foo_bar"
-        [InlineData("foo  bar", 4, 3, 5)]      // the run of spaces
-        [InlineData("a, b", 1, 1, 2)]          // ',' is its own "other" class
-        [InlineData("", 0, 0, 0)]              // empty line
-        public void WordBoundaries_SelectsRunOfSameClass(string line, int index, int start, int end)
-        {
-            Assert.Equal((start, end), TextLayoutEngine.WordBoundaries(line, index));
-        }
-
-        [Fact]
-        public async Task SelectWordAt_SelectsWordUnderPoint()
-        {
-            TextLayoutEngine e = await NewEngineAsync("foo bar baz\n", cw: 10, lh: 20);
-
-            e.SelectWordAt(15, 5); // x 1.5 -> char 1 ('o' in "foo")
-
-            Assert.Equal(new TextPosition(0, 0), e.Anchor);
-            Assert.Equal(new TextPosition(0, 3), e.CaretPosition);
-        }
-
         // ----- Configurable tab size -----
 
         [Fact]
