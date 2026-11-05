@@ -353,17 +353,17 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             sampleStart = next;
         }
 
-        double maximumTextHeight = Math.Max(1, fontSize * 1.15);
+        double maximumTextHeight = Math.Max(1, fontSize * 1.05);
         double textHeight = foundTextMetrics
             ? Math.Min(rawHeight, maximumTextHeight)
-            : Math.Min(row.Height, Math.Max(1, fontSize * 1.1));
+            : Math.Min(row.Height, Math.Max(1, fontSize));
         double textTop = foundTextMetrics
             ? rawTop + (rawHeight - textHeight) / 2
             : row.Top + (row.Height - textHeight) / 2;
 
-        // A small expansion makes the text rectangle comfortable to hit, while remaining inside the row's
-        // actual text band and excluding the additional inter-line spacing.
-        double verticalPadding = Math.Min(1, Math.Max(0, (row.Height - textHeight) / 2));
+        // Add only a small hit/selection cushion. Do not expand to fill the remaining baseline distance:
+        // that remainder is the user's configured line spacing, not part of the text rectangle.
+        double verticalPadding = Math.Min(0.5, Math.Max(0, (row.Height - textHeight) / 2));
         textTop = Math.Max(row.Top, textTop - verticalPadding);
         double textBottom = Math.Min(
             row.Top + row.Height,
