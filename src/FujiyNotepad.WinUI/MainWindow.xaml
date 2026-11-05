@@ -464,6 +464,9 @@
                                                IsHitTestVisible="False" Visibility="Collapsed" />
                                 </Grid>
                                 <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                                    <Button Content="+" Click="NewChapterAnnotationForSelectedChapter_Click"
+                                            x:Name="NewChapterAnnotationPaneButton" MinWidth="32"
+                                            ToolTipService.ToolTip="为当前选择的章节新建批注" />
                                     <Button Content="编辑" Click="EditSelectedChapterAnnotation_Click"
                                             x:Name="EditChapterAnnotationButton" IsEnabled="False" />
                                     <Button Content="删除" Click="DeleteSelectedChapterAnnotation_Click"
