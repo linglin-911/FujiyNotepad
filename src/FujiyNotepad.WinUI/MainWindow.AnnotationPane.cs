@@ -1,5 +1,6 @@
 using FujiyNotepad.Core;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -233,11 +234,15 @@ public sealed partial class MainWindow
             Spacing = 2,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        copyContent.Children.Add(new SymbolIcon
+        copyContent.Children.Add(new Viewbox
         {
-            Symbol = Symbol.Copy,
-            FontSize = 19,
-            Foreground = menuForeground,
+            Width = 19,
+            Height = 19,
+            Child = new SymbolIcon
+            {
+                Symbol = Symbol.Copy,
+                Foreground = menuForeground,
+            },
         });
         copyContent.Children.Add(new TextBlock
         {
@@ -274,11 +279,15 @@ public sealed partial class MainWindow
                 Spacing = 2,
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
-            smallContent.Children.Add(new SymbolIcon
+            smallContent.Children.Add(new Viewbox
             {
-                Symbol = Symbol.Edit,
-                FontSize = 19,
-                Foreground = menuForeground,
+                Width = 19,
+                Height = 19,
+                Child = new SymbolIcon
+                {
+                    Symbol = Symbol.Edit,
+                    Foreground = menuForeground,
+                },
             });
             smallContent.Children.Add(new TextBlock
             {
