@@ -235,6 +235,17 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void PointerPressCharacter_ShiftClickDoesNotCreateASelection()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        engine.PointerPressCharacter(new TextPosition(0, 1), sourceLength: 1, shift: true);
+
+        Assert.False(engine.HasSelection);
+        Assert.Equal(new TextPosition(0, 0), engine.CaretPosition);
+    }
+
+    [Fact]
     public void PointerDragCharacter_IncludesBothEndpointCharactersWithoutAddingNeighbours()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
