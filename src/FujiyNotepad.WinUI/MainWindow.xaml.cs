@@ -663,8 +663,18 @@ namespace FujiyNotepad.WinUI
             ChapterDirectoryEmptyState.Visibility = Visibility.Collapsed;
             selectedChapterAnnotationChapterId = null;
             selectedChapterAnnotationCategoryId = null;
+            editingChapterAnnotationId = null;
+            editingChapterAnnotationTitle = null;
+            chapterAnnotationEditorStore = null;
+            ChapterAnnotationEditorView.Visibility = Visibility.Collapsed;
+            ChapterAnnotationListView.Visibility = Visibility.Visible;
+            AnnotationPaneHeader.Visibility = Visibility.Visible;
+            AnnotationPaneChapterSelector.Visibility = Visibility.Visible;
+            AnnotationPaneTabBar.Visibility = Visibility.Visible;
             ChapterAnnotationPane.Visibility = Visibility.Collapsed;
             AnnotationPane.Visibility = Visibility.Collapsed;
+            SmallAnnotationTabButton.IsChecked = false;
+            ChapterAnnotationTabButton.IsChecked = false;
             ChapterAnnotationsItem.IsChecked = false;
             annotationMarkerRefreshTimer.Stop();
             annotationMarkerRefreshCancellation?.Cancel();
