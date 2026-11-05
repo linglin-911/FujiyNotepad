@@ -639,6 +639,13 @@ public sealed class ProportionalTextLayoutEngineTests
             return new TextCaretGeometry((index - row.SourceStartIndex) * 10, row.Top, row.Height);
         }
 
+        public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)
+        {
+            TextLayoutVisualLine row = FindRow(boundaries.SnapToNearestBoundary(sourceUtf16Index));
+            return TextAreaGeometry.FromDrawBounds(
+                row, measurementCaretTop: 0, drawTop: 2.5, drawHeight: 15);
+        }
+
         public TextLayoutHitTestResult HitTest(double x, double y)
         {
             TextLayoutVisualLine row = rows.FirstOrDefault(candidate =>
@@ -676,11 +683,13 @@ public sealed class ProportionalTextLayoutEngineTests
                 int overlapEnd = Math.Min(end, row.SourceEndIndex);
                 if (overlapEnd > overlapStart)
                 {
+                    TextLayoutVerticalGeometry vertical = TextAreaGeometry.FromDrawBounds(
+                        row, measurementCaretTop: 0, drawTop: 2.5, drawHeight: 15);
                     result.Add(new TextLayoutRect(
                         (overlapStart - row.SourceStartIndex) * 10 - 0.75,
-                        row.Top + 2.5,
+                        vertical.SelectionTop,
                         (overlapEnd - overlapStart) * 10 + 1.5,
-                        15));
+                        vertical.SelectionHeight));
                 }
             }
             return result;

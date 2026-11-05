@@ -149,7 +149,11 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     private readonly CanvasTextFormat format;
     private readonly TextElementBoundaryMap boundaryMap;
     private readonly double fontSize;
+    private readonly double lineSpacingMultiplier;
     private readonly int[] trailingWhitespaceCounts;
+    private readonly Dictionary<int, TextLayoutVerticalGeometry> rowVerticalGeometryCache = new();
+    private Rect? fallbackGlyphDrawBounds;
+    private double fallbackGlyphCaretTop;
     private bool disposed;
 
     internal Win2DTextLayoutResult(
@@ -163,6 +167,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         this.layout = layout;
         this.format = format;
         this.fontSize = fontSize;
+        this.lineSpacingMultiplier = lineSpacingMultiplier;
         boundaryMap = new TextElementBoundaryMap(sourceText);
 
         (TextLayoutVisualLine[] visualLines, int[] trailingCounts, double height) =
@@ -244,11 +249,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 
         const double horizontalPadding = 1.25;
         var rectangles = new List<TextLayoutRect>();
-        var rowTextBounds = new Dictionary<int, TextLayoutRect>();
 
-        // DirectWrite can return one region per glyph, shaping cluster or visual run. Normalize every
-        // region to the same text-only vertical bounds for its visual row, then merge touching horizontal
-        // regions so a continuous selection is painted as one continuous rectangle.
+        // DirectWrite can return one region per glyph, shaping cluster or visual run. LayoutBounds supplies
+        // horizontal advance only; every region in a visual row receives the same DrawBounds-derived band.
         foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(start, end - start))
         {
             Rect bounds = region.LayoutBounds;
@@ -257,17 +260,14 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
 
             int rowIndex = FindVisualLineIndexNearestY(bounds.Y + bounds.Height / 2);
             TextLayoutVisualLine row = VisualLines[rowIndex];
-            if (!rowTextBounds.TryGetValue(rowIndex, out TextLayoutRect vertical))
-            {
-                vertical = GetTextAreaVerticalBounds(row, rowIndex);
-                rowTextBounds.Add(rowIndex, vertical);
-            }
+            TextLayoutVerticalGeometry vertical = GetTextAreaVerticalBounds(row, rowIndex);
 
             double left = bounds.X - horizontalPadding;
             double width = bounds.Width + horizontalPadding * 2;
-            if (width > 0 && vertical.Height > 0)
+            if (width > 0 && vertical.SelectionHeight > 0)
             {
-                rectangles.Add(new TextLayoutRect(left, vertical.Y, width, vertical.Height));
+                rectangles.Add(new TextLayoutRect(
+                    left, vertical.SelectionTop, width, vertical.SelectionHeight));
             }
         }
 
@@ -297,81 +297,91 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             double width = Math.Abs(last.X - first.X);
             if (width > 0)
             {
-                if (!rowTextBounds.TryGetValue(i, out TextLayoutRect vertical))
-                {
-                    vertical = GetTextAreaVerticalBounds(row, i);
-                    rowTextBounds.Add(i, vertical);
-                }
+                TextLayoutVerticalGeometry vertical = GetTextAreaVerticalBounds(row, i);
 
                 rectangles.Add(new TextLayoutRect(
                     left - horizontalPadding,
-                    vertical.Y,
+                    vertical.SelectionTop,
                     width + horizontalPadding * 2,
-                    vertical.Height));
+                    vertical.SelectionHeight));
             }
         }
 
         return MergeAdjacentTextRectangles(rectangles);
     }
 
-    private TextLayoutRect GetTextAreaVerticalBounds(TextLayoutVisualLine row, int rowIndex)
+    public TextLayoutVerticalGeometry GetVisualRowVerticalGeometry(int sourceUtf16Index)
     {
-        int trailingCount = trailingWhitespaceCounts[rowIndex];
-        int visibleEnd = Math.Max(row.SourceStartIndex, row.SourceEndIndex - trailingCount);
-        int sampleStart = row.SourceStartIndex;
-        double rawTop = row.Top;
-        double rawHeight = 0;
-        bool foundTextMetrics = false;
+        ThrowIfDisposed();
+        int rowIndex = FindVisualLineIndexForCaret(sourceUtf16Index);
+        return GetTextAreaVerticalBounds(VisualLines[rowIndex], rowIndex);
+    }
 
-        // Use the first non-whitespace grapheme on this row to obtain DirectWrite's font metrics. This avoids
-        // treating the row's baseline-to-baseline distance (which includes user-configured line spacing) as
-        // the clickable/selected text height.
-        while (sampleStart < visibleEnd)
+    private TextLayoutVerticalGeometry GetTextAreaVerticalBounds(
+        TextLayoutVisualLine row,
+        int rowIndex)
+    {
+        if (rowVerticalGeometryCache.TryGetValue(rowIndex, out TextLayoutVerticalGeometry cached))
+            return cached;
+
+        (Rect drawBounds, double measurementCaretTop) = GetVisualRowDrawBounds(row);
+        TextLayoutVerticalGeometry geometry = drawBounds.Height > 0 &&
+                                              double.IsFinite(drawBounds.Y) &&
+                                              double.IsFinite(drawBounds.Height)
+            ? TextAreaGeometry.FromDrawBounds(row, measurementCaretTop, drawBounds.Y, drawBounds.Height)
+            : new TextLayoutVerticalGeometry(0, 0, 0, 0, double.NaN, 0);
+
+        rowVerticalGeometryCache[rowIndex] = geometry;
+        return geometry;
+    }
+
+    private (Rect DrawBounds, double CaretTop) GetVisualRowDrawBounds(TextLayoutVisualLine row)
+    {
+        if (VisualLines.Count == 1)
         {
-            int next = boundaryMap.SnapToNextBoundary(sampleStart);
-            if (next <= sampleStart)
-                break;
-
-            if (!char.IsWhiteSpace(SourceText[sampleStart]))
-            {
-                foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(sampleStart, next - sampleStart))
-                {
-                    Rect bounds = region.LayoutBounds;
-                    if (bounds.Height > 0)
-                    {
-                        rawTop = bounds.Y;
-                        rawHeight = bounds.Height;
-                        foundTextMetrics = true;
-                        break;
-                    }
-                }
-
-                if (foundTextMetrics)
-                    break;
-            }
-
-            sampleStart = next;
+            Rect singleRowBounds = layout.DrawBounds;
+            if (singleRowBounds.Height > 0)
+                return (singleRowBounds, GetCharacterRowTop(layout, row.SourceStartIndex));
         }
 
-        double minimumTextHeight = Math.Max(1, fontSize * 1.05);
-        double maximumTextHeight = Math.Max(minimumTextHeight, fontSize * 1.2);
-        double textHeight = foundTextMetrics
-            ? Math.Min(row.Height, Math.Clamp(rawHeight, minimumTextHeight, maximumTextHeight))
-            : Math.Min(row.Height, maximumTextHeight);
-        double textTop = foundTextMetrics
-            ? rawTop + (rawHeight - textHeight) / 2
-            : row.Top + (row.Height - textHeight) / 2;
+        if (row.SourceLength > 0)
+        {
+            string rowText = SourceText.Substring(row.SourceStartIndex, row.SourceLength);
+            using CanvasTextLayout rowLayout = CreateSingleRowMeasurementLayout(rowText);
+            Rect rowBounds = rowLayout.DrawBounds;
+            if (rowBounds.Height > 0)
+                return (rowBounds, GetCharacterRowTop(rowLayout, 0));
+        }
 
-        // Keep the selection/hit rectangle slightly larger than the character area so it fully surrounds
-        // the visible glyphs. The available padding is still clamped to the visual row, leaving line spacing
-        // outside the text rectangle even when the user increases line spacing.
-        double verticalPadding = Math.Min(1.25, Math.Max(0, (row.Height - textHeight) / 2));
-        textTop = Math.Max(row.Top, textTop - verticalPadding);
-        double textBottom = Math.Min(
-            row.Top + row.Height,
-            textTop + textHeight + verticalPadding * 2);
+        // Empty and whitespace-only rows have no ink DrawBounds. Measure a representative glyph using the
+        // same device and CanvasTextFormat so selected advance whitespace still receives a stable text band.
+        if (!fallbackGlyphDrawBounds.HasValue)
+        {
+            using CanvasTextLayout sampleLayout = CreateSingleRowMeasurementLayout("中M");
+            Rect sampleBounds = sampleLayout.DrawBounds;
+            if (sampleBounds.Height > 0)
+            {
+                fallbackGlyphDrawBounds = sampleBounds;
+                fallbackGlyphCaretTop = GetCharacterRowTop(sampleLayout, 0);
+            }
+        }
 
-        return new TextLayoutRect(0, textTop, 0, Math.Max(0, textBottom - textTop));
+        return (fallbackGlyphDrawBounds ?? default, fallbackGlyphCaretTop);
+    }
+
+    private CanvasTextLayout CreateSingleRowMeasurementLayout(string text)
+    {
+        double estimatedWidth = Math.Max(
+            layout.RequestedSize.Width,
+            (text.Length + 1d) * fontSize * 2d + 64d);
+        float width = (float)Math.Clamp(estimatedWidth, 1d, MaxNativeLayoutDimension);
+        double estimatedHeight = Math.Max(64d, fontSize * 4d * lineSpacingMultiplier);
+        float height = (float)Math.Clamp(estimatedHeight, 64d, MaxNativeLayoutDimension);
+
+        return new CanvasTextLayout(layout.Device, text, format, width, height)
+        {
+            WordWrapping = CanvasWordWrapping.NoWrap,
+        };
     }
 
     private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
@@ -454,8 +464,13 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (VisualLines.Count == 0)
             return new TextLayoutVisualLine(0, SourceText.Length, 0, 0, 0);
 
-        if (sourceUtf16Index >= SourceText.Length)
-            return VisualLines[^1];
+        return VisualLines[FindVisualLineIndexForCaret(sourceUtf16Index)];
+    }
+
+    private int FindVisualLineIndexForCaret(int sourceUtf16Index)
+    {
+        if (VisualLines.Count <= 1 || sourceUtf16Index >= SourceText.Length)
+            return Math.Max(0, VisualLines.Count - 1);
 
         int low = 0;
         int high = VisualLines.Count - 1;
@@ -469,10 +484,10 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             else if (sourceUtf16Index >= row.SourceEndIndex)
                 low = middle + 1;
             else
-                return row;
+                return middle;
         }
 
-        return VisualLines[Math.Clamp(low, 0, VisualLines.Count - 1)];
+        return Math.Clamp(low, 0, VisualLines.Count - 1);
     }
 
     private int FindFirstVisualLineEndingAfter(int sourceUtf16Index)

@@ -1156,7 +1156,7 @@ namespace FujiyNotepad.WinUI.Controls
 
                 float layoutTopPx = (float)PixelSnap.SnapToDevicePixels(
                     line.Y - line.LayoutRowTop, dpiScale);
-                DrawProportionalRowHighlights(ds, sourceLayout, line, layoutTopPx, dpiScale);
+                DrawProportionalRowHighlights(ds, sourceLayout, line, layoutTopPx);
             }
 
             foreach (VisibleLine line in lines)
@@ -1339,8 +1339,7 @@ namespace FujiyNotepad.WinUI.Controls
             CanvasDrawingSession ds,
             ITextLayoutResult layout,
             VisibleLine line,
-            float layoutTopPx,
-            double dpiScale)
+            float layoutTopPx)
         {
             if (line.RuleHighlights is { Count: > 0 })
             {
@@ -1350,7 +1349,7 @@ namespace FujiyNotepad.WinUI.Controls
                     {
                         DrawSourceTextRangeHighlight(
                             ds, layout, line, highlight.StartIndex, highlight.Length,
-                            ToColor(highlight.Argb), layoutTopPx, dpiScale);
+                            ToColor(highlight.Argb), layoutTopPx);
                     }
                 }
             }
@@ -1363,7 +1362,7 @@ namespace FujiyNotepad.WinUI.Controls
                     {
                         DrawSourceTextRangeHighlight(
                             ds, layout, line, highlight.StartIndex, highlight.Length,
-                            matchHighlightColor, layoutTopPx, dpiScale);
+                            matchHighlightColor, layoutTopPx);
                     }
                 }
             }
@@ -1376,7 +1375,7 @@ namespace FujiyNotepad.WinUI.Controls
                     {
                         DrawSourceTextRangeHighlight(
                             ds, layout, line, highlight.StartIndex, highlight.Length,
-                            selectionOccurrenceColor, layoutTopPx, dpiScale);
+                            selectionOccurrenceColor, layoutTopPx);
                     }
                 }
             }
@@ -1389,7 +1388,7 @@ namespace FujiyNotepad.WinUI.Controls
                 if (line.SelectionContinuesPastRow)
                 {
                     DrawSourceSelectionContinuation(
-                        ds, layout, line, selectionColor, layoutTopPx, dpiScale);
+                        ds, layout, line, selectionColor, layoutTopPx);
                 }
             }
         }
@@ -1435,27 +1434,26 @@ namespace FujiyNotepad.WinUI.Controls
             int sourceStart,
             int sourceLength,
             Color color,
-            float layoutTop,
-            double dpiScale)
+            float layoutTop)
         {
             if (sourceLength <= 0)
                 return;
 
-            double rowStart = line.LayoutRowTop;
-            double rowEnd = rowStart + line.LayoutRowHeight;
+            // VisibleLine source ranges are already clipped to this visual row. Preserve the provider's
+            // DrawBounds-derived rectangle: clipping it to the caret-row interval can cut real glyph ink.
             foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
             {
-                double top = Math.Max(rowStart, rectangle.Y);
-                double bottom = Math.Min(rowEnd, rectangle.Y + rectangle.Height);
-                if (bottom <= top || rectangle.Width <= 0)
+                if (rectangle.Height <= 0 || rectangle.Width <= 0)
                     continue;
 
-                float y = (float)PixelSnap.SnapToDevicePixels(layoutTop + top, dpiScale);
+                // layoutTop is the same snapped origin used by DrawTextLayout. Do not snap the summed Y again:
+                // doing so changes the relative offset between glyphs and their background at fractional DPI.
+                float y = layoutTop + (float)rectangle.Y;
                 ds.FillRectangle(
                     (float)(line.TextX + rectangle.X),
                     y,
                     (float)rectangle.Width,
-                    (float)(bottom - top),
+                    (float)rectangle.Height,
                     color);
             }
         }
@@ -1465,8 +1463,7 @@ namespace FujiyNotepad.WinUI.Controls
             ITextLayoutResult layout,
             VisibleLine line,
             Color color,
-            float layoutTop,
-            double dpiScale)
+            float layoutTop)
         {
             if (line.SourceEndIndex <= line.SourceStartIndex)
                 return;
@@ -1485,8 +1482,7 @@ namespace FujiyNotepad.WinUI.Controls
                 return;
 
             TextLayoutRect textRectangle = textGeometry[0];
-            float y = (float)PixelSnap.SnapToDevicePixels(
-                layoutTop + textRectangle.Y, dpiScale);
+            float y = layoutTop + (float)textRectangle.Y;
             ds.FillRectangle(
                 (float)(line.TextX + trailing.X),
                 y,
@@ -1505,8 +1501,6 @@ namespace FujiyNotepad.WinUI.Controls
             if (!annotationMarkersByLine.TryGetValue(line.LineIndex, out List<TextAnnotationMarker>? markers))
                 return;
 
-            double rowStart = line.LayoutRowTop;
-            double rowEnd = rowStart + line.LayoutRowHeight;
             foreach (TextAnnotationMarker marker in markers)
             {
                 int start = Math.Max(
@@ -1516,22 +1510,28 @@ namespace FujiyNotepad.WinUI.Controls
                 if (end <= start)
                     continue;
 
+                TextLayoutVerticalGeometry vertical = layout.GetVisualRowVerticalGeometry(start);
+                if (!vertical.HasAnnotationUnderline)
+                    continue;
+
+                float y = (float)PixelSnap.SnapToDevicePixels(
+                    layoutTop + vertical.AnnotationUnderlineY, dpiScale);
+                float strokeThickness = (float)vertical.AnnotationUnderlineThickness;
+
                 foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(start, end - start))
                 {
-                    double top = Math.Max(rowStart, rectangle.Y);
-                    double bottom = Math.Min(rowEnd, rectangle.Y + rectangle.Height);
-                    if (bottom <= top || rectangle.Width <= 0)
+                    if (rectangle.Height <= 0 || rectangle.Width <= 0)
                         continue;
 
                     float left = (float)(line.TextX + rectangle.X);
                     float right = left + (float)rectangle.Width;
-                    float y = (float)PixelSnap.SnapToDevicePixels(
-                        layoutTop + bottom - 1.5, dpiScale);
                     const float dashLength = 3.5f;
                     const float dashGap = 2.5f;
                     for (float x = left; x < right; x += dashLength + dashGap)
                     {
-                        ds.DrawLine(x, y, Math.Min(x + dashLength, right), y, annotationMarkerColor, 1.25f);
+                        ds.DrawLine(
+                            x, y, Math.Min(x + dashLength, right),
+                            y, annotationMarkerColor, strokeThickness);
                     }
                 }
             }
