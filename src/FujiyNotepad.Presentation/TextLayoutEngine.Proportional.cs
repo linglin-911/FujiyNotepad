@@ -534,15 +534,120 @@ public sealed partial class TextLayoutEngine
 
         ITextLayoutResult layout = GetProportionalLayout(hitRow.LineIndex);
         double layoutTop = hitRow.Y - hitRow.LayoutRowTop;
-        TextLayoutHitTestResult hit = layout.HitTest(
-            x - hitRow.TextX,
-            y - layoutTop);
+        double localX = x - hitRow.TextX;
+        double localY = y - layoutTop;
+        TextLayoutHitTestResult hit = layout.HitTest(localX, localY);
+
+        if (returnCharacter)
+        {
+            bool hitTextArea = hit.IsInside && hit.SourceLength > 0 &&
+                IsInsideTextRangeGeometry(layout, hit.SourceStartIndex, hit.SourceLength, localX, localY);
+
+            if (!hitTextArea)
+            {
+                int boundary = GetTextRowBoundaryForMiss(
+                    layout, hitRow, localX, localY, hit.CaretIndex);
+                isInside = false;
+                sourceLength = 0;
+                return new TextPosition(
+                    hitRow.LineIndex,
+                    Math.Clamp(boundary, hitRow.SourceStartIndex, hitRow.SourceEndIndex));
+            }
+
+            isInside = true;
+            sourceLength = hit.SourceLength;
+            return new TextPosition(
+                hitRow.LineIndex,
+                Math.Clamp(hit.SourceStartIndex, 0, layout.SourceText.Length));
+        }
 
         isInside = hit.IsInside && hit.SourceLength > 0;
         sourceLength = isInside ? hit.SourceLength : 0;
-        int sourceIndex = returnCharacter ? hit.SourceStartIndex : hit.CaretIndex;
-        sourceIndex = Math.Clamp(sourceIndex, 0, layout.SourceText.Length);
+        int sourceIndex = Math.Clamp(hit.CaretIndex, 0, layout.SourceText.Length);
         return new TextPosition(hitRow.LineIndex, sourceIndex);
+    }
+
+    private static bool IsInsideTextRangeGeometry(
+        ITextLayoutResult layout,
+        int sourceStart,
+        int sourceLength,
+        double x,
+        double y)
+    {
+        const double tolerance = 0.25;
+        foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(sourceStart, sourceLength))
+        {
+            if (rectangle.Width <= 0 || rectangle.Height <= 0)
+                continue;
+
+            if (x >= rectangle.X - tolerance &&
+                x <= rectangle.X + rectangle.Width + tolerance &&
+                y >= rectangle.Y - tolerance &&
+                y <= rectangle.Y + rectangle.Height + tolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int GetTextRowBoundaryForMiss(
+        ITextLayoutResult layout,
+        VisibleLine visibleRow,
+        double localX,
+        double localY,
+        int fallbackCaret)
+    {
+        int rowStart = Math.Clamp(visibleRow.SourceStartIndex, 0, layout.SourceText.Length);
+        int rowEnd = Math.Clamp(visibleRow.SourceEndIndex, rowStart, layout.SourceText.Length);
+        if (rowEnd <= rowStart)
+            return rowStart;
+
+        int firstEnd = layout.GetNextCaretIndex(rowStart);
+        if (firstEnd <= rowStart || firstEnd > rowEnd)
+            firstEnd = Math.Min(rowEnd, rowStart + 1);
+
+        int lastStart = layout.GetPreviousCaretIndex(rowEnd);
+        if (lastStart < rowStart || lastStart >= rowEnd)
+            lastStart = Math.Max(rowStart, rowEnd - 1);
+
+        IReadOnlyList<TextLayoutRect> firstRects =
+            layout.GetRangeGeometry(rowStart, firstEnd - rowStart);
+        IReadOnlyList<TextLayoutRect> lastRects =
+            layout.GetRangeGeometry(lastStart, rowEnd - lastStart);
+
+        if (firstRects.Count > 0 && lastRects.Count > 0)
+        {
+            double firstLeft = firstRects.Min(rectangle => rectangle.X);
+            double firstRight = firstRects.Max(rectangle => rectangle.X + rectangle.Width);
+            double firstTop = firstRects.Min(rectangle => rectangle.Y);
+            double firstBottom = firstRects.Max(rectangle => rectangle.Y + rectangle.Height);
+
+            double lastLeft = lastRects.Min(rectangle => rectangle.X);
+            double lastRight = lastRects.Max(rectangle => rectangle.X + rectangle.Width);
+            double lastTop = lastRects.Min(rectangle => rectangle.Y);
+            double lastBottom = lastRects.Max(rectangle => rectangle.Y + rectangle.Height);
+
+            double textLeft = Math.Min(firstLeft, lastLeft);
+            double textRight = Math.Max(firstRight, lastRight);
+            double textTop = Math.Min(firstTop, lastTop);
+            double textBottom = Math.Max(firstBottom, lastBottom);
+
+            // Leaving the text rectangle vertically selects to the corresponding visual-row boundary.
+            // This is what makes a downward drag finish the current row before entering the next one.
+            if (localY < textTop)
+                return rowStart;
+            if (localY > textBottom)
+                return rowEnd;
+
+            if (localX < textLeft)
+                return rowStart;
+            if (localX > textRight)
+                return rowEnd;
+        }
+
+        return Math.Clamp(fallbackCaret, rowStart, rowEnd);
     }
 
     /// <summary>
