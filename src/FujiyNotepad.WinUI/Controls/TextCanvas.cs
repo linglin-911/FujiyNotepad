@@ -827,8 +827,8 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 double deltaX = lastPointer.X - pointerDownPosition.X;
                 double deltaY = lastPointer.Y - pointerDownPosition.Y;
-                if (deltaX * deltaX + deltaY * deltaY
-                    <= DragSelectionThresholdDip * DragSelectionThresholdDip)
+                if (Math.Abs(deltaX) <= DragSelectionThresholdDip
+                    && Math.Abs(deltaY) <= DragSelectionThresholdDip)
                 {
                     return;
                 }
