@@ -148,6 +148,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     private readonly CanvasTextLayout layout;
     private readonly CanvasTextFormat format;
     private readonly TextElementBoundaryMap boundaryMap;
+    private readonly double fontSize;
     private readonly int[] trailingWhitespaceCounts;
     private bool disposed;
 
@@ -161,6 +162,7 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         SourceText = sourceText;
         this.layout = layout;
         this.format = format;
+        this.fontSize = fontSize;
         boundaryMap = new TextElementBoundaryMap(sourceText);
 
         (TextLayoutVisualLine[] visualLines, int[] trailingCounts, double height) =
@@ -240,19 +242,37 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
         if (end <= start)
             return Array.Empty<TextLayoutRect>();
 
+        const double horizontalPadding = 0.75;
         var rectangles = new List<TextLayoutRect>();
+        var rowTextBounds = new Dictionary<int, TextLayoutRect>();
+
+        // DirectWrite can return one region per glyph, shaping cluster or visual run. Normalize every
+        // region to the same text-only vertical bounds for its visual row, then merge touching horizontal
+        // regions so a continuous selection is painted as one continuous rectangle.
         foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(start, end - start))
         {
             Rect bounds = region.LayoutBounds;
-            if (bounds.Width > 0 && bounds.Height > 0)
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+                continue;
+
+            int rowIndex = FindVisualLineIndexNearestY(bounds.Y + bounds.Height / 2);
+            TextLayoutVisualLine row = VisualLines[rowIndex];
+            if (!rowTextBounds.TryGetValue(rowIndex, out TextLayoutRect vertical))
             {
-                rectangles.Add(new TextLayoutRect(
-                    bounds.X, bounds.Y, bounds.Width, bounds.Height));
+                vertical = GetTextAreaVerticalBounds(row, rowIndex);
+                rowTextBounds.Add(rowIndex, vertical);
+            }
+
+            double left = bounds.X - horizontalPadding;
+            double width = bounds.Width + horizontalPadding * 2;
+            if (width > 0 && vertical.Height > 0)
+            {
+                rectangles.Add(new TextLayoutRect(left, vertical.Y, width, vertical.Height));
             }
         }
 
-        // DirectWrite's character-region ink/layout bounds omit trailing whitespace. Add the advance
-        // rectangle for any selected trailing spaces or tabs on each wrapped visual row.
+        // DirectWrite's character-region bounds omit trailing whitespace. Add its advance using the same
+        // text-only vertical bounds as visible characters on that row; never use the full line-spacing height.
         int firstRow = FindFirstVisualLineEndingAfter(start);
         for (int i = firstRow; i < VisualLines.Count; i++)
         {
@@ -277,11 +297,132 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             double width = Math.Abs(last.X - first.X);
             if (width > 0)
             {
-                rectangles.Add(new TextLayoutRect(left, row.Top, width, row.Height));
+                if (!rowTextBounds.TryGetValue(i, out TextLayoutRect vertical))
+                {
+                    vertical = GetTextAreaVerticalBounds(row, i);
+                    rowTextBounds.Add(i, vertical);
+                }
+
+                rectangles.Add(new TextLayoutRect(
+                    left - horizontalPadding,
+                    vertical.Y,
+                    width + horizontalPadding * 2,
+                    vertical.Height));
             }
         }
 
-        return rectangles;
+        return MergeAdjacentTextRectangles(rectangles);
+    }
+
+    private TextLayoutRect GetTextAreaVerticalBounds(TextLayoutVisualLine row, int rowIndex)
+    {
+        int trailingCount = trailingWhitespaceCounts[rowIndex];
+        int visibleEnd = Math.Max(row.SourceStartIndex, row.SourceEndIndex - trailingCount);
+        int sampleStart = row.SourceStartIndex;
+        double rawTop = row.Top;
+        double rawHeight = 0;
+        bool foundTextMetrics = false;
+
+        // Use the first non-whitespace grapheme on this row to obtain DirectWrite's font metrics. This avoids
+        // treating the row's baseline-to-baseline distance (which includes user-configured line spacing) as
+        // the clickable/selected text height.
+        while (sampleStart < visibleEnd)
+        {
+            int next = boundaryMap.SnapToNextBoundary(sampleStart);
+            if (next <= sampleStart)
+                break;
+
+            if (!char.IsWhiteSpace(SourceText[sampleStart]))
+            {
+                foreach (CanvasTextLayoutRegion region in layout.GetCharacterRegions(sampleStart, next - sampleStart))
+                {
+                    Rect bounds = region.LayoutBounds;
+                    if (bounds.Height > 0)
+                    {
+                        rawTop = bounds.Y;
+                        rawHeight = bounds.Height;
+                        foundTextMetrics = true;
+                        break;
+                    }
+                }
+
+                if (foundTextMetrics)
+                    break;
+            }
+
+            sampleStart = next;
+        }
+
+        double maximumTextHeight = Math.Max(1, fontSize * 1.15);
+        double textHeight = foundTextMetrics
+            ? Math.Min(rawHeight, maximumTextHeight)
+            : Math.Min(row.Height, Math.Max(1, fontSize * 1.1));
+        double textTop = foundTextMetrics
+            ? rawTop + (rawHeight - textHeight) / 2
+            : row.Top + (row.Height - textHeight) / 2;
+
+        // A small expansion makes the text rectangle comfortable to hit, while remaining inside the row's
+        // actual text band and excluding the additional inter-line spacing.
+        double verticalPadding = Math.Min(1, Math.Max(0, (row.Height - textHeight) / 2));
+        textTop = Math.Max(row.Top, textTop - verticalPadding);
+        double textBottom = Math.Min(
+            row.Top + row.Height,
+            textTop + textHeight + verticalPadding * 2);
+
+        return new TextLayoutRect(0, textTop, 0, Math.Max(0, textBottom - textTop));
+    }
+
+    private static IReadOnlyList<TextLayoutRect> MergeAdjacentTextRectangles(
+        List<TextLayoutRect> rectangles)
+    {
+        if (rectangles.Count <= 1)
+            return rectangles;
+
+        rectangles.Sort((left, right) =>
+        {
+            int vertical = left.Y.CompareTo(right.Y);
+            return vertical != 0 ? vertical : left.X.CompareTo(right.X);
+        });
+
+        const double verticalTolerance = 0.75;
+        const double horizontalJoinTolerance = 1.5;
+        var merged = new List<TextLayoutRect>(rectangles.Count);
+
+        foreach (TextLayoutRect rectangle in rectangles)
+        {
+            if (rectangle.Width <= 0 || rectangle.Height <= 0)
+                continue;
+
+            if (merged.Count > 0)
+            {
+                int lastIndex = merged.Count - 1;
+                TextLayoutRect previous = merged[lastIndex];
+                bool sameTextBand =
+                    Math.Abs(previous.Y - rectangle.Y) <= verticalTolerance &&
+                    Math.Abs(previous.Height - rectangle.Height) <= verticalTolerance;
+                bool touchesHorizontally =
+                    rectangle.X <= previous.X + previous.Width + horizontalJoinTolerance &&
+                    rectangle.X + rectangle.Width >= previous.X - horizontalJoinTolerance;
+
+                if (sameTextBand && touchesHorizontally)
+                {
+                    double left = Math.Min(previous.X, rectangle.X);
+                    double top = Math.Min(previous.Y, rectangle.Y);
+                    double right = Math.Max(
+                        previous.X + previous.Width,
+                        rectangle.X + rectangle.Width);
+                    double bottom = Math.Max(
+                        previous.Y + previous.Height,
+                        rectangle.Y + rectangle.Height);
+                    merged[lastIndex] = new TextLayoutRect(left, top, right - left, bottom - top);
+                    continue;
+                }
+            }
+
+            merged.Add(rectangle);
+        }
+
+        return merged;
     }
 
     public int GetPreviousCaretIndex(int sourceUtf16Index)
@@ -349,6 +490,9 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
     }
 
     private TextLayoutVisualLine FindVisualLineNearestY(double y)
+        => VisualLines[FindVisualLineIndexNearestY(y)];
+
+    private int FindVisualLineIndexNearestY(double y)
     {
         int low = 0;
         int high = VisualLines.Count - 1;
@@ -362,19 +506,19 @@ internal sealed class Win2DTextLayoutResult : ITextLayoutResult
             else if (y >= row.Top + row.Height)
                 low = middle + 1;
             else
-                return row;
+                return middle;
         }
 
         if (high < 0)
-            return VisualLines[0];
+            return 0;
         if (low >= VisualLines.Count)
-            return VisualLines[^1];
+            return VisualLines.Count - 1;
 
         TextLayoutVisualLine previous = VisualLines[high];
         TextLayoutVisualLine next = VisualLines[low];
         double previousDistance = Math.Abs(y - (previous.Top + previous.Height));
         double nextDistance = Math.Abs(next.Top - y);
-        return previousDistance <= nextDistance ? previous : next;
+        return previousDistance <= nextDistance ? high : low;
     }
 
     private int FindNearestBoundary(double x, double y)
