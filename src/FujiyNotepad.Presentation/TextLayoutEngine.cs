@@ -1097,14 +1097,17 @@ namespace FujiyNotepad.Presentation
 
         private TextPosition EndOfHitCharacter(TextPosition position, int sourceLength)
         {
-            int endColumn = Math.Clamp(
+            int requestedEnd = Math.Clamp(
                 position.Column + Math.Max(1, sourceLength),
                 position.Column,
                 LineLength(position.Line));
+            int endColumn = requestedEnd;
 
             if (UsesProportionalLayout)
             {
-                int nextBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(position.Column);
+                // Preserve the complete DirectWrite shaping cluster (which may contain more than one
+                // grapheme, such as a ligature), then snap outward if the reported end splits a text element.
+                int nextBoundary = GetProportionalLayout(position.Line).GetNextCaretIndex(requestedEnd);
                 if (nextBoundary > position.Column)
                     endColumn = nextBoundary;
             }
