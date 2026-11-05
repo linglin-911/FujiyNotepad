@@ -408,30 +408,12 @@ namespace FujiyNotepad.WinUI
                     return;
                 }
 
-                AnnotationAnchor? first = null;
-                AnnotationAnchor? legacyFallback = null;
-                foreach (AnnotationAnchor candidate in anchors.Where(anchor => !anchor.IsOrphaned))
-                {
-                    if (candidate.ChapterId is not Guid chapterId)
-                    {
-                        legacyFallback ??= candidate;
-                        continue;
-                    }
-
-                    NovelChapter? chapter = await store.GetChapterByIdAsync(chapterId);
-                    if (!ReferenceEquals(store, activeAnnotationStore)
-                        || !ReferenceEquals(project, activeNovelProject))
-                    {
-                        return;
-                    }
-                    if (chapter is { IsActive: true })
-                    {
-                        first = candidate;
-                        break;
-                    }
-                }
-                first ??= legacyFallback;
-
+                Guid? chapterScope = selectedChapterAnnotationChapterId;
+                AnnotationAnchor? first = chapterScope is Guid selectedChapterId
+                    ? anchors.Where(anchor => !anchor.IsOrphaned && anchor.ChapterId == selectedChapterId)
+                        .OrderBy(anchor => anchor.StartOffset)
+                        .FirstOrDefault()
+                    : null;
                 if (first is null)
                 {
                     await ShowMessageAsync(
