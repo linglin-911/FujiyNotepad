@@ -224,7 +224,11 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task RefreshChapterAnnotationsAsync(CancellationToken cancellationToken = default)
+    private Task RefreshChapterAnnotationsAsync(CancellationToken cancellationToken = default)
+        => RefreshChapterAnnotationsAsync(null, cancellationToken);
+
+    private async Task RefreshChapterAnnotationsAsync(
+        Guid? preferredAnnotationId, CancellationToken cancellationToken = default)
     {
         NovelAnnotationStore? store = activeAnnotationStore;
         NovelProject? project = activeNovelProject;
@@ -232,10 +236,22 @@ public sealed partial class MainWindow
             return;
 
         int requestVersion = ++chapterAnnotationRefreshVersion;
-        Guid? selectedId = GetSelectedChapterAnnotationSummary()?.Annotation.Id;
+        Guid? selectedId = preferredAnnotationId ?? GetSelectedChapterAnnotationSummary()?.Annotation.Id;
         Guid? chapterId = selectedChapterAnnotationChapterId;
         Guid? categoryId = selectedChapterAnnotationCategoryId;
         string searchText = ChapterAnnotationSearchBox.Text;
+
+        if (chapterId is null)
+        {
+            ChapterAnnotationList.Items.Clear();
+            ChapterAnnotationCount.Text = "0 条批注";
+            ChapterAnnotationEmptyState.Text = chapterAnnotationChapters.Count == 0
+                ? "当前没有可用章节。"
+                : "请选择一个章节。";
+            ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
+            UpdateChapterAnnotationActionButtons();
+            return;
+        }
 
         try
         {
@@ -252,30 +268,13 @@ public sealed partial class MainWindow
             ListViewItem? selectedItem = null;
             foreach (ChapterAnnotationSummary summary in summaries)
             {
-                var content = new StackPanel { Spacing = 4 };
+                var content = new StackPanel { Spacing = 5 };
                 content.Children.Add(new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(summary.Annotation.Title)
-                        ? "（未命名章节批注）"
-                        : summary.Annotation.Title,
+                    Text = CreateChapterAnnotationExcerpt(summary.Annotation.Content, 220),
                     FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap,
-                });
-                content.Children.Add(new TextBlock
-                {
-                    Text = summary.Chapter.IsActive
-                        ? summary.Chapter.Title
-                        : $"{summary.Chapter.Title}（原章节已删除）",
-                    FontSize = 11,
-                    Opacity = 0.72,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                content.Children.Add(new TextBlock
-                {
-                    Text = CreateChapterAnnotationExcerpt(summary.Annotation.Content, 180),
-                    TextWrapping = TextWrapping.Wrap,
-                    MaxLines = 4,
-                    Opacity = 0.88,
+                    MaxLines = 5,
                 });
                 content.Children.Add(new TextBlock
                 {
@@ -289,7 +288,7 @@ public sealed partial class MainWindow
                 {
                     Tag = summary,
                     Content = content,
-                    Padding = new Thickness(8, 6, 8, 6),
+                    Padding = new Thickness(8, 7, 8, 7),
                     HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 };
                 item.Tapped += async (_, _) =>
@@ -312,50 +311,35 @@ public sealed partial class MainWindow
                     selectedItem = item;
             }
 
-            if (selectedItem is not null)
-                ChapterAnnotationList.SelectedItem = selectedItem;
-
+            ChapterAnnotationList.SelectedItem = selectedItem;
             ChapterAnnotationCount.Text = $"{summaries.Count} 条批注";
-            if (summaries.Count == 0)
-            {
-                if (chapterAnnotationChapters.Count == 0)
-                {
-                    NovelChapterIndexState? state = await store.GetChapterIndexStateAsync();
-                    bool indexRunning = chapterIndexBuildRunningVersion == chapterIndexBuildVersion;
-                    ChapterAnnotationEmptyState.Text = state is null
-                        && (!LineIndexer.IsCompleted || indexRunning)
-                        ? "正在识别章节，请稍候..."
-                        : "没有识别到章节标题，或当前筛选条件下没有批注。";
-                }
-                else
-                {
-                    ChapterAnnotationEmptyState.Text = "当前没有章节批注。可以点击下方“新建”添加。";
-                }
-                ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                ChapterAnnotationEmptyState.Visibility = Visibility.Collapsed;
-            }
+            ChapterAnnotationEmptyState.Text = summaries.Count == 0
+                ? !string.IsNullOrWhiteSpace(searchText)
+                    ? "没有找到匹配的章节批注。"
+                    : categoryId is not null
+                        ? "该分类下暂无章节批注。"
+                        : "本章暂无章节批注。点击右侧工具栏的“新建章节批注”添加。"
+                : "";
+            ChapterAnnotationEmptyState.Visibility = summaries.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
             UpdateChapterAnnotationActionButtons();
         }
         catch (OperationCanceledException)
         {
-            // A newer chapter/category/search selection superseded this query.
+            // A newer chapter or category selection superseded this refresh.
         }
         catch (Exception ex)
         {
-            diagnostics.LogSwallowed("Refresh chapter annotations", ex);
-            ChapterAnnotationEmptyState.Text = $"刷新章节批注失败：{ex.Message}";
-            ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
+            if (requestVersion == chapterAnnotationRefreshVersion
+                && ReferenceEquals(store, activeAnnotationStore))
+            {
+                diagnostics.LogSwallowed("Refresh chapter annotations", ex);
+                ChapterAnnotationEmptyState.Text = $"加载章节批注失败：{ex.Message}";
+                ChapterAnnotationEmptyState.Visibility = Visibility.Visible;
+            }
         }
-    }
-
-    private static string CreateChapterAnnotationExcerpt(string content, int maxLength)
-    {
-        string text = content.Trim();
-        return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
 
     private async Task EnsureChapterIndexAsync()
