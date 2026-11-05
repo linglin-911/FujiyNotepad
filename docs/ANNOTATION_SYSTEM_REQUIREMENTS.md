@@ -5,7 +5,7 @@
 > 最后更新：2026-11-05
 > 当前仓库：`linglin-911/FujiyNotepad`
 > 当前开发分支：`feature/reader-settings-phase4`（全局阅读设置与阅读器布局改造）
-> 当前分支 HEAD：`d92d16dae231e53ad98f58d0b0a9dd9e5837e79c`
+> 本轮功能代码基准（文档更新前）：`d92d16dae231e53ad98f58d0b0a9dd9e5837e79c`
 > 批注功能基线分支：`feature/novel-project-annotations`
 > Phase 4.2 用户验收代码基准 HEAD：`19ade8c03ae19050acb625d7ab93254bd187b371`
 > 当前基线：`fix/reader-proportional-line-overlap` 已解决比例字体窗口宽度变化时的文字重叠；当前 Phase 4 工作分支从该修复分支建立。
@@ -431,7 +431,7 @@ dotnet run --project src/FujiyNotepad.WinUI/FujiyNotepad.WinUI.csproj --configur
 
 - 仓库：linglin-911/FujiyNotepad
 - 当前工作分支：feature/reader-settings-phase4
-- 当前分支 HEAD：d92d16dae231e53ad98f58d0b0a9dd9e5837e79c（本轮文档提交后以新的 HEAD 为准）
+- 本轮功能代码基准（文档更新前）：d92d16dae231e53ad98f58d0b0a9dd9e5837e79c
 - Phase 4.2 用户验收代码基准：19ade8c03ae19050acb625d7ab93254bd187b371
 - 用户本地只拉取远程更新，不会在本地提交修改；远程功能修复和文档更新继续直接提交到当前分支。
 - Phase 4 的开发均在该工作分支继续，不另开普通功能分支。
