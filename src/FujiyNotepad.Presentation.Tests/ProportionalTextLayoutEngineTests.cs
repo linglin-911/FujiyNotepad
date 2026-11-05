@@ -116,6 +116,31 @@ public sealed class ProportionalTextLayoutEngineTests
     }
 
     [Fact]
+    public void AnnotationMarkerHitTest_DoesNotHitInLineSpacing()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+        var markers = new Dictionary<int, List<TextAnnotationMarker>>
+        {
+            [0] = new() { new TextAnnotationMarker(0, 1, 4) },
+        };
+
+        bool hit = engine.TryHitTestAnnotationMarkers(25, 19, markers, out _);
+
+        Assert.False(hit);
+    }
+
+    [Fact]
+    public void HitTestCharacter_IncludesTheSmallHorizontalTextAreaCushion()
+    {
+        var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 100, viewportHeight: 40);
+
+        TextPosition position = engine.HitTestCharacter(7.5, 10, out bool hitCharacter);
+
+        Assert.True(hitCharacter);
+        Assert.Equal(new TextPosition(0, 0), position);
+    }
+
+    [Fact]
     public void AnnotationMarkerHitTest_MapsWrappedRowToItsOriginalSourceRange()
     {
         var engine = NewEngine(new FakeLines("abcdef"), viewportWidth: 38, viewportHeight: 60);
