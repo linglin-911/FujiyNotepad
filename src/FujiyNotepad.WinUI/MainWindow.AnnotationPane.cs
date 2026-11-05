@@ -16,11 +16,10 @@ public sealed partial class MainWindow
     private bool annotationPaneChapterManuallySelected;
     private DispatcherQueueTimer? annotationPaneChapterFollowTimer;
     private bool hasLastTextSelectionPoint;
-    private bool allowSmallAnnotationComposerClose;
     private Point lastTextSelectionPoint;
     private Point? pendingSmallComposerPosition;
     private Flyout? selectionActionsFlyout;
-    private Flyout? smallAnnotationComposerFlyout;
+    private Popup? smallAnnotationComposerPopup;
     private TextBox? smallAnnotationComposerTextBox;
     private TextBlock? smallAnnotationComposerValidation;
     private (long StartOffset, long EndOffset, string Quote)? pendingSmallAnnotationSelection;
@@ -218,7 +217,7 @@ public sealed partial class MainWindow
     {
         // The composer stays open while the reader receives pass-through pointer input.
         // Ignore a new text-selection completion until the user explicitly closes or saves it.
-        if (smallAnnotationComposerFlyout?.IsOpen == true)
+        if (smallAnnotationComposerPopup?.IsOpen == true)
             return;
 
         CloseSmallAnnotationComposer();
@@ -380,7 +379,7 @@ public sealed partial class MainWindow
         if (activeAnnotationStore is not { } store || activeNovelProject is not { } project)
             return Task.CompletedTask;
 
-        Point position = pendingSmallComposerPosition
+        Point anchor = pendingSmallComposerPosition
             ?? (hasLastTextSelectionPoint
                 ? lastTextSelectionPoint
                 : new Point(Math.Max(24, View.ActualWidth / 2), Math.Max(24, View.ActualHeight / 3)));
@@ -393,13 +392,20 @@ public sealed partial class MainWindow
 
         Brush popupBackground = GetAnnotationFlyoutBackground();
         Brush popupForeground = new SolidColorBrush(Colors.White);
+        double readerWidth = View.ActualWidth > 0 ? View.ActualWidth : 720d;
+        double readerHeight = View.ActualHeight > 0 ? View.ActualHeight : 640d;
+        double popupWidth = Math.Min(660d, Math.Max(1d, readerWidth - 16d));
+        double popupHeight = Math.Min(328d, Math.Max(1d, readerHeight - 16d));
+        double layoutWidth = Math.Max(1d, popupWidth - 32d);
+        double layoutHeight = Math.Max(1d, popupHeight - 28d);
+        double editorMinHeight = Math.Max(1d, Math.Min(150d, layoutHeight - 80d));
+
         var contentBox = new TextBox
         {
             Style = (Style)RootGrid.Resources["AnnotationComposerTextBoxStyle"],
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
-            MinHeight = 150,
-            MaxHeight = 220,
+            MinHeight = editorMinHeight,
             FontSize = 16,
             PlaceholderText = "写下这一刻的想法……",
             PlaceholderForeground = new SolidColorBrush(Color.FromArgb(165, 255, 255, 255)),
@@ -411,6 +417,7 @@ public sealed partial class MainWindow
             Padding = new Thickness(0, 7, 0, 7),
             VerticalContentAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
         };
         smallAnnotationComposerTextBox = contentBox;
 
@@ -478,8 +485,6 @@ public sealed partial class MainWindow
         };
         saveButton.Click += async (_, _) => await SaveSmallAnnotationComposerAsync();
 
-        double availableWidth = View.ActualWidth > 0 ? View.ActualWidth - 40d : 660d;
-        double composerWidth = Math.Min(660d, Math.Max(280d, availableWidth));
         var editorArea = new Grid { ColumnSpacing = 8 };
         editorArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
         editorArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -503,7 +508,8 @@ public sealed partial class MainWindow
         var layout = new Grid
         {
             RowSpacing = 4,
-            Width = composerWidth,
+            Width = layoutWidth,
+            Height = layoutHeight,
         };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -519,38 +525,50 @@ public sealed partial class MainWindow
         layout.Children.Add(smallAnnotationComposerValidation);
         layout.Children.Add(saveButton);
 
-        var flyout = new Flyout
+        var card = new Border
         {
-            OverlayInputPassThroughElement = View,
-            Content = new Border
-            {
-                Padding = new Thickness(16, 14, 16, 14),
-                CornerRadius = new CornerRadius(24),
-                Background = popupBackground,
-                BorderThickness = new Thickness(0),
-                Child = layout,
-            },
-            FlyoutPresenterStyle = CreateAnnotationFlyoutPresenterStyle(),
+            Width = popupWidth,
+            Height = popupHeight,
+            Padding = new Thickness(16, 14, 16, 14),
+            CornerRadius = new CornerRadius(24),
+            Background = popupBackground,
+            BorderThickness = new Thickness(0),
+            Child = layout,
         };
-        smallAnnotationComposerFlyout = flyout;
-        flyout.Closing += (_, args) =>
-        {
-            if (allowSmallAnnotationComposerClose)
-            {
-                allowSmallAnnotationComposerClose = false;
-                return;
-            }
 
-            // FlyoutBase has no IsLightDismissEnabled switch in WinUI 3.
-            // Cancel light-dismiss/Escape closes; explicit Hide() calls opt in below.
-            args.Cancel = true;
-        };
-        flyout.Closed += (_, _) =>
+        // Popup offsets are relative to the XamlRoot. Transform the last selected-row anchor
+        // from TextCanvas coordinates into RootGrid coordinates, then clamp the card to the
+        // reader viewport. If it would extend below the reader, bottom-align it inside the viewport.
+        GeneralTransform viewToRoot = View.TransformToVisual(RootGrid);
+        Point readerOrigin = viewToRoot.TransformPoint(new Point(0, 0));
+        Point anchorInRoot = viewToRoot.TransformPoint(anchor);
+        double leftMin = readerOrigin.X + 8d;
+        double leftMax = readerOrigin.X + readerWidth - popupWidth - 8d;
+        if (leftMax < leftMin)
+            leftMax = leftMin;
+        double topMin = readerOrigin.Y + 8d;
+        double topMax = readerOrigin.Y + readerHeight - popupHeight - 8d;
+        if (topMax < topMin)
+            topMax = topMin;
+
+        double popupLeft = Math.Clamp(anchorInRoot.X - popupWidth / 2d, leftMin, leftMax);
+        double popupTop = Math.Clamp(anchorInRoot.Y + 12d, topMin, topMax);
+
+        var popup = new Popup
         {
-            allowSmallAnnotationComposerClose = false;
-            if (ReferenceEquals(smallAnnotationComposerFlyout, flyout))
+            XamlRoot = RootGrid.XamlRoot,
+            Child = card,
+            IsLightDismissEnabled = false,
+            ShouldConstrainToRootBounds = true,
+            HorizontalOffset = popupLeft,
+            VerticalOffset = popupTop,
+        };
+        smallAnnotationComposerPopup = popup;
+        popup.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(smallAnnotationComposerPopup, popup))
             {
-                smallAnnotationComposerFlyout = null;
+                smallAnnotationComposerPopup = null;
                 smallAnnotationComposerTextBox = null;
                 smallAnnotationComposerValidation = null;
                 pendingSmallAnnotationSelection = null;
@@ -561,11 +579,7 @@ public sealed partial class MainWindow
             }
         };
 
-        flyout.ShowAt(View, new FlyoutShowOptions
-        {
-            Position = position,
-            Placement = FlyoutPlacementMode.Bottom,
-        });
+        popup.IsOpen = true;
         contentBox.Focus(FocusState.Programmatic);
         return Task.CompletedTask;
     }
@@ -678,17 +692,11 @@ public sealed partial class MainWindow
 
     private void CloseSmallAnnotationComposer()
     {
-        Flyout? flyout = smallAnnotationComposerFlyout;
-        smallAnnotationComposerFlyout = null;
-        if (flyout?.IsOpen == true)
-        {
-            allowSmallAnnotationComposerClose = true;
-            flyout.Hide();
-        }
-        else
-        {
-            allowSmallAnnotationComposerClose = false;
-        }
+        Popup? popup = smallAnnotationComposerPopup;
+        smallAnnotationComposerPopup = null;
+        if (popup?.IsOpen == true)
+            popup.IsOpen = false;
+
         smallAnnotationComposerTextBox = null;
         smallAnnotationComposerValidation = null;
         pendingSmallAnnotationSelection = null;
@@ -697,6 +705,7 @@ public sealed partial class MainWindow
         pendingSmallAnnotationCategoryId = null;
         pendingSmallComposerPosition = null;
         hasLastTextSelectionPoint = false;
+        View.FocusCanvas();
     }
 
     private Brush GetAnnotationFlyoutBackground()

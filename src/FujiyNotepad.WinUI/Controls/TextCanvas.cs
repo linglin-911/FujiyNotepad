@@ -915,15 +915,39 @@ namespace FujiyNotepad.WinUI.Controls
             if (!firstSelectedLine.HasSelection)
                 return fallback;
 
-            // Anchor the selection menu to the first visible row of the selected range, not the
-            // pointer-release position (which is commonly on the last line of a multi-line selection).
+            // Keep the menu close to the first visible selected row.
             double x = firstSelectedLine.SelectionWidth > 0
                 ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
                 : fallback.X;
-            double y = Math.Max(1d, firstSelectedLine.Y - 1.33d);
+            double y = Math.Max(0d, firstSelectedLine.Y - 0.665d);
             return new Point(
                 Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
                 y);
+        }
+
+        private Point GetSelectionComposerAnchorPoint(Point fallback)
+        {
+            IReadOnlyList<VisibleLine> visibleLines =
+                engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            VisibleLine lastSelectedLine = visibleLines.LastOrDefault(line => line.HasSelection);
+            if (!lastSelectedLine.HasSelection)
+                return fallback;
+
+            // The composer is anchored to the bottom edge of the last visible selected visual row,
+            // not to the mouse-release point. Wrapped source lines are handled as separate visual rows.
+            double rowHeight = lastSelectedLine.UsesProportionalLayout
+                ? lastSelectedLine.LayoutRowHeight
+                : lineHeight;
+            if (!double.IsFinite(rowHeight) || rowHeight <= 0)
+                rowHeight = Math.Max(1d, lineHeight);
+
+            double x = lastSelectedLine.SelectionWidth > 0
+                ? lastSelectedLine.SelectionX + lastSelectedLine.SelectionWidth / 2d
+                : fallback.X;
+            double y = Math.Min(ActualHeight, lastSelectedLine.Y + rowHeight);
+            return new Point(
+                Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                Math.Clamp(y, 0d, Math.Max(0d, ActualHeight)));
         }
 
         private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
@@ -946,7 +970,9 @@ namespace FujiyNotepad.WinUI.Controls
             ReleasePointerCapture(e.Pointer);
 
             if (!isClick && engine.HasSelection)
-                TextSelectionCompleted?.Invoke(GetSelectionMenuAnchorPoint(released), released);
+                TextSelectionCompleted?.Invoke(
+                    GetSelectionMenuAnchorPoint(released),
+                    GetSelectionComposerAnchorPoint(released));
 
             if (isClick && hadSelectionAnchor)
             {
