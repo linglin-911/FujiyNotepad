@@ -101,7 +101,7 @@ namespace FujiyNotepad.WinUI.Controls
         public event Action? ReaderThemeChanged;
         public event Action? ContentWidthChanged;
         public event Action<TextPosition>? CaretChanged;
-        public event Action<Point>? TextSelectionCompleted;
+        public event Action<Point, Point>? TextSelectionCompleted;
         public event Action? CreateSmallAnnotationRequested;
         public event Action? AddSelectionToSmallAnnotationRequested;
         public event Action<TextPosition>? CreateChapterAnnotationRequested;
@@ -946,7 +946,7 @@ namespace FujiyNotepad.WinUI.Controls
             ReleasePointerCapture(e.Pointer);
 
             if (!isClick && engine.HasSelection)
-                TextSelectionCompleted?.Invoke(GetSelectionMenuAnchorPoint(released));
+                TextSelectionCompleted?.Invoke(GetSelectionMenuAnchorPoint(released), released);
 
             if (isClick && hadSelectionAnchor)
             {
