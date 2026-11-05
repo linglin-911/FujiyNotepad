@@ -20,9 +20,9 @@ public sealed partial class MainWindow
     private CancellationTokenSource? chapterAnnotationFilterDebounce;
     private IReadOnlyList<NovelChapter> chapterAnnotationChapters = Array.Empty<NovelChapter>();
     private IReadOnlyList<ChapterAnnotationCategory> chapterAnnotationCategories = Array.Empty<ChapterAnnotationCategory>();
-
-    private sealed record ChapterAnnotationEditValues(
-        Guid ChapterId, string? Title, string Content, Guid? CategoryId);
+    private Guid? editingChapterAnnotationId;
+    private string? editingChapterAnnotationTitle;
+    private NovelAnnotationStore? chapterAnnotationEditorStore;
 
     private async void ChapterAnnotations_Click(object sender, RoutedEventArgs e)
     {
@@ -857,27 +857,13 @@ public sealed partial class MainWindow
         if (store is null)
             return;
 
-        ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
-            "新建章节批注",
-            initialChapter.Id,
-            initialChapter,
-            null,
-            "",
-            selectedChapterAnnotationCategoryId);
-        if (values is null || !ReferenceEquals(store, activeAnnotationStore))
-            return;
-
-        await store.CreateChapterAnnotationAsync(
-            values.ChapterId, values.Content, values.CategoryId, values.Title);
-        selectedChapterAnnotationChapterId = values.ChapterId;
+        selectedChapterAnnotationChapterId = initialChapter.Id;
+        SetAnnotationPaneChapter(initialChapter.Id, pinToChapter: true);
+        AnnotationPane.Visibility = Visibility.Visible;
+        SetAnnotationPaneTab(showChapterAnnotations: true);
         ChapterDirectoryItem.IsChecked = false;
         ChapterDirectoryPane.Visibility = Visibility.Collapsed;
-        SmallAnnotationsItem.IsChecked = false;
-        SmallAnnotationPane.Visibility = Visibility.Collapsed;
-        ChapterAnnotationsItem.IsChecked = true;
-        ChapterAnnotationPane.Visibility = Visibility.Visible;
-        UpdateReaderToolsRailVisibility();
-        await LoadChapterAnnotationsAsync();
+        await OpenChapterAnnotationEditorAsync(initialChapter.Id, initialChapter, null);
     }
 
     private async Task NavigateToChapterAsync(NovelChapter chapter)
@@ -988,33 +974,17 @@ public sealed partial class MainWindow
     private async void EditSelectedChapterAnnotation_Click(object sender, RoutedEventArgs e)
     {
         ChapterAnnotationSummary? summary = GetSelectedChapterAnnotationSummary();
-        NovelAnnotationStore? store = activeAnnotationStore;
-        if (summary is null || store is null)
+        if (summary is null || activeAnnotationStore is null)
             return;
 
         try
         {
-            ChapterAnnotationEditValues? values = await ShowChapterAnnotationEditorAsync(
-                "编辑章节批注",
-                summary.Annotation.ChapterId,
-                summary.Chapter,
-                summary.Annotation.Title,
-                summary.Annotation.Content,
-                summary.Annotation.CategoryId);
-            if (values is null || !ReferenceEquals(store, activeAnnotationStore))
-                return;
-
-            await store.UpdateChapterAnnotationAsync(
-                summary.Annotation.Id,
-                values.ChapterId,
-                values.Content,
-                values.CategoryId,
-                values.Title);
-            await LoadChapterAnnotationsAsync();
+            await OpenChapterAnnotationEditorAsync(
+                summary.Annotation.ChapterId, summary.Chapter, summary);
         }
         catch (Exception ex)
         {
-            await ShowNovelProjectMessageAsync("保存章节批注失败", ex.Message);
+            await ShowNovelProjectMessageAsync("无法打开章节批注编辑器", ex.Message);
         }
     }
 
@@ -1028,7 +998,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             Title = "删除章节批注",
-            Content = $"确定删除“{(string.IsNullOrWhiteSpace(summary.Annotation.Title) ? "未命名章节批注" : summary.Annotation.Title)}”吗？",
+            Content = $"确定删除这条章节批注吗？\n\n内容：{CreateChapterAnnotationExcerpt(summary.Annotation.Content, 140)}",
             PrimaryButtonText = "删除",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
@@ -1050,134 +1020,172 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task<ChapterAnnotationEditValues?> ShowChapterAnnotationEditorAsync(
-        string dialogTitle,
+    private async Task OpenChapterAnnotationEditorAsync(
         Guid initialChapterId,
         NovelChapter? initialChapter,
-        string? initialTitle,
-        string initialContent,
-        Guid? initialCategoryId)
+        ChapterAnnotationSummary? existing)
     {
         NovelAnnotationStore? store = activeAnnotationStore;
         if (store is null)
-            return null;
+            return;
+
+        IReadOnlyList<NovelChapter> availableChapters = chapterAnnotationChapters;
+        if (availableChapters.Count == 0)
+        {
+            availableChapters = await store.GetChaptersAsync();
+            if (!ReferenceEquals(store, activeAnnotationStore))
+                return;
+            chapterAnnotationChapters = availableChapters;
+        }
+
+        var chapters = availableChapters.ToList();
+        if (initialChapter is not null && chapters.All(chapter => chapter.Id != initialChapter.Id))
+            chapters.Add(initialChapter);
+        if (chapters.Count == 0)
+            throw new InvalidOperationException("没有可供选择的章节。");
 
         IReadOnlyList<ChapterAnnotationCategory> categories =
             await store.GetChapterAnnotationCategoriesAsync();
         if (!ReferenceEquals(store, activeAnnotationStore))
-            return null;
+            return;
+        chapterAnnotationCategories = categories;
 
-        var availableChapters = chapterAnnotationChapters.ToList();
-        if (initialChapter is not null
-            && availableChapters.All(chapter => chapter.Id != initialChapter.Id))
+        ChapterAnnotationEditorChapter.Items.Clear();
+        foreach (NovelChapter chapter in chapters)
         {
-            availableChapters.Add(initialChapter);
-        }
-        if (availableChapters.Count == 0)
-            throw new InvalidOperationException("没有可供选择的章节。");
-
-        // Use the same explicit item-container pattern as the working category manager.
-        // The selected item carries the stable database ID; display text is never used as identity.
-        var chapterBox = new ComboBox
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            MaxDropDownHeight = 420,
-        };
-        foreach (NovelChapter chapter in availableChapters)
-        {
-            chapterBox.Items.Add(new ComboBoxItem
+            ChapterAnnotationEditorChapter.Items.Add(new ComboBoxItem
             {
                 Content = chapter.IsActive ? chapter.Title : $"（原章节已删除）{chapter.Title}",
                 Tag = chapter.Id,
             });
         }
-        int initialChapterIndex = availableChapters.FindIndex(chapter => chapter.Id == initialChapterId);
-        chapterBox.SelectedIndex = initialChapterIndex >= 0 ? initialChapterIndex : 0;
+        int chapterIndex = chapters.FindIndex(chapter => chapter.Id == initialChapterId);
+        ChapterAnnotationEditorChapter.SelectedIndex = chapterIndex >= 0 ? chapterIndex : 0;
 
-        var titleBox = new TextBox
-        {
-            PlaceholderText = "批注标题（可选）",
-            Text = initialTitle ?? "",
-        };
-        var categoryBox = new ComboBox
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            PlaceholderText = "选择分类",
-            MaxDropDownHeight = 420,
-        };
-        categoryBox.Items.Add(new ComboBoxItem { Content = "未分类" });
+        ChapterAnnotationEditorCategory.Items.Clear();
+        ChapterAnnotationEditorCategory.Items.Add(new ComboBoxItem { Content = "未分类" });
         foreach (ChapterAnnotationCategory category in categories)
         {
-            categoryBox.Items.Add(new ComboBoxItem
+            ChapterAnnotationEditorCategory.Items.Add(new ComboBoxItem
             {
                 Content = category.Name,
                 Tag = category.Id,
             });
         }
-        int initialCategoryIndex = initialCategoryId is Guid selectedCategory
-            ? categories.ToList().FindIndex(category => category.Id == selectedCategory) + 1
+        int categoryIndex = existing?.Annotation.CategoryId is Guid selectedCategoryId
+            ? categories.ToList().FindIndex(category => category.Id == selectedCategoryId) + 1
             : 0;
-        categoryBox.SelectedIndex = initialCategoryIndex >= 0 ? initialCategoryIndex : 0;
+        ChapterAnnotationEditorCategory.SelectedIndex =
+            categoryIndex >= 0 ? categoryIndex : 0;
 
-        var contentBox = new TextBox
-        {
-            Text = initialContent,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            MinHeight = 240,
-            PlaceholderText = "记录本章剧情概括、人物变化、剧情点评或其他分析...",
-        };
-        var panel = new StackPanel { Spacing = 8, MinWidth = 440 };
-        panel.Children.Add(new TextBlock { Text = "章节" });
-        panel.Children.Add(chapterBox);
-        panel.Children.Add(new TextBlock { Text = "标题" });
-        panel.Children.Add(titleBox);
-        panel.Children.Add(new TextBlock { Text = "分类" });
-        panel.Children.Add(categoryBox);
-        panel.Children.Add(new TextBlock { Text = "批注内容" });
-        panel.Children.Add(new ScrollViewer
-        {
-            Content = contentBox,
-            Height = 300,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        });
+        ChapterAnnotationEditorContent.Text = existing?.Annotation.Content ?? "";
+        ChapterAnnotationEditorValidation.Text = "";
+        editingChapterAnnotationId = existing?.Annotation.Id;
+        editingChapterAnnotationTitle = existing?.Annotation.Title;
+        chapterAnnotationEditorStore = store;
 
-        var dialog = new ContentDialog
-        {
-            Title = dialogTitle,
-            Content = panel,
-            PrimaryButtonText = "保存",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot,
-        };
+        AnnotationPane.Visibility = Visibility.Visible;
+        AnnotationPaneHeader.Visibility = Visibility.Collapsed;
+        AnnotationPaneChapterSelector.Visibility = Visibility.Collapsed;
+        AnnotationPaneTabBar.Visibility = Visibility.Collapsed;
+        SmallAnnotationPane.Visibility = Visibility.Collapsed;
+        ChapterAnnotationPane.Visibility = Visibility.Visible;
+        ChapterAnnotationListView.Visibility = Visibility.Collapsed;
+        ChapterAnnotationEditorView.Visibility = Visibility.Visible;
+        SmallAnnotationsItem.IsChecked = false;
+        ChapterAnnotationsItem.IsChecked = true;
+        SmallAnnotationTabButton.IsChecked = false;
+        ChapterAnnotationTabButton.IsChecked = true;
+        UpdateReaderToolsRailVisibility();
+        ChapterAnnotationEditorContent.Focus(FocusState.Programmatic);
+    }
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            return null;
-        Guid? selectedChapterId =
-            (chapterBox.SelectedItem as ComboBoxItem)?.Tag is Guid chapterId ? chapterId : null;
-        NovelChapter? selectedChapter = selectedChapterId is Guid id
-            ? availableChapters.FirstOrDefault(chapter => chapter.Id == id)
-            : null;
-        if (selectedChapter is null)
+    private void CloseChapterAnnotationEditor_Click(object sender, RoutedEventArgs e)
+    {
+        editingChapterAnnotationId = null;
+        editingChapterAnnotationTitle = null;
+        chapterAnnotationEditorStore = null;
+        ChapterAnnotationEditorView.Visibility = Visibility.Collapsed;
+        ChapterAnnotationListView.Visibility = Visibility.Visible;
+        AnnotationPaneHeader.Visibility = Visibility.Visible;
+        AnnotationPaneChapterSelector.Visibility = Visibility.Visible;
+        AnnotationPaneTabBar.Visibility = Visibility.Visible;
+        UpdateReaderToolsRailVisibility();
+    }
+
+    private async void SaveChapterAnnotationEditor_Click(object sender, RoutedEventArgs e)
+    {
+        NovelAnnotationStore? store = chapterAnnotationEditorStore;
+        if (store is null || !ReferenceEquals(store, activeAnnotationStore))
+            return;
+
+        Guid? chapterId =
+            (ChapterAnnotationEditorChapter.SelectedItem as ComboBoxItem)?.Tag is Guid selectedChapterId
+                ? selectedChapterId
+                : null;
+        if (chapterId is null)
         {
-            await ShowNovelProjectMessageAsync("尚未选择章节", "请选择这条章节批注所属的章节。");
-            return null;
+            ChapterAnnotationEditorValidation.Text = "请选择章节。";
+            return;
         }
-        if (string.IsNullOrWhiteSpace(contentBox.Text))
+        if (string.IsNullOrWhiteSpace(ChapterAnnotationEditorContent.Text))
         {
-            await ShowNovelProjectMessageAsync("批注内容不能为空", "请输入章节批注内容后再保存。");
-            return null;
+            ChapterAnnotationEditorValidation.Text = "批注内容不能为空。";
+            ChapterAnnotationEditorContent.Focus(FocusState.Programmatic);
+            return;
         }
 
         Guid? categoryId =
-            (categoryBox.SelectedItem as ComboBoxItem)?.Tag is Guid selectedCategoryId
+            (ChapterAnnotationEditorCategory.SelectedItem as ComboBoxItem)?.Tag is Guid selectedCategoryId
                 ? selectedCategoryId
                 : null;
-        string? title = string.IsNullOrWhiteSpace(titleBox.Text) ? null : titleBox.Text.Trim();
-        return new ChapterAnnotationEditValues(
-            selectedChapter.Id, title, contentBox.Text, categoryId);
+        Guid annotationId;
+        try
+        {
+            if (editingChapterAnnotationId is Guid existingId)
+            {
+                await store.UpdateChapterAnnotationAsync(
+                    existingId,
+                    chapterId.Value,
+                    ChapterAnnotationEditorContent.Text,
+                    categoryId,
+                    editingChapterAnnotationTitle);
+                annotationId = existingId;
+            }
+            else
+            {
+                annotationId = await store.CreateChapterAnnotationAsync(
+                    chapterId.Value,
+                    ChapterAnnotationEditorContent.Text,
+                    categoryId,
+                    title: null);
+            }
+
+            if (!ReferenceEquals(store, activeAnnotationStore))
+                return;
+
+            selectedChapterAnnotationChapterId = chapterId;
+            annotationPaneChapterManuallySelected = true;
+            SetAnnotationPaneChapter(chapterId.Value, pinToChapter: true);
+            editingChapterAnnotationId = null;
+            editingChapterAnnotationTitle = null;
+            chapterAnnotationEditorStore = null;
+            ChapterAnnotationEditorView.Visibility = Visibility.Collapsed;
+            ChapterAnnotationListView.Visibility = Visibility.Visible;
+            AnnotationPaneHeader.Visibility = Visibility.Visible;
+            AnnotationPaneChapterSelector.Visibility = Visibility.Visible;
+            AnnotationPaneTabBar.Visibility = Visibility.Visible;
+            SmallAnnotationPane.Visibility = Visibility.Collapsed;
+            ChapterAnnotationPane.Visibility = Visibility.Visible;
+            await LoadChapterAnnotationsAsync();
+            await RefreshChapterAnnotationsAsync(annotationId);
+            UpdateReaderToolsRailVisibility();
+        }
+        catch (Exception ex)
+        {
+            diagnostics.LogSwallowed("Save chapter annotation", ex);
+            ChapterAnnotationEditorValidation.Text = $"保存失败：{ex.Message}";
+        }
     }
 
     private async void ManageChapterAnnotationCategories_Click(object sender, RoutedEventArgs e)
