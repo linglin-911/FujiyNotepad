@@ -854,13 +854,13 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - Phase 4.3 的本地构建/冒烟验收仍是独立待办；Phase 4.4 开发不代表 Phase 4.3 已验收。
 
 
-**本轮代码实现记录（提交 `a3016c61f59265d532746b0e494b8df0da74809b`；共享主题色修正 `1f9b7cebfd4c024919f3a5256752892bec1305e3`；正文宽度预览 `ee3a4f6c8853782480f0924cdcb0f4f60ee92229`；大字号预览适配 `d9b3164320980f03a945e3cc211aef6f71a4bc49`）**
+**本轮代码实现记录（提交 `a3016c61f59265d532746b0e494b8df0da74809b`；共享主题色修正 `1f9b7cebfd4c024919f3a5256752892bec1305e3`；正文宽度预览 `ee3a4f6c8853782480f0924cdcb0f4f60ee92229`；大字号预览适配 `d9b3164320980f03a945e3cc211aef6f71a4bc49`；Apply 顺序与宽度单位修正 `745d8337c76e937745cd1a00027b7e9805797ebd`、`4254981b7757877e1eba50e2acc20d598139b171`；初始化清理和行距预览修正 `b377cdc766a0e6e8c0f29614df38c3a94d2c63d7`、`46b34217ce275946d8866b1abb6f409edf637078`）**
 
 - 新增 `ReaderSettingsDialog.xaml/.xaml.cs`，作为独立 WinUI 3 ContentDialog；从 `View → Reader Settings...` 打开。
 - 原 `View → Theme` 子菜单已更名为 `Application Theme`，明确其控制软件主界面；阅读背景在对话框中称为 `Reading Background`。
 - 字体使用 Win2D `CanvasTextFormat.GetSystemFontFamilies(ApplicationLanguages.Languages)` 枚举；按区域排序、忽略大小写去重，并保留当前已保存但当前系统未枚举到的字体名称。
-- 字号 Slider 范围 6–72 DIP；行距 Slider 范围 0.8–2.5；宽度 NumberBox 范围 480–2400 DIP；自适应复选框映射到 `ContentWidthDip=0`。
-- Paper/Warm/Night 主题卡片和样例预览均从现有 `ReaderPalette` 取色，不新增第二套调色板；样例同时预览字体、字号、行距和居中正文列宽（将 480–2400 DIP 映射到固定预览视口，0 表示占满预览宽度）。预览区高度可随大字号内容扩展。Windows High Contrast 仍由阅读器现有逻辑覆盖。
+- 字号 Slider 范围 6–72 DIP；行距 Slider 范围 0.8–2.5；宽度 NumberBox 范围 480–2400 DIP 并显示 DIP 单位；自适应复选框映射到 `ContentWidthDip=0`。
+- Paper/Warm/Night 主题卡片和样例预览均从现有 `ReaderPalette` 取色，不新增第二套调色板；样例同时预览字体、字号、完整 0.8–2.5 行距范围和居中正文列宽（将 480–2400 DIP 映射到固定预览视口，0 表示占满预览宽度）。预览区高度可随大字号内容扩展。Windows High Contrast 仍由阅读器现有逻辑覆盖。
 - MainWindow 保存原始 ReaderSettings 快照；预览通过现有 `View.ApplyReaderSettings()` 运行。新增 `suppressReaderSettingsPersistence`，防止预览触发 `FontChanged → OnFontChanged` 时提前写入 settings.json。
 - Apply 时将最终副本写入 `settings.Reader`，同步 legacy `FontFamily/FontSize` 字段并调用原有 `SettingsStore.Save()`；Cancel、ESC、关闭和对话框异常均恢复原始快照。没有修改设置模型、JSON 结构、SQLite、章节 ID、批注锚点或布局引擎。
 - 菜单和对话框文案新增到 en-US、pt-BR 两份现有资源文件。
