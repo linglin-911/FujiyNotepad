@@ -282,7 +282,7 @@ public sealed partial class MainWindow
                 var content = new StackPanel { Spacing = 5 };
                 content.Children.Add(new TextBlock
                 {
-                    Text = CreateChapterAnnotationExcerpt(summary.Annotation.Content, 220),
+                    Text = CreateSmallAnnotationExcerpt(summary.Annotation.Content, 220),
                     FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap,
                     MaxLines = 5,
@@ -1050,7 +1050,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             Title = "删除章节批注",
-            Content = $"确定删除这条章节批注吗？\n\n内容：{CreateChapterAnnotationExcerpt(summary.Annotation.Content, 140)}",
+            Content = $"确定删除这条章节批注吗？\n\n内容：{CreateSmallAnnotationExcerpt(summary.Annotation.Content, 140)}",
             PrimaryButtonText = "删除",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
