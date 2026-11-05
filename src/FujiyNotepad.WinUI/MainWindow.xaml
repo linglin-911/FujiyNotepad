@@ -341,8 +341,8 @@
                 </Grid>
             </Grid>
 
-            <Border x:Name="SmallAnnotationPane" Grid.Row="0" Grid.Column="2" Grid.RowSpan="1"
-                    Width="360" Visibility="Collapsed"
+            <Border x:Name="AnnotationPane" Grid.Row="0" Grid.Column="2" Grid.RowSpan="1"
+                    Width="420" Visibility="Collapsed"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
                 <Grid Padding="12" RowSpacing="10">
@@ -351,126 +351,158 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="小批注" FontSize="17" FontWeight="SemiBold" />
-                            <TextBlock x:Name="SmallAnnotationCount" Text="0 条批注"
-                                       Style="{ThemeResource CaptionTextBlockStyle}" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="×" Click="CloseSmallAnnotations_Click"
-                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭小批注面板" />
-                    </Grid>
-                    <TextBox x:Name="SmallAnnotationSearchBox" Grid.Row="1"
-                             PlaceholderText="搜索标题、批注内容或关联原文..."
-                             TextChanged="SmallAnnotationSearchBox_TextChanged" />
-                    <Grid Grid.Row="2" ColumnSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox x:Name="SmallAnnotationCategoryFilter" HorizontalAlignment="Stretch"
-                                  SelectionChanged="SmallAnnotationCategoryFilter_SelectionChanged" />
-                        <Button Grid.Column="1" Content="分类管理..." Click="ManageSmallAnnotationCategories_Click"
-                                Padding="8,4" />
-                    </Grid>
-                    <Grid Grid.Row="3">
-                        <ListView x:Name="SmallAnnotationList"
-                                  SelectionChanged="SmallAnnotationList_SelectionChanged"
-                                  SelectionMode="Single" />
-                        <TextBlock x:Name="SmallAnnotationEmptyState"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   TextAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Opacity="0.65"
-                                   IsHitTestVisible="False"
-                                   Visibility="Collapsed" />
-                    </Grid>
-                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
-                        <Button Content="删除" Click="DeleteSelectedSmallAnnotation_Click"
-                                x:Name="DeleteSmallAnnotationButton" IsEnabled="False" />
-                    </StackPanel>
-                </Grid>
-            </Border>
 
-            <Border x:Name="ChapterAnnotationPane" Grid.Row="0" Grid.Column="2" Grid.RowSpan="1"
-                    Width="360" Visibility="Collapsed"
-                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
-                <Grid Padding="12" RowSpacing="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
+                    <Grid x:Name="AnnotationPaneHeader" Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="章节批注" FontSize="17" FontWeight="SemiBold" />
-                            <TextBlock x:Name="ChapterAnnotationCount" Text="0 条批注"
-                                       Style="{ThemeResource CaptionTextBlockStyle}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                            <Button x:Name="RebuildChapterIndexButton" Content="重新识别"
-                                    Click="RebuildChapterIndex_Click" Padding="8,4"
-                                    ToolTipService.ToolTip="重新扫描原文章节，并在确认后更新索引" />
-                            <Button Content="×" Click="CloseChapterAnnotations_Click"
-                                    MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭章节批注面板" />
-                        </StackPanel>
+                        <TextBlock Text="批注" FontSize="17" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="×" Click="CloseAnnotationPane_Click"
+                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭批注面板" />
                     </Grid>
-                    <TextBox x:Name="ChapterAnnotationSearchBox" Grid.Row="1"
-                             PlaceholderText="搜索标题或批注内容..."
-                             TextChanged="ChapterAnnotationSearchBox_TextChanged" />
-                    <ComboBox x:Name="ChapterAnnotationChapterFilter" Grid.Row="2"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="全部章节"
+
+                    <ComboBox x:Name="AnnotationPaneChapterSelector" Grid.Row="1"
+                              HorizontalAlignment="Stretch" PlaceholderText="选择章节"
                               MaxDropDownHeight="420"
-                              SelectionChanged="ChapterAnnotationChapterFilter_SelectionChanged"
-                              DropDownClosed="ChapterAnnotationChapterFilter_DropDownClosed" />
-                    <Grid Grid.Row="3" ColumnSpacing="6">
+                              SelectionChanged="AnnotationPaneChapterSelector_SelectionChanged" />
+
+                    <Grid x:Name="AnnotationPaneTabBar" Grid.Row="2" ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <ComboBox x:Name="ChapterAnnotationCategoryFilter" HorizontalAlignment="Stretch"
-                                  PlaceholderText="全部分类" MaxDropDownHeight="420"
-                                  SelectionChanged="ChapterAnnotationCategoryFilter_SelectionChanged" />
-                        <Button Grid.Column="1" Content="分类管理..." Click="ManageChapterAnnotationCategories_Click"
-                                Padding="8,4" />
+                        <ToggleButton x:Name="SmallAnnotationTabButton" Content="小批注"
+                                      IsChecked="True" Click="SmallAnnotationTab_Click"
+                                      HorizontalAlignment="Stretch" />
+                        <ToggleButton x:Name="ChapterAnnotationTabButton" Grid.Column="1"
+                                      Content="章节批注" Click="ChapterAnnotationTab_Click"
+                                      HorizontalAlignment="Stretch" />
                     </Grid>
-                    <Grid Grid.Row="4">
-                        <ListView x:Name="ChapterAnnotationList"
-                                  SelectionChanged="ChapterAnnotationList_SelectionChanged"
-                                  SelectionMode="Single" />
-                        <TextBlock x:Name="ChapterAnnotationEmptyState"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   TextAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Opacity="0.65"
-                                   IsHitTestVisible="False"
-                                   Visibility="Collapsed" />
+
+                    <Grid Grid.Row="3">
+                        <Grid x:Name="SmallAnnotationPane" Visibility="Visible">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBox x:Name="SmallAnnotationSearchBox" Grid.Row="0"
+                                     PlaceholderText="搜索批注内容或关联原文..."
+                                     TextChanged="SmallAnnotationSearchBox_TextChanged" />
+                            <Grid Grid.Row="1" ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="SmallAnnotationCategoryFilter"
+                                          HorizontalAlignment="Stretch"
+                                          SelectionChanged="SmallAnnotationCategoryFilter_SelectionChanged" />
+                                <Button Grid.Column="1" Content="分类管理..."
+                                        Click="ManageSmallAnnotationCategories_Click" Padding="8,4" />
+                            </Grid>
+                            <Grid Grid.Row="2">
+                                <ListView x:Name="SmallAnnotationList"
+                                          SelectionChanged="SmallAnnotationList_SelectionChanged"
+                                          SelectionMode="Single" />
+                                <TextBlock x:Name="SmallAnnotationEmptyState"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextWrapping="Wrap" Opacity="0.65"
+                                           IsHitTestVisible="False" Visibility="Collapsed" />
+                            </Grid>
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                                <Button Content="删除" Click="DeleteSelectedSmallAnnotation_Click"
+                                        x:Name="DeleteSmallAnnotationButton" IsEnabled="False" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid x:Name="ChapterAnnotationPane" Visibility="Collapsed">
+                            <Grid x:Name="ChapterAnnotationListView" RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBox x:Name="ChapterAnnotationSearchBox" Grid.Row="0"
+                                         PlaceholderText="搜索章节批注内容..."
+                                         TextChanged="ChapterAnnotationSearchBox_TextChanged" />
+                                <Grid Grid.Row="1" ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="ChapterAnnotationCategoryFilter"
+                                              HorizontalAlignment="Stretch" PlaceholderText="全部分类"
+                                              MaxDropDownHeight="420"
+                                              SelectionChanged="ChapterAnnotationCategoryFilter_SelectionChanged" />
+                                    <Button Grid.Column="1" Content="分类管理..."
+                                            Click="ManageChapterAnnotationCategories_Click" Padding="8,4" />
+                                </Grid>
+                                <Grid Grid.Row="2">
+                                    <ListView x:Name="ChapterAnnotationList"
+                                              SelectionChanged="ChapterAnnotationList_SelectionChanged"
+                                              SelectionMode="Single" />
+                                    <TextBlock x:Name="ChapterAnnotationEmptyState"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               TextAlignment="Center" TextWrapping="Wrap" Opacity="0.65"
+                                               IsHitTestVisible="False" Visibility="Collapsed" />
+                                </Grid>
+                                <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                                    <Button Content="编辑" Click="EditSelectedChapterAnnotation_Click"
+                                            x:Name="EditChapterAnnotationButton" IsEnabled="False" />
+                                    <Button Content="删除" Click="DeleteSelectedChapterAnnotation_Click"
+                                            x:Name="DeleteChapterAnnotationButton" IsEnabled="False" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid x:Name="ChapterAnnotationEditorView" Visibility="Collapsed"
+                                  RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="ChapterAnnotationEditorChapter"
+                                              HorizontalAlignment="Stretch" PlaceholderText="选择章节"
+                                              MaxDropDownHeight="420" />
+                                    <ComboBox x:Name="ChapterAnnotationEditorCategory" Grid.Column="1"
+                                              HorizontalAlignment="Stretch" PlaceholderText="分类"
+                                              MaxDropDownHeight="420" />
+                                    <Button Grid.Column="2" Content="×"
+                                            Click="CloseChapterAnnotationEditor_Click"
+                                            MinWidth="32" Padding="4,2"
+                                            ToolTipService.ToolTip="关闭编辑" />
+                                </Grid>
+                                <TextBox x:Name="ChapterAnnotationEditorContent" Grid.Row="1"
+                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalAlignment="Stretch" VerticalContentAlignment="Top"
+                                         MinHeight="180" Padding="12"
+                                         PlaceholderText="记录本章剧情、人物变化、剧情点评或其他分析..."
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                                <Grid Grid.Row="2" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="ChapterAnnotationEditorValidation"
+                                               VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                               TextWrapping="Wrap" />
+                                    <Button Grid.Column="1" Content="保存" Click="SaveChapterAnnotationEditor_Click"
+                                            MinWidth="88" />
+                                </Grid>
+                            </Grid>
+                        </Grid>
                     </Grid>
-                    <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8">
-                        <Button Content="新建" Click="NewChapterAnnotation_Click"
-                                x:Name="NewChapterAnnotationButton" IsEnabled="False" />
-                        <Button Content="编辑" Click="EditSelectedChapterAnnotation_Click"
-                                x:Name="EditChapterAnnotationButton" IsEnabled="False" />
-                        <Button Content="删除" Click="DeleteSelectedChapterAnnotation_Click"
-                                x:Name="DeleteChapterAnnotationButton" IsEnabled="False" />
-                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -562,6 +594,18 @@
                 <StackPanel x:Name="ReaderToolsRail"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Margin="0,0,8,0" Spacing="10">
+                    <Button x:Name="NewChapterAnnotationRailButton"
+                            AutomationProperties.AutomationId="NewChapterAnnotationRailButton"
+                            AutomationProperties.Name="新建章节批注"
+                            Width="44" Height="44" MinWidth="44" MinHeight="44"
+                            Padding="0" CornerRadius="22"
+                            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                            BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Click="NewChapterAnnotation_Click" IsEnabled="False"
+                            ToolTipService.ToolTip="新建章节批注">
+                        <SymbolIcon Symbol="Add" />
+                    </Button>
                     <Button x:Uid="ReaderSettingsToggleButton" x:Name="ReaderSettingsToggleButton"
                             AutomationProperties.AutomationId="ReaderSettingsToggleButton"
                             Width="44" Height="44" MinWidth="44" MinHeight="44"
