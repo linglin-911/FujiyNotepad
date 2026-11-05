@@ -850,6 +850,8 @@ namespace FujiyNotepad.WinUI
                 AnnotationPane.Visibility = Visibility.Visible;
                 SetAnnotationPaneTab(showChapterAnnotations: false);
                 SetAnnotationPaneChapter(chapter.Id, pinToChapter: true);
+                await LoadChapterAnnotationsAsync();
+                SetAnnotationPaneChapter(chapter.Id, pinToChapter: true);
                 UpdateReaderToolsRailVisibility();
                 selectedSmallAnnotationCategoryId = target.Annotation.CategoryId;
                 await ReloadSmallAnnotationCategoriesAsync(target.Annotation.CategoryId);
