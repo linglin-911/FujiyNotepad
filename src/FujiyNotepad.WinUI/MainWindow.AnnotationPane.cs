@@ -16,6 +16,7 @@ public sealed partial class MainWindow
     private bool annotationPaneChapterManuallySelected;
     private DispatcherQueueTimer? annotationPaneChapterFollowTimer;
     private bool hasLastTextSelectionPoint;
+    private bool allowSmallAnnotationComposerClose;
     private Point lastTextSelectionPoint;
     private Point? pendingSmallComposerPosition;
     private Flyout? selectionActionsFlyout;
@@ -215,6 +216,11 @@ public sealed partial class MainWindow
 
     private void OnTextSelectionCompleted(Point menuAnchor, Point composerAnchor)
     {
+        // The composer stays open while the reader receives pass-through pointer input.
+        // Ignore a new text-selection completion until the user explicitly closes or saves it.
+        if (smallAnnotationComposerFlyout?.IsOpen == true)
+            return;
+
         CloseSmallAnnotationComposer();
         pendingSmallComposerPosition = null;
         selectionActionsFlyout?.Hide();
@@ -515,7 +521,6 @@ public sealed partial class MainWindow
 
         var flyout = new Flyout
         {
-            IsLightDismissEnabled = false,
             OverlayInputPassThroughElement = View,
             Content = new Border
             {
@@ -528,8 +533,21 @@ public sealed partial class MainWindow
             FlyoutPresenterStyle = CreateAnnotationFlyoutPresenterStyle(),
         };
         smallAnnotationComposerFlyout = flyout;
+        flyout.Closing += (_, args) =>
+        {
+            if (allowSmallAnnotationComposerClose)
+            {
+                allowSmallAnnotationComposerClose = false;
+                return;
+            }
+
+            // FlyoutBase has no IsLightDismissEnabled switch in WinUI 3.
+            // Cancel light-dismiss/Escape closes; explicit Hide() calls opt in below.
+            args.Cancel = true;
+        };
         flyout.Closed += (_, _) =>
         {
+            allowSmallAnnotationComposerClose = false;
             if (ReferenceEquals(smallAnnotationComposerFlyout, flyout))
             {
                 smallAnnotationComposerFlyout = null;
@@ -662,7 +680,15 @@ public sealed partial class MainWindow
     {
         Flyout? flyout = smallAnnotationComposerFlyout;
         smallAnnotationComposerFlyout = null;
-        flyout?.Hide();
+        if (flyout?.IsOpen == true)
+        {
+            allowSmallAnnotationComposerClose = true;
+            flyout.Hide();
+        }
+        else
+        {
+            allowSmallAnnotationComposerClose = false;
+        }
         smallAnnotationComposerTextBox = null;
         smallAnnotationComposerValidation = null;
         pendingSmallAnnotationSelection = null;

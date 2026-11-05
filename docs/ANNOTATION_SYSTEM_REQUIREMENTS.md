@@ -1081,9 +1081,11 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 小批注输入浮层宽度由原先最大约 440 DIP 扩大到最大约 660 DIP（约增加 50%），同时按阅读视口宽度收缩，避免小窗口溢出。
 - 编辑区域左侧增加小型编辑图标；输入 TextBox 使用独立无状态边框模板，移除 PointerOver/Focused 背景切换和焦点蓝色底线，编辑区域与外层卡片保持同色融合。
 - 关闭按钮改为居中的 Symbol.Cancel 图标，缩小至 26×26 DIP；保存按钮缩小至约 82×34 DIP。
-- 小批注 Flyout 设置 IsLightDismissEnabled=false，点击外部不再关闭；同时将 OverlayInputPassThroughElement 指向阅读 TextCanvas，让阅读区在浮层保持打开时继续接收滚轮等指针输入。保留右上角关闭按钮和保存成功后自动关闭，仍需 Windows 实测确认。
+- 小批注 Flyout 通过 Closing 事件取消外部点击/Escape 引发的关闭；仅 CloseSmallAnnotationComposer 显式调用 Hide 时放行关闭。OverlayInputPassThroughElement 指向阅读 TextCanvas，让阅读区在浮层保持打开时继续接收滚轮等指针输入。阅读区产生新的文本选区时不关闭当前编辑器，也不叠加新的选区菜单。保留右上角关闭按钮和保存成功后自动关闭，仍需 Windows 实测确认。
 - 未修改小批注保存流程、原文选区校验、章节归属检查、锚点元数据、数据库结构或自动滚动行为。
 
 - 本轮代码提交：c21966e7ce7c49781f2e6a6facc7d9874a1eb281；阅读区输入透传补充：9f08ff6686adeae9295a48f2096c777bded58ff7。
+
+- WinUI 3 API 纠正：FlyoutBase 不提供 IsLightDismissEnabled；现通过 Flyout.Closing + FlyoutBaseClosingEventArgs.Cancel 实现外部关闭拦截，避免使用 Popup 专属属性。
 
 **下一步：** 用户拉取本轮提交后先执行 Windows x64 Release build 和 Core.Tests。随后实测：菜单矩形底板是否消失、菜单与选区的间距是否明显缩短、输入浮层宽度是否增加约 50%、编辑区在悬停/输入/焦点状态下是否始终同色且无蓝线、编辑图标和缩小后的按钮位置是否正确、点击外部是否保持打开、阅读区滚轮能否正常翻页、X 是否关闭、保存是否成功并自动关闭。若滚轮仍被 Flyout 截断，再针对 Popup 输入路由单独处理。未完成 Windows 实测前不得标记为验收通过。
