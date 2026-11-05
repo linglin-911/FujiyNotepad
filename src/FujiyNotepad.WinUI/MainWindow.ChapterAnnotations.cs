@@ -246,7 +246,7 @@ public sealed partial class MainWindow
         if (chapterId is null)
         {
             ChapterAnnotationList.Items.Clear();
-            ChapterAnnotationCount.Text = "0 条批注";
+            ChapterAnnotationCount.Text = "0 条章节批注";
             ChapterAnnotationEmptyState.Text = chapterAnnotationChapters.Count == 0
                 ? "当前没有可用章节。"
                 : "请选择一个章节。";
