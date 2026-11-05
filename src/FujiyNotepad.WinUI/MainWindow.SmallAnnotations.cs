@@ -770,7 +770,11 @@ namespace FujiyNotepad.WinUI
 
             var selected = await GetCurrentSelectionAnchorAsync();
             if (selected is null)
+            {
+                pendingSmallComposerPosition = null;
+                hasLastTextSelectionPoint = false;
                 return;
+            }
 
             await OpenSmallAnnotationComposerAsync(selected.Value);
         }
