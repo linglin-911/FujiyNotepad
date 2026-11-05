@@ -20,16 +20,15 @@ using Windows.UI.ViewManagement;
 namespace FujiyNotepad.WinUI.Controls
 {
     /// <summary>
-    /// A from-scratch, read-only text surface that simulates a text box over an arbitrarily large file
-    /// without loading it: it draws only the lines currently visible (read on demand via
-    /// <see cref="LineProvider"/>) onto a Win2D <see cref="CanvasControl"/>, tracks scrolling in source-line units
-    /// with a visual-row offset when wrapping is enabled, and supports caret placement, character-level selection, copy and
-    /// keyboard/mouse navigation. Text shaping and visual-row geometry come from the active font's DirectWrite layout.
+    /// A from-scratch, read-only text surface for arbitrarily large files. It draws only visible lines
+    /// (read on demand via <see cref="LineProvider"/>) onto a Win2D <see cref="CanvasControl"/>, tracks scrolling
+    /// in source-line units with a visual-row offset when wrapping is enabled, and supports drag-only character
+    /// selection, copy and keyboard navigation. Text shaping and visual-row geometry come from DirectWrite.
     ///
-    /// This control is the WinUI shell: it owns the <see cref="CanvasControl"/>, focus, the caret-blink
-    /// timer, clipboard access, the Win2D font metrics and the actual draw calls. All scroll/caret/selection
-    /// math and the per-line render model live in the framework-independent <see cref="TextLayoutEngine"/>
-    /// (a plain .NET library), so that logic unit-tests on a normal test host.
+    /// This control is the WinUI shell: it owns the canvas, focus, pointer capture, clipboard access, font metrics
+    /// and draw calls. Scroll/selection math and the per-line render model live in the framework-independent
+    /// <see cref="TextLayoutEngine"/>, so that logic can be unit-tested on a normal test host. The reader does
+    /// not display an insertion caret or offer double-click word selection.
     /// </summary>
     public sealed partial class TextCanvas : UserControl
     {
@@ -43,8 +42,8 @@ namespace FujiyNotepad.WinUI.Controls
         private readonly Win2DTextLayoutProvider proportionalLayoutProvider = new();
         private readonly HashSet<int> drawnProportionalLines = new();
 
-        // Text layouts are retained only for the current viewport. Drawing, selection geometry, caret placement
-        // and pointer hit-testing all query the same DirectWrite layout instead of estimating glyph widths.
+        // Text layouts are retained only for the current viewport. Drawing, selection geometry and pointer
+        // hit-testing all query the same DirectWrite layout instead of estimating glyph widths.
         private readonly Dictionary<TextLayoutKey, CanvasTextLayout> textLayoutCache = new();
         private readonly HashSet<TextLayoutKey> activeTextLayouts = new();
         private readonly record struct TextLayoutKey(int LineIndex, int DisplayStartIndex, int DisplayLength);
