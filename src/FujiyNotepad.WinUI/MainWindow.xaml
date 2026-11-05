@@ -358,10 +358,21 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="批注" FontSize="17" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Content="×" Click="CloseAnnotationPane_Click"
-                                MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭批注面板" />
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="批注" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock x:Name="SmallAnnotationCount" Text="0 条小批注"
+                                       Style="{ThemeResource CaptionTextBlockStyle}" />
+                            <TextBlock x:Name="ChapterAnnotationCount" Text="0 条章节批注"
+                                       Style="{ThemeResource CaptionTextBlockStyle}" Visibility="Collapsed" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="RebuildChapterIndexButton" Content="重新识别"
+                                    Click="RebuildChapterIndex_Click" Padding="8,4"
+                                    Visibility="Collapsed"
+                                    ToolTipService.ToolTip="重新扫描原文章节，并在确认后更新索引" />
+                            <Button Content="×" Click="CloseAnnotationPane_Click"
+                                    MinWidth="32" Padding="4,2" ToolTipService.ToolTip="关闭批注面板" />
+                        </StackPanel>
                     </Grid>
 
                     <ComboBox x:Name="AnnotationPaneChapterSelector" Grid.Row="1"
