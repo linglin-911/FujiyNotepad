@@ -40,12 +40,7 @@ public sealed partial class MainWindow
         }
 
         CancelSmallAnnotationCardSingleTap();
-        AnnotationPane.Visibility = Visibility.Collapsed;
-        annotationPaneChapterManuallySelected = false;
-        SmallAnnotationsItem.IsChecked = false;
-        SmallAnnotationPane.Visibility = Visibility.Collapsed;
-        ChapterAnnotationsItem.IsChecked = false;
-        ChapterAnnotationPane.Visibility = Visibility.Collapsed;
+        CloseAnnotationPane_Click(this, new RoutedEventArgs());
         chapterAnnotationFilterDebounce?.Cancel();
 
         await LoadChapterDirectoryAsync();
