@@ -836,21 +836,6 @@ public sealed partial class MainWindow
         });
     }
 
-    private void QueueSmallComposerFocusReleaseForPointer(PointerRoutedEventArgs e)
-    {
-        Popup? popup = smallAnnotationComposerPopup;
-        TextBox? contentBox = smallAnnotationComposerTextBox;
-        if (popup?.IsOpen != true || contentBox is null || IsPointerWithin(contentBox, e))
-            return;
-
-        // Popup children normally use their own routed tree. If this event also reaches RootGrid,
-        // leave clicks inside the card to the card handler so action buttons are not interrupted.
-        if (popup.Child is FrameworkElement popupChild && IsPointerWithin(popupChild, e))
-            return;
-
-        QueueSmallComposerFocusRelease(popup, contentBox);
-    }
-
     private void CloseSmallAnnotationComposer(bool clearSelection = true)
     {
         Popup? popup = smallAnnotationComposerPopup;

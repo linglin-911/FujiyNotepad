@@ -3530,9 +3530,14 @@ namespace FujiyNotepad.WinUI
 
         private void RootGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
         {
-            // Mouse-wheel scrolling does not raise PointerReleased and therefore never changes
-            // the annotation editor's focus state.
-            QueueSmallComposerFocusReleaseForPointer(e);
+            // RootGrid only receives clicks from the main window visual tree; Popup content has
+            // its own routed tree and is handled by the card. A main-window click is outside the
+            // editor, so release its focus after the click completes. Wheel events are unaffected.
+            if (smallAnnotationComposerPopup is { IsOpen: true } popup
+                && smallAnnotationComposerTextBox is { } contentBox)
+            {
+                QueueSmallComposerFocusRelease(popup, contentBox);
+            }
         }
 
         private static bool IsPointerWithin(FrameworkElement element, PointerRoutedEventArgs e)
