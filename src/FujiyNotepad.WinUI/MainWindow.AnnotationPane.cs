@@ -703,7 +703,6 @@ public sealed partial class MainWindow
         hasSmallComposerPassiveState = true;
         View.IsReaderInteractionPassive = true;
         popup.IsOpen = true;
-        EnsureComposerTextBoxFocus();
         return Task.CompletedTask;
     }
 
