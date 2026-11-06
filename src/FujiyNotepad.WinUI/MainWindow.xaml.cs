@@ -640,7 +640,7 @@ namespace FujiyNotepad.WinUI
             }
 
             bool hadActiveProject = activeNovelProject is not null || activeAnnotationStore is not null;
-            selectionActionsFlyout?.Hide();
+            CloseSelectionActionsPopup();
             CloseSmallAnnotationComposer();
             annotationPaneChapterFollowTimer?.Stop();
             annotationPaneChapterManuallySelected = false;
