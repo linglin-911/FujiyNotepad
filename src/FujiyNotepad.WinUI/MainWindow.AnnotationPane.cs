@@ -487,8 +487,9 @@ public sealed partial class MainWindow
             FontSize = 16,
             PlaceholderText = "写下这一刻的想法……",
             PlaceholderForeground = new SolidColorBrush(Color.FromArgb(165, 255, 255, 255)),
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            // Share the popup card's opaque brush so the editor is one continuous surface.
+            Background = popupBackground,
+            BorderBrush = popupBackground,
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(0),
             Foreground = popupForeground,
