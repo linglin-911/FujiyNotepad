@@ -239,6 +239,8 @@
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="ReaderSettingsItem" x:Name="ReaderSettingsItem" Text="Reader Settings..." Click="ReaderSettings_Click" />
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="CaretTestItem" Text="光标技术测试..." Click="CaretTest_Click" />
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="HighlightRulesItem" Text="Highlight Rules..." Click="HighlightRules_Click" />
             </MenuBarItem>
             <MenuBarItem x:Uid="EncodingMenu" x:Name="EncodingMenu" Title="Encoding" IsEnabled="False">
