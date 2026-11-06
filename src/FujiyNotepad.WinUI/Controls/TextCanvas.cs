@@ -735,6 +735,9 @@ namespace FujiyNotepad.WinUI.Controls
                     return;
 
                 isReaderInteractionPassive = value;
+                // A passive reader must not become the keyboard focus target when the user
+                // clicks it behind a non-modal Popup. Mouse-wheel scrolling remains available.
+                IsTabStop = !value;
                 if (value)
                 {
                     isSelecting = false;

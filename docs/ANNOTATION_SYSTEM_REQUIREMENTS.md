@@ -1112,7 +1112,7 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 
 
 **2026-11-06 第五轮修正（待 Windows 实测）：**
-- 小批注 Popup 增加 Opened 时立即设置 TextBox 焦点；同时在 TextBox LostFocus 后排队恢复焦点，只要编辑 Popup 仍打开就保持输入焦点，避免非模态 Popup 因阅读区/其他窗口内控件点击而停止显示插入光标。X/保存点击仍由当前输入事件处理，Popup 关闭后不再恢复焦点。
+- 小批注 Popup 增加 Opened 时立即设置 TextBox 焦点；同时在 TextBox LostFocus 后排队恢复焦点，只要编辑 Popup 仍打开就保持输入焦点。编辑器打开时 TextCanvas 设为被动且 IsTabStop=false，避免阅读区点击抢走输入焦点；鼠标滚轮仍可翻页。X/保存点击仍由当前输入事件处理，Popup 关闭后不再恢复焦点。
 - 选区菜单上方有足够空间时，箭头尖端贴合第一条选中高亮矩形的顶部；空间不足时，不再错误地沿用第一行锚点，而是改用最后一条选中高亮矩形的底部，菜单放在最后一行下方，箭头朝上指向最后一行。
 - TextCanvas 的菜单首行锚点不再减去 0.665 DIP；末行锚点由 LayoutRowHeight 改为实际绘制选区高亮使用的 lineHeight，避免把额外行距/leading 计入锚点。
 - 未修改数据库结构、批注锚点数据、原文校验与保存流程；未增加自动滚动。焦点持续性、菜单间距及顶部边界翻转仍待 Windows 实测。
