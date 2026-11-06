@@ -206,10 +206,10 @@ public sealed partial class CaretTestWindow : Window
             // TextBox reports the trailing edge of the final character more reliably
             // than asking for a character at Text.Length (which is outside the text).
             char last = text[text.Length - 1];
-            if (last == '\\r' || last == '\\n')
+            if (last == '\r' || last == '\n')
             {
                 int breakStart = text.Length - 1;
-                if (last == '\\n' && breakStart > 0 && text[breakStart - 1] == '\\r')
+                if (last == '\n' && breakStart > 0 && text[breakStart - 1] == '\r')
                     breakStart--;
 
                 // The caret is at the start of the visual line after the final newline.
