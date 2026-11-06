@@ -25,6 +25,8 @@ public sealed partial class CaretTestWindow : Window
     private bool useCustomCaret;
     private bool customCaretVisible;
     private bool updateQueued;
+    private bool pendingResetBlink;
+    private bool pendingForceRecreate;
     private bool initialized;
     private bool closing;
     private uint blinkIntervalMilliseconds = 500;
@@ -156,78 +158,130 @@ public sealed partial class CaretTestWindow : Window
 
     private void QueueCaretRefresh(bool resetBlink, bool forceRecreate = false)
     {
-        if (!initialized || closing || !useCustomCaret || updateQueued)
+        if (!initialized || closing || !useCustomCaret)
+            return;
+
+        // Coalesce events, but never discard a later request's stronger requirements.
+        // TextChanged/SelectionChanged can arrive before TextBox has completed layout;
+        // a low-priority dispatch lets the current input/layout pass settle first.
+        pendingResetBlink |= resetBlink;
+        pendingForceRecreate |= forceRecreate;
+        if (updateQueued)
             return;
 
         updateQueued = true;
-        bool queued = DispatcherQueue.TryEnqueue(() =>
+        bool queued = DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             updateQueued = false;
+            bool shouldResetBlink = pendingResetBlink;
+            bool shouldForceRecreate = pendingForceRecreate;
+            pendingResetBlink = false;
+            pendingForceRecreate = false;
 
             if (closing || !useCustomCaret || EditorTextBox.FocusState == FocusState.Unfocused)
                 return;
 
-            RefreshCaretGeometry(forceRecreate);
-
-            if (resetBlink)
+            RefreshCaretGeometry(shouldForceRecreate);
+            if (shouldResetBlink)
                 ResetBlinking();
+
+            // An event may have arrived while this update was being processed.
+            if (pendingResetBlink || pendingForceRecreate)
+                QueueCaretRefresh(resetBlink: false);
         });
 
         if (!queued)
             updateQueued = false;
     }
 
+    private Rect GetCaretRectFromTextBox(int caretIndex, string text)
+    {
+        if (text.Length == 0)
+            return new Rect(0, 0, 0, 0);
+
+        caretIndex = Math.Clamp(caretIndex, 0, text.Length);
+
+        if (caretIndex == text.Length)
+        {
+            // TextBox reports the trailing edge of the final character more reliably
+            // than asking for a character at Text.Length (which is outside the text).
+            char last = text[text.Length - 1];
+            if (last == '\\r' || last == '\\n')
+            {
+                int breakStart = text.Length - 1;
+                if (last == '\\n' && breakStart > 0 && text[breakStart - 1] == '\\r')
+                    breakStart--;
+
+                // The caret is at the start of the visual line after the final newline.
+                // Use the first text edge for X and advance one rendered line for Y.
+                Rect previousLine = EditorTextBox.GetRectFromCharacterIndex(Math.Max(0, breakStart - 1), true);
+                Rect firstLine = EditorTextBox.GetRectFromCharacterIndex(0, false);
+                if (!previousLine.IsEmpty && previousLine.Height > 0 && !firstLine.IsEmpty)
+                    return new Rect(firstLine.X, previousLine.Y + previousLine.Height, 0, previousLine.Height);
+            }
+
+            return EditorTextBox.GetRectFromCharacterIndex(text.Length - 1, true);
+        }
+
+        return EditorTextBox.GetRectFromCharacterIndex(caretIndex, false);
+    }
+
     private void RefreshCaretGeometry(bool forceRecreate)
     {
         string text = EditorTextBox.Text ?? string.Empty;
-        int caretIndex = Math.Clamp(
-            EditorTextBox.SelectionStart + EditorTextBox.SelectionLength,
-            0,
-            text.Length);
+        // With no selection, SelectionStart is the insertion point. Do not add
+        // SelectionLength: selection orientation and IME composition can make that
+        // arithmetic an incorrect representation of the active caret.
+        int caretIndex = Math.Clamp(EditorTextBox.SelectionStart, 0, text.Length);
 
         Rect caretRect;
         try
         {
-            if (text.Length == 0)
-            {
-                caretRect = EditorTextBox.GetRectFromCharacterIndex(0, false);
-            }
-            else if (caretIndex >= text.Length)
-            {
-                caretRect = EditorTextBox.GetRectFromCharacterIndex(text.Length - 1, true);
-            }
-            else
-            {
-                caretRect = EditorTextBox.GetRectFromCharacterIndex(caretIndex, false);
-            }
+            caretRect = GetCaretRectFromTextBox(caretIndex, text);
         }
         catch (Exception ex)
         {
-            SystemCaretStatusText.Text = $"读取 TextBox 光标矩形失败：{ex.Message}";
+            SystemCaretStatusText.Text = $\"读取 TextBox 光标矩形失败：{ex.Message}\";
             CustomCaret.Visibility = Visibility.Collapsed;
             return;
         }
 
-        // GetRectFromCharacterIndex can return an empty rectangle for an empty TextBox.
-        // Use the TextBox's own padding/font metrics only for this empty-content fallback.
         if (caretRect.IsEmpty || caretRect.Height <= 0)
         {
+            // Empty content has no character edge to query. Keep this fallback local
+            // to the TextBox content origin; do not invent a glyph-width adjustment.
             Thickness border = EditorTextBox.BorderThickness;
             Thickness padding = EditorTextBox.Padding;
-            caretRect = new Rect(
-                border.Left + padding.Left,
-                border.Top + padding.Top,
-                0,
-                Math.Max(14, EditorTextBox.FontSize * 1.25));
+            caretRect = new Rect(border.Left + padding.Left, border.Top + padding.Top, 0, Math.Max(14, EditorTextBox.FontSize * 1.25));
         }
 
-        Canvas.SetLeft(CustomCaret, caretRect.X);
-        Canvas.SetTop(CustomCaret, caretRect.Y);
+        Point overlayPoint;
+        Point windowPoint;
+        try
+        {
+            // GetRectFromCharacterIndex returns a rectangle in TextBox coordinates.
+            // Transform its origin into the overlay's coordinate space for drawing.
+            GeneralTransform toOverlay = EditorTextBox.TransformToVisual(CaretOverlay);
+            overlayPoint = toOverlay.TransformPoint(new Point(caretRect.X, caretRect.Y));
+
+            // Derive the Win32 caret position from the exact same visual point.
+            // RootGrid is the window content coordinate space; apply raster scale once.
+            GeneralTransform toWindowContent = EditorTextBox.TransformToVisual(RootGrid);
+            windowPoint = toWindowContent.TransformPoint(new Point(caretRect.X, caretRect.Y));
+        }
+        catch (Exception ex)
+        {
+            SystemCaretStatusText.Text = $\"转换光标坐标失败：{ex.Message}\";
+            CustomCaret.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        Canvas.SetLeft(CustomCaret, overlayPoint.X);
+        Canvas.SetTop(CustomCaret, overlayPoint.Y);
         CustomCaret.Height = Math.Max(14, caretRect.Height);
 
         bool hasSelection = EditorTextBox.SelectionLength > 0;
         CustomCaret.Visibility = hasSelection ? Visibility.Collapsed : Visibility.Visible;
-
         if (hasSelection)
         {
             blinkTimer.Stop();
@@ -235,29 +289,15 @@ public sealed partial class CaretTestWindow : Window
         }
 
         double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
-        Point clientPoint;
-        try
-        {
-            GeneralTransform transform = EditorTextBox.TransformToVisual(RootGrid);
-            clientPoint = transform.TransformPoint(new Point(caretRect.X, caretRect.Y));
-        }
-        catch (Exception ex)
-        {
-            SystemCaretStatusText.Text = $"转换光标坐标失败：{ex.Message}";
-            return;
-        }
-
-        int xPixels = (int)Math.Round(clientPoint.X * scale);
-        int yPixels = (int)Math.Round(clientPoint.Y * scale);
+        int xPixels = (int)Math.Round(windowPoint.X * scale);
+        int yPixels = (int)Math.Round(windowPoint.Y * scale);
         int heightPixels = Math.Max(1, (int)Math.Ceiling(caretRect.Height * scale));
 
         if (forceRecreate || !transparentCaretCreated || transparentCaretHeightPixels != heightPixels)
         {
             if (!CreateTransparentSystemCaret(heightPixels))
             {
-                DiagnosticsText.Text =
-                    $"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, " +
-                    $"Text.Length={text.Length}; 光标矩形 DIP=({caretRect.X:0.0}, {caretRect.Y:0.0}, {caretRect.Height:0.0})";
+                UpdateCaretDiagnostics(text, caretIndex, caretRect, overlayPoint, windowPoint, scale, xPixels, yPixels, \"透明 Win32 光标创建失败\");
                 return;
             }
         }
@@ -265,32 +305,48 @@ public sealed partial class CaretTestWindow : Window
         if (!SetCaretPos(xPixels, yPixels))
         {
             int firstError = Marshal.GetLastWin32Error();
-
-            // WinUI may recreate its own native caret during an edit. Reinstall the
-            // transparent caret once and retry, following WPF CaretElement's recovery path.
             if (CreateTransparentSystemCaret(heightPixels) && SetCaretPos(xPixels, yPixels))
-            {
-                lastSystemCaretStatus = "透明 Win32 光标已重新创建，位置同步成功。";
-            }
+                lastSystemCaretStatus = \"透明 Win32 光标已重新创建，位置同步成功。\";
             else
             {
                 int secondError = Marshal.GetLastWin32Error();
-                lastSystemCaretStatus =
-                    $"SetCaretPos 失败（首次错误 {firstError}，重试错误 {secondError}）。";
+                lastSystemCaretStatus = $\"SetCaretPos 失败（首次错误 {firstError}，重试错误 {secondError}）。\";
             }
         }
         else
         {
-            lastSystemCaretStatus = "透明 Win32 光标已创建，系统辅助光标位置同步成功。";
+            lastSystemCaretStatus = \"透明 Win32 光标已创建，系统辅助光标位置同步成功。\";
         }
 
         SystemCaretStatusText.Text = lastSystemCaretStatus;
-        DiagnosticsText.Text =
-            $"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, " +
-            $"Text.Length={text.Length}; 光标矩形 DIP=({caretRect.X:0.0}, {caretRect.Y:0.0}, h={caretRect.Height:0.0}); " +
-            $"窗口客户区位置=({xPixels}, {yPixels}) px；DPI scale={scale:0.00}";
+        UpdateCaretDiagnostics(text, caretIndex, caretRect, overlayPoint, windowPoint, scale, xPixels, yPixels, null);
     }
 
+    private void UpdateCaretDiagnostics(string text, int caretIndex, Rect caretRect, Point overlayPoint, Point windowPoint, double scale, int xPixels, int yPixels, string? extraStatus)
+    {
+        string adjacentEdges = \"\";
+        if (text.Length > 0 && caretIndex < text.Length)
+        {
+            try
+            {
+                Rect currentLeading = EditorTextBox.GetRectFromCharacterIndex(caretIndex, false);
+                Rect previousTrailing = caretIndex > 0
+                    ? EditorTextBox.GetRectFromCharacterIndex(caretIndex - 1, true)
+                    : currentLeading;
+                adjacentEdges = $\"前一字符尾边缘=({previousTrailing.X:0.0},{previousTrailing.Y:0.0})；当前字符前边缘=({currentLeading.X:0.0},{currentLeading.Y:0.0})；\";
+            }
+            catch
+            {
+                adjacentEdges = \"相邻字符边缘读取失败；\";
+            }
+        }
+
+        DiagnosticsText.Text =
+            $\"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, Text.Length={text.Length}, caretIndex={caretIndex}; \" +
+            $\"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP；\" +
+            $\"Overlay 点=({overlayPoint.X:0.0},{overlayPoint.Y:0.0}) DIP；窗口内容点=({windowPoint.X:0.0},{windowPoint.Y:0.0}) DIP；\" +
+            $\"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；{adjacentEdges}{extraStatus}\";
+    }
     private bool CreateTransparentSystemCaret(int heightPixels)
     {
         ReleaseTransparentSystemCaret();
