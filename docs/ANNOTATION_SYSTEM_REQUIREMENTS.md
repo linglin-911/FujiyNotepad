@@ -186,7 +186,10 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 编辑器位置依据选区最后一条可见实际文字矩形的底边，不使用鼠标释放点；优先放在选区下方，超出阅读视口时贴近可视范围底部，不自动滚动阅读区域。
 - 打开后自动获取输入焦点；点击编辑区外部时失去焦点但不关闭弹窗；滚轮翻页不改变焦点；重新点击编辑区恢复焦点。
 - **当前已知问题及排查状态：** 小批注编辑区和章节批注编辑区都出现光标约闪烁 5 次后停止、并停留在最后可见状态的现象。章节批注编辑区 `ChapterAnnotationEditorContent` 是 MainWindow.xaml 中未套用自定义模板的普通 WinUI TextBox；小批注编辑区则由 MainWindow.AnnotationPane.cs 动态创建并使用 `AnnotationComposerTextBoxStyle`。两个不同模板/创建路径出现相同现象，说明不能继续把根因归结为小批注自定义模板。
-- **外部排查线索（待本机确认）：** 社区报告发现 Windows 用户级注册表 `HKEY_CURRENT_USER\Control Panel\Desktop\CaretTimeout` 控制文本插入光标持续闪烁的时长；多个 Windows 版本的报告称默认约 5000 ms，超时后光标停留在最后的显示/隐藏状态。这与当前现象高度吻合，但该设置未找到微软官方 API 文档，不能仅凭社区资料认定本机值。下一步先读取本机值并在记事本/Win+R 输入框对照测试，不要先改应用焦点逻辑或更换控件。
+- **Windows 环境确认（2026-11-06）：** 用户只读查询 `HKCU\Control Panel\Desktop\CaretTimeout`，结果为 `REG_DWORD 0x1388`，即十进制 5000 ms。该值与 Windows 原生插入光标约 5 秒后停止闪烁的已知行为吻合；Raymond Chen 的 Windows 开发说明指出系统 caret 默认会在一段时间后停止闪烁以减少持续定时器/功耗，Mozilla Bugzilla 也明确记录该注册表值默认 5000 ms。该注册表项不是 WinUI TextBox 的独立属性，也没有找到可供单个 WinUI TextBox 设置 timeout 的公开 API。
+- **为何浏览器可能不同：** Chromium Blink 的 `FrameCaret` 自己维护 `HeapTaskRunnerTimer`，并通过 `PaintCaret` 绘制 caret；这与直接依赖 Windows 系统 caret 的控件实现不同。因此浏览器网页输入框持续闪烁并不能证明 Windows 系统 caret 没有 5 秒限制，也不能据此认定 WinUI 模板有缺陷。若要精确比较，应区分浏览器网页输入框与浏览器地址栏。
+- **产品决策：** 不要求用户修改全局 Windows 注册表。`SetCaretBlinkTime` 只调整系统 caret 的闪烁间隔，不是 per-control timeout 开关；微软文档明确建议普通应用尊重用户设置，不应擅自调用该 API 改写全局闪烁速度。
+- **可行的应用内方向（待技术验证）：** 保留 WinUI TextBox 负责文本存储、键盘导航、选区、中文 IME 和输入事件；尝试隐藏系统 caret，并在 TextBox 上方绘制应用自己的 caret，使用 `SelectionStart` 与 `GetRectFromCharacterIndex` 获取插入位置，使用应用自身的 DispatcherQueueTimer 控制闪烁。必须先做独立技术验证，重点检查末尾位置/空文本/换行/滚动/缩放/RTL/IME 组合输入/选区/失焦/无障碍 UIA caret 定位。若无法可靠隐藏原生 caret 或同步位置，则不采用此方案，继续评估更合适的编辑控件。
 - **2026-11-06 外观调整：** 默认 TextBox 模板在小批注 Popup 中显示为白色编辑区和蓝色焦点底线，不符合已确认的深灰色一体化卡片设计。因此小批注编辑器恢复紧凑自定义模板，但不再使用透明背景：TextBox、内部 ScrollViewer 和 Popup 卡片共用同一个不透明深灰色 Background；模板仍省略默认焦点下划线视觉状态。该外观调整不宣称能修复 Windows caret timeout。
 - **验证状态：** 上述外观调整已提交，尚未完成 Windows x64 编译及视觉实测。焦点获取/失去、Popup 生命周期、保存流程和批注数据均未改变。
 
@@ -213,7 +216,7 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 ### 当前唯一明确的交互遗留
 
-- 小批注和章节批注的原生 TextBox 都出现约 5 次闪烁后停止的现象。优先验证 Windows 用户级 `CaretTimeout` 是否为约 5000 ms：先只读查询注册表，并与记事本/Win+R 对照。暂不更换 TextBox/RichEditBox，也不改动焦点管理。
+- 用户已确认 Windows 用户级 `CaretTimeout` 为 `0x1388`（5000 ms）。不要求修改系统注册表；下一阶段若要绕过系统 caret timeout，先验证“WinUI TextBox 继续负责编辑 + 应用自绘 caret”的小型技术原型。浏览器网页输入框可能采用 Blink 自己的 caret 定时器与绘制机制，不能直接类比 WinUI TextBox。暂不直接替换 RichEditBox，也不改动焦点管理。
 - 小批注 Popup 的编辑区已恢复紧凑自定义模板，并改为与深灰色卡片共用不透明背景；该外观修正尚待 Windows 编译和实测。
 
 ### 后续开发方向
