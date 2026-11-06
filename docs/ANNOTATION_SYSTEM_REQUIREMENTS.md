@@ -31,7 +31,8 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 以下属于原项目已有能力，不计为本项目新增成果：
 
 - 大文件按需读取、字节源、行索引、LineProvider、有界缓存和文本画布。
-- 基础文本显示、滚动、自动换行、文本选择、复制和键盘导航。
+- 基础文本显示、滚动、复制和键盘导航。
+- 原项目曾提供基础选区状态/命令框架，以及基于固定字符列宽的可选自动换行（LineWrapper）。这些只是当前实现的历史技术起点；当前阅读器的鼠标选字交互、统一文字矩形体系和比例字体自动换行已经由本项目重新设计/实现，不能再归为原项目继承功能。
 - 文件打开/重载、最近文件、启动恢复、拖放打开。
 - 查找、正则查找、过滤/grep、匹配高亮和持久高亮规则。
 - 行号、书签、跳转、编码识别与切换、Tab 宽度设置。
@@ -43,6 +44,9 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 - 小说项目导入、独立项目目录、原文工作副本及项目恢复。
 - 阅读模式、比例字体阅读布局、全局阅读设置和 Paper/Warm/Night 阅读主题。
+- **阅读器文本选择交互重做：** 不沿用原编辑器的普通点击/双击选词交互；采用拖动选字、拖动阈值、字符/字形簇命中、UTF-16 边界映射，以及从文字矩形外拖入时记录首次进入矩形交点 A 的规则。
+- **TextLayoutRect 统一文字矩形体系：** 以实际文字范围矩形作为选区背景、鼠标命中、小批注原文命中和批注标记定位的共同几何基础；这是本项目阅读器的底层设计，不是原编辑器功能。
+- **比例字体自动换行重做：** 使用本项目的 ITextLayoutProvider / Win2D / DirectWrite 排版路径，根据实际字体度量生成视觉行并保留原文 UTF-16 映射；原项目固定字符列宽的 LineWrapper 仅作为旧布局兼容路径保留。
 - 章节识别、持久化章节索引、章节目录、章节变化检测与归档保护。
 - 小批注、章节批注、大批注三套独立数据和界面。
 - 阅读器原文批注标记、选区菜单、小批注输入浮层、统一右侧批注面板。
@@ -106,9 +110,9 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 参考资料目录严格只有两层：章节标题 → 批注。类型、分类、原文数量、摘要等是批注自身的平级信息，不得成为额外树层级。
 - 参考资料只读，不复制正文、不建立从属关系；修改或删除参考批注不得级联修改大批注。
 
-## 5. 阅读器布局与文字矩形——核心约束
+## 5. 阅读器布局、自动换行与文字矩形——核心底层设计
 
-本节是阅读器、选字、批注标记和浮层定位共同遵守的核心几何契约。任何 UI 优化都不得破坏它。
+本节定义本项目重做的阅读器排版和文本选择体系。原编辑器的基础选区状态、固定字符列自动换行只能视为历史技术起点；当前阅读器的鼠标选字、比例字体排版和文字矩形几何由本项目重新设计实现。文字矩形不是某个 UI 的装饰效果，而是选区、命中、批注定位共同依赖的底层模型。任何 UI 优化都不得绕过或破坏它。
 
 ### 5.1 三种坐标必须分离
 
@@ -120,6 +124,9 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 ### 5.2 TextLayoutRect 统一文字矩形（最重要）
 
+**这是本项目阅读器文本选择的基础设计。** 当前选字不是把原编辑器的选择功能换一种颜色或外观，而是围绕实际文字矩形重新设计鼠标交互和几何计算。
+
+- 文字矩形按原文字符/字形簇形成，是实际文字占用的布局范围，不要求按字形像素轮廓裁切；因此点击矩形内部即可命中对应文字，不要求鼠标落在有颜色的字形像素上。
 - 文字矩形是实际文字带，不是整行布局框；必须排除行间距、段间距和额外留白。
 - 水平范围来自实际字符/字形簇的 LayoutBounds advance；垂直范围根据视觉行 Baseline 与字号比例计算，不得直接把包含 leading/行距的 LayoutRowHeight 当作文字高度。
 - 同一组无额外 padding 的 TextLayoutRect，必须同时用于：
@@ -133,8 +140,11 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 从文字矩形外开始拖动时，记录鼠标移动线段首次进入文字矩形的交点 A；即使 A 出现在 4 DIP 拖动阈值之前也必须保留。超过拖动阈值后，以 A 对应的字符边界作为选区起点。
 - 阅读器只通过鼠标拖动选字；单击不产生选区，不执行双击选词，不显示阅读器文本插入光标。
 
-### 5.3 布局实现和性能
+### 5.3 比例字体自动换行、布局实现和性能
 
+- 上游原有的 WordWrap / LineWrapper 是按固定字符显示列数换行，适用于旧固定宽度布局；它不是当前比例字体阅读器的核心换行实现。
+- 当前阅读器比例字体路径由本项目重做：TextLayoutEngine.Proportional.cs 调用 ITextLayoutProvider 创建单行原文布局，Win2DTextLayoutProvider 使用 DirectWrite/CanvasTextLayout 的真实字体度量和 WordWrapping.Wrap 生成视觉行；同时保留视觉行到原文 UTF-16 范围的映射。
+- 旧 LineWrapper 只作为旧固定字符单元布局的兼容/回退实现保留，不应把它描述成当前比例字体自动换行的实现。
 - 使用现有 Win2D/DirectWrite 比例字体布局后端和 TextLayoutEngine，不另建第二套布局引擎。
 - TextCanvas 是绘制和指针交互入口；Presentation 层只依赖 UI 无关的布局契约。
 - 只为可视行和少量相邻行创建布局对象；布局缓存必须有界。字体/字号/行距/宽度变化时按需重排可视区域，不全书同步重排。
@@ -195,7 +205,7 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 章节索引、章节目录、章节变化保护。
 - 小批注、章节批注、大批注主体功能。
 - 比例字体阅读器、全局阅读设置和 Paper/Warm/Night。
-- 阅读器文字选择、统一文字矩形、批注标记与点击。
+- 本项目重做的阅读器拖动选字交互、TextLayoutRect 统一文字矩形、比例字体自动换行、批注标记与矩形范围点击。
 - 阅读区选区 Popup 和小批注输入 Popup 的基本视觉与交互。
 - 最新一轮 Windows x64 Release 编译通过；用户实测确认选区菜单位置已解决，小批注编辑区焦点获取与失去正常。
 
@@ -221,9 +231,10 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 章节批注：src/FujiyNotepad.WinUI/MainWindow.ChapterAnnotations.cs
 - 章节目录：src/FujiyNotepad.WinUI/MainWindow.ChapterDirectory.cs
 - 大批注：src/FujiyNotepad.WinUI/MainWindow.BigAnnotations.cs
-- 阅读画布、绘制、命中和文字矩形：src/FujiyNotepad.WinUI/Controls/TextCanvas.cs
-- 布局引擎与契约：src/FujiyNotepad.Presentation/TextLayoutEngine.cs、TextLayoutEngine.Proportional.cs、TextLayoutContracts.cs
-- Win2D/DirectWrite 后端：src/FujiyNotepad.WinUI/Rendering/Win2DTextLayoutProvider.cs
+- 阅读画布、拖动选字交互、矩形绘制/命中：src/FujiyNotepad.WinUI/Controls/TextCanvas.cs
+- 布局引擎与比例字体视觉行/选区映射：src/FujiyNotepad.Presentation/TextLayoutEngine.cs、TextLayoutEngine.Proportional.cs、TextLayoutContracts.cs
+- 比例字体自动换行、TextLayoutRect 和文字带几何：src/FujiyNotepad.WinUI/Rendering/Win2DTextLayoutProvider.cs
+- 旧固定字符列自动换行兼容路径：src/FujiyNotepad.Presentation/LineWrapper.cs
 - 项目和批注数据：src/FujiyNotepad.Core/NovelProject.cs、NovelAnnotationStore.cs、NovelAnnotations.cs
 - 章节索引：NovelChapterIndexBuilder.cs、NovelChapterIndexReconciler.cs
 - 锚点与偏移：AnnotationAnchorMetadata.cs、DocumentTextOffsetMap.cs
