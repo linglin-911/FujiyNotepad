@@ -31,6 +31,8 @@ public sealed partial class CaretTestWindow : Window
     private bool closing;
     private uint blinkIntervalMilliseconds = 500;
     private string lastSystemCaretStatus = "尚未启用自绘光标。";
+    private bool nativeCaretSnapshotCaptured;
+    private string nativeCaretSnapshot = "尚未采集原生光标信息。";
 
     public CaretTestWindow()
     {
@@ -71,6 +73,8 @@ public sealed partial class CaretTestWindow : Window
 
         if (!useCustomCaret)
         {
+            nativeCaretSnapshotCaptured = false;
+            nativeCaretSnapshot = "原生模式：尚未采集。";
             blinkTimer.Stop();
             CustomCaret.Visibility = Visibility.Collapsed;
             ReleaseTransparentSystemCaret();
@@ -288,6 +292,12 @@ public sealed partial class CaretTestWindow : Window
             customCaretVisible = false;
         }
 
+        // Capture the TextBox's caret state before CreateCaret replaces the
+        // thread's Win32 caret. This lets the test distinguish a native USER caret
+        // from a caret drawn internally by the WinUI XAML compositor.
+        if (!nativeCaretSnapshotCaptured && !transparentCaretCreated)
+            CaptureNativeCaretSnapshot();
+
         double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
         int xPixels = (int)Math.Round(windowPoint.X * scale);
         int yPixels = (int)Math.Round(windowPoint.Y * scale);
@@ -347,8 +357,60 @@ public sealed partial class CaretTestWindow : Window
             $"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, Text.Length={text.Length}, caretIndex={caretIndex}; " +
             $"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP；" +
             $"Overlay 点=({overlayPoint.X:0.0},{overlayPoint.Y:0.0}) DIP；窗口内容点=({windowPoint.X:0.0},{windowPoint.Y:0.0}) DIP；" +
-            $"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；滚动偏移=({horizontalOffset:0.0},{verticalOffset:0.0}) DIP；{adjacentEdges}{extraStatus}";
+            $"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；滚动偏移=({horizontalOffset:0.0},{verticalOffset:0.0}) DIP；{adjacentEdges}{extraStatus}\n" +
+            $"原生光标采样（创建透明 caret 之前）：{nativeCaretSnapshot}";
     }
+    private void CaptureNativeCaretSnapshot()
+    {
+        nativeCaretSnapshotCaptured = true;
+
+        uint threadId = GetWindowThreadProcessId(windowHandle, IntPtr.Zero);
+        var info = new GuiThreadInfo
+        {
+            Size = (uint)Marshal.SizeOf<GuiThreadInfo>()
+        };
+
+        bool gotInfo = GetGUIThreadInfo(threadId, ref info);
+        bool gotPosition = GetCaretPos(out NativePoint caretPosition);
+
+        if (!gotInfo)
+        {
+            int error = Marshal.GetLastWin32Error();
+            nativeCaretSnapshot = $"GetGUIThreadInfo 失败，Win32 错误={error}；" +
+                (gotPosition
+                    ? $"GetCaretPos=({caretPosition.X},{caretPosition.Y})"
+                    : "GetCaretPos 也未取得位置。");
+            return;
+        }
+
+        string caretHwnd = $"0x{info.CaretWindow.ToInt64():X}";
+        string focusHwnd = $"0x{info.FocusWindow.ToInt64():X}";
+        string rawRect = $"({info.CaretRect.Left},{info.CaretRect.Top},{info.CaretRect.Right},{info.CaretRect.Bottom})";
+        string mappedRect = "无法映射（hwndCaret 为 null）";
+
+        if (info.CaretWindow != IntPtr.Zero)
+        {
+            var points = new NativePointPair
+            {
+                First = new NativePoint { X = info.CaretRect.Left, Y = info.CaretRect.Top },
+                Second = new NativePoint { X = info.CaretRect.Right, Y = info.CaretRect.Bottom }
+            };
+
+            if (info.CaretWindow != windowHandle)
+                MapWindowPoints(info.CaretWindow, windowHandle, ref points, 2);
+
+            mappedRect = $"({points.First.X},{points.First.Y},{points.Second.X},{points.Second.Y})";
+        }
+
+        string rawPosition = gotPosition
+            ? $"({caretPosition.X},{caretPosition.Y})"
+            : $"读取失败({Marshal.GetLastWin32Error()})";
+
+        nativeCaretSnapshot =
+            $"thread={threadId}, hwndFocus={focusHwnd}, hwndCaret={caretHwnd}, flags=0x{info.Flags:X}; " +
+            $"rcCaret 原始客户区={rawRect}, 映射主窗口客户区={mappedRect}; GetCaretPos={rawPosition}";
+    }
+
     private bool CreateTransparentSystemCaret(int heightPixels)
     {
         ReleaseTransparentSystemCaret();
@@ -535,6 +597,57 @@ public sealed partial class CaretTestWindow : Window
 
         return null;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePointPair
+    {
+        public NativePoint First;
+        public NativePoint Second;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public uint Size;
+        public uint Flags;
+        public IntPtr ActiveWindow;
+        public IntPtr FocusWindow;
+        public IntPtr CaptureWindow;
+        public IntPtr MenuOwnerWindow;
+        public IntPtr MoveSizeWindow;
+        public IntPtr CaretWindow;
+        public NativeRect CaretRect;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr processId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCaretPos(out NativePoint point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int MapWindowPoints(IntPtr hwndFrom, IntPtr hwndTo, ref NativePointPair points, uint pointCount);
 
     // Use classic DllImport here instead of LibraryImport. The WinUI app does not
     // enable unsafe blocks, and these seven small Win32 declarations do not need
