@@ -318,7 +318,7 @@ public sealed partial class CaretTestWindow : Window
         {
             int firstError = Marshal.GetLastWin32Error();
             if (CreateTransparentSystemCaret(heightPixels) && SetCaretPos(xPixels, yPixels))
-                lastSystemCaretStatus = "透明 Win32 光标已重新创建，位置同步成功。";
+                lastSystemCaretStatus = "Win32 caret 已重新创建并同步位置；WinUI 内部可见 caret 状态仍需单独验证。";
             else
             {
                 int secondError = Marshal.GetLastWin32Error();
@@ -327,7 +327,7 @@ public sealed partial class CaretTestWindow : Window
         }
         else
         {
-            lastSystemCaretStatus = "透明 Win32 光标已创建，系统辅助光标位置同步成功。";
+            lastSystemCaretStatus = "Win32 caret 已创建并同步位置；这不代表 WinUI 内部可见 caret 已被隐藏。";
         }
 
         SystemCaretStatusText.Text = lastSystemCaretStatus;
@@ -357,7 +357,7 @@ public sealed partial class CaretTestWindow : Window
         double verticalOffset = editorScrollViewer?.VerticalOffset ?? 0;
         DiagnosticsText.Text =
             $"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, Text.Length={text.Length}, caretIndex={caretIndex}; " +
-            $"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP；" +
+            $"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP，FontSize={EditorTextBox.FontSize:0.0}；" +
             $"Overlay 点=({overlayPoint.X:0.0},{overlayPoint.Y:0.0}) DIP；窗口内容点=({windowPoint.X:0.0},{windowPoint.Y:0.0}) DIP；" +
             $"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；滚动偏移=({horizontalOffset:0.0},{verticalOffset:0.0}) DIP；{adjacentEdges}{extraStatus}\n" +
             $"原生光标采样（创建透明 caret 之前）：{nativeCaretSnapshot}";
@@ -652,7 +652,7 @@ public sealed partial class CaretTestWindow : Window
     private static extern int MapWindowPoints(IntPtr hwndFrom, IntPtr hwndTo, ref NativePointPair points, uint pointCount);
 
     // Use classic DllImport here instead of LibraryImport. The WinUI app does not
-    // enable unsafe blocks, and these seven small Win32 declarations do not need
+    // enable unsafe blocks, and these Win32 declarations do not need
     // source-generated interop to support this isolated experiment.
     [DllImport("gdi32.dll", EntryPoint = "CreateBitmap", SetLastError = true)]
     private static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitsPerPixel, IntPtr bits);
