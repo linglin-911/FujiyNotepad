@@ -189,7 +189,9 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - **Windows 环境确认（2026-11-06）：** 用户只读查询 `HKCU\Control Panel\Desktop\CaretTimeout`，结果为 `REG_DWORD 0x1388`，即十进制 5000 ms。该值与 Windows 原生插入光标约 5 秒后停止闪烁的已知行为吻合；Raymond Chen 的 Windows 开发说明指出系统 caret 默认会在一段时间后停止闪烁以减少持续定时器/功耗，Mozilla Bugzilla 也明确记录该注册表值默认 5000 ms。该注册表项不是 WinUI TextBox 的独立属性，也没有找到可供单个 WinUI TextBox 设置 timeout 的公开 API。
 - **为何浏览器可能不同：** Chromium Blink 的 `FrameCaret` 自己维护 `HeapTaskRunnerTimer`，并通过 `PaintCaret` 绘制 caret；这与直接依赖 Windows 系统 caret 的控件实现不同。因此浏览器网页输入框持续闪烁并不能证明 Windows 系统 caret 没有 5 秒限制，也不能据此认定 WinUI 模板有缺陷。若要精确比较，应区分浏览器网页输入框与浏览器地址栏。
 - **产品决策：** 不要求用户修改全局 Windows 注册表。`SetCaretBlinkTime` 只调整系统 caret 的闪烁间隔，不是 per-control timeout 开关；微软文档明确建议普通应用尊重用户设置，不应擅自调用该 API 改写全局闪烁速度。
-- **可行的应用内方向（待技术验证）：** 保留 WinUI TextBox 负责文本存储、键盘导航、选区、中文 IME 和输入事件；尝试隐藏系统 caret，并在 TextBox 上方绘制应用自己的 caret，使用 `SelectionStart` 与 `GetRectFromCharacterIndex` 获取插入位置，使用应用自身的 DispatcherQueueTimer 控制闪烁。必须先做独立技术验证，重点检查末尾位置/空文本/换行/滚动/缩放/RTL/IME 组合输入/选区/失焦/无障碍 UIA caret 定位。若无法可靠隐藏原生 caret 或同步位置，则不采用此方案，继续评估更合适的编辑控件。
+- **应用内方向（WPF 式双层光标，原型已加入、待 Windows 验证）：** 保留 WinUI TextBox 负责文本存储、键盘导航、选区、中文 IME 和输入事件；上层 XAML 视觉元素负责可见光标和独立闪烁。参考 WPF `CaretElement`，不只调用 `HideCaret`：创建 1-bit 空白位图，通过 `CreateCaret`/`ShowCaret` 建立透明 Win32 系统 caret，再用 `SetCaretPos` 同步系统辅助光标位置；可见层使用 `SelectionStart` 和 `GetRectFromCharacterIndex` 定位，使用 `GetCaretBlinkTime` 作为自绘定时器的闪烁间隔。不得调用 `SetCaretBlinkTime`，不得修改用户注册表。
+- **独立测试窗口：** 新增 `CaretTestWindow.xaml` / `.xaml.cs`，从 View →「光标技术测试…」打开。提供“原生光标（对照）”和“WPF 式双层光标（自绘）”两种模式；显示当前 SelectionStart/SelectionLength、Text.Length、光标矩形 DIP、窗口客户区像素坐标和 Win32 caret 创建/定位状态；提供清空与填充长文本操作。该窗口是临时技术验证工具，不接入项目/批注数据库，不替换或修改正式小批注、章节批注编辑器。
+- **待验证项目：** Windows x64 Release 编译；自绘光标连续超过 5 秒仍闪烁；Win32 空白 caret 不出现可见重影；中文 IME 组合输入/候选窗；方向键、鼠标定位、选区与选区折叠；空文本、文本末尾、末尾换行、混合中英文；滚动、窗口缩放和 DPI；失焦/重新聚焦/关闭窗口后的系统 caret 释放；放大镜/UI Automation caret 位置。若 WinUI 内部重建系统 caret 导致可见重影或位置不同步，先在原型中定位，不直接推广到正式编辑器。
 - **2026-11-06 外观调整：** 默认 TextBox 模板在小批注 Popup 中显示为白色编辑区和蓝色焦点底线，不符合已确认的深灰色一体化卡片设计。因此小批注编辑器恢复紧凑自定义模板，但不再使用透明背景：TextBox、内部 ScrollViewer 和 Popup 卡片共用同一个不透明深灰色 Background；模板仍省略默认焦点下划线视觉状态。该外观调整不宣称能修复 Windows caret timeout。
 - **验证状态：** 上述外观调整已提交，尚未完成 Windows x64 编译及视觉实测。焦点获取/失去、Popup 生命周期、保存流程和批注数据均未改变。
 
@@ -216,13 +218,13 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 ### 当前唯一明确的交互遗留
 
-- 用户已确认 Windows 用户级 `CaretTimeout` 为 `0x1388`（5000 ms）。不要求修改系统注册表；下一阶段若要绕过系统 caret timeout，先验证“WinUI TextBox 继续负责编辑 + 应用自绘 caret”的小型技术原型。浏览器网页输入框可能采用 Blink 自己的 caret 定时器与绘制机制，不能直接类比 WinUI TextBox。暂不直接替换 RichEditBox，也不改动焦点管理。
+- 用户已确认 Windows 用户级 `CaretTimeout` 为 `0x1388`（5000 ms）；产品决策是不修改该全局注册表。已新增独立 `CaretTestWindow`，以 WPF `CaretElement` 为参考，测试“WinUI TextBox + XAML 自绘光标 + 空白 Win32 caret + DispatcherQueueTimer”的双层方案；View 菜单增加临时入口。该测试窗口不接入批注数据，不修改正式小批注/章节批注编辑器。
 - 小批注 Popup 的编辑区已恢复紧凑自定义模板，并改为与深灰色卡片共用不透明背景；该外观修正尚待 Windows 编译和实测。
 
 ### 后续开发方向
 
-1. 先处理小批注输入光标停止闪烁的问题；不要重新改动已经通过的菜单定位和焦点获取/失去逻辑。
-2. 随后继续阅读器整体界面现代化：先检查现有主窗口和控件，再讨论信息架构、视觉层级和布局方案；分阶段实现，不要一次性大改。
+1. 先在 Windows x64 环境编译并实测独立光标测试窗口，按 7.2 节逐项验证；原型通过后再讨论是否抽象为正式输入组件。当前不能把光标问题视为已修复。
+2. 光标方案验证完成后，再继续阅读器整体界面现代化：先检查现有主窗口和控件，再讨论信息架构、视觉层级和布局方案；分阶段实现，不要一次性大改。
 3. 外部编辑的完整差异预览、变更应用、锚点重映射和失败恢复仍属于后续功能，不应误写成已经完成。
 4. 启动后的项目列表首页、批注关系、批注导出、统计/时间线/人物专题视图、章节内段落级差异定位等按需另行规划，不属于当前 UI 优化的前置条件。
 
