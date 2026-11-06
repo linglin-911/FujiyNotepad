@@ -117,6 +117,8 @@ public sealed partial class CaretTestWindow : Window
 
     private void EditorTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
+        nativeCaretSnapshotCaptured = false;
+        nativeCaretSnapshot = "输入框失焦；下次聚焦时重新采样。";
         blinkTimer.Stop();
         CustomCaret.Visibility = Visibility.Collapsed;
         ReleaseTransparentSystemCaret();
