@@ -161,8 +161,8 @@ namespace FujiyNotepad.WinUI.Controls
             UseSystemFocusVisuals = false;
             IsDoubleTapEnabled = false;
 
-            // Show the text (I-beam) cursor while hovering the surface, like a real text control.
-            ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.IBeam);
+            // This is a read-only reader surface; use the normal arrow pointer rather than an I-beam.
+            ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Arrow);
 
             PointerPressed += OnPointerPressed;
             PointerMoved += OnPointerMoved;
@@ -755,6 +755,19 @@ namespace FujiyNotepad.WinUI.Controls
             {
                 CopyToClipboard(text);
             }
+        }
+
+        /// <summary>Clears the visible text selection without changing the reader's scroll position.</summary>
+        public void ClearTextSelection()
+        {
+            engine.ClearSelection();
+            isSelecting = false;
+            hasStartedDragSelection = false;
+            hasSelectionAnchor = false;
+            hasPendingTextEntry = false;
+            pendingTextEntrySourceLength = 0;
+            autoScrollTimer.Stop();
+            canvas.Invalidate();
         }
 
         /// <summary>Copies the selected lines (or the caret's line) prefixed with their 1-based line numbers.</summary>

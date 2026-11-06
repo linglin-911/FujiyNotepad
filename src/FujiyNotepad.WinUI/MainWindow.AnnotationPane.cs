@@ -18,8 +18,10 @@ public sealed partial class MainWindow
     private bool hasLastTextSelectionPoint;
     private Point lastTextSelectionComposerAnchor;
     private Point? pendingSmallComposerAnchor;
-    private Flyout? selectionActionsFlyout;
+    private Popup? selectionActionsPopup;
     private Popup? smallAnnotationComposerPopup;
+    private bool hasSmallComposerPassiveState;
+    private bool wasReaderInteractionPassiveBeforeSmallComposer;
     private TextBox? smallAnnotationComposerTextBox;
     private TextBlock? smallAnnotationComposerValidation;
     private (long StartOffset, long EndOffset, string Quote)? pendingSmallAnnotationSelection;
@@ -83,7 +85,7 @@ public sealed partial class MainWindow
 
     private void CloseAnnotationPane_Click(object sender, RoutedEventArgs e)
     {
-        selectionActionsFlyout?.Hide();
+        CloseSelectionActionsPopup();
         CloseSmallAnnotationComposer();
         if (ChapterAnnotationEditorView.Visibility == Visibility.Visible)
             CloseChapterAnnotationEditor_Click(this, new RoutedEventArgs());
@@ -215,14 +217,13 @@ public sealed partial class MainWindow
 
     private void OnTextSelectionCompleted(Point menuAnchor, Point composerAnchor)
     {
-        // The composer stays open while the reader receives pass-through pointer input.
-        // Ignore a new text-selection completion until the user explicitly closes or saves it.
+        // Keep the freshly created text selection while replacing any stale editor/menu.
         if (smallAnnotationComposerPopup?.IsOpen == true)
             return;
 
-        CloseSmallAnnotationComposer();
+        CloseSmallAnnotationComposer(clearSelection: false);
         pendingSmallComposerAnchor = null;
-        selectionActionsFlyout?.Hide();
+        CloseSelectionActionsPopup();
         lastTextSelectionComposerAnchor = composerAnchor;
         hasLastTextSelectionPoint = true;
 
@@ -271,7 +272,11 @@ public sealed partial class MainWindow
         copyButton.Click += (_, _) =>
         {
             View.CopySelection();
-            selectionActionsFlyout?.Hide();
+            View.ClearTextSelection();
+            hasLastTextSelectionPoint = false;
+            pendingSmallComposerAnchor = null;
+            CloseSelectionActionsPopup();
+            View.FocusCanvas();
         };
         actions.Children.Add(copyButton);
 
@@ -316,17 +321,62 @@ public sealed partial class MainWindow
             smallButton.Click += (_, _) =>
             {
                 pendingSmallComposerAnchor = lastTextSelectionComposerAnchor;
-                selectionActionsFlyout?.Hide();
+                CloseSelectionActionsPopup();
                 CreateSmallAnnotationFromSelection();
             };
             actions.Children.Add(smallButton);
         }
 
-        var menuRoot = new Grid();
-        menuRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        menuRoot.RowDefinitions.Add(new RowDefinition { Height = new GridLength(7) });
+        const double menuBodyHeight = 66d;
+        const double arrowHeight = 7d;
+        double menuWidth = actions.Children.Count * 76d
+                           + Math.Max(0, actions.Children.Count - 1) * 2d
+                           + 10d;
+        double menuHeight = menuBodyHeight + arrowHeight;
+
+        // Transform the first selected visual row's anchor into the window root's coordinate space.
+        GeneralTransform viewToRoot = View.TransformToVisual(RootGrid);
+        Point readerOrigin = viewToRoot.TransformPoint(new Point(0, 0));
+        Point anchorInRoot = viewToRoot.TransformPoint(menuAnchor);
+        double readerWidth = Math.Max(1d, View.ActualWidth);
+        double readerHeight = Math.Max(1d, View.ActualHeight);
+
+        double leftMin = readerOrigin.X + 8d;
+        double leftMax = readerOrigin.X + readerWidth - menuWidth - 8d;
+        if (leftMax < leftMin)
+            leftMax = leftMin;
+        double topMin = readerOrigin.Y + 8d;
+        double topMax = readerOrigin.Y + readerHeight - menuHeight - 8d;
+        if (topMax < topMin)
+            topMax = topMin;
+
+        // Normally the arrow sits below the menu and points at the first selected row.
+        // If there is not enough room above the selection, flip the arrow and place the menu below it.
+        bool placeBelowSelection = anchorInRoot.Y - menuHeight < topMin;
+        double menuLeft = Math.Clamp(anchorInRoot.X - menuWidth / 2d, leftMin, leftMax);
+        double menuTop = placeBelowSelection
+            ? anchorInRoot.Y + 0.665d
+            : anchorInRoot.Y - menuHeight;
+        menuTop = Math.Clamp(menuTop, topMin, topMax);
+
+        var menuRoot = new Grid
+        {
+            Width = menuWidth,
+            Height = menuHeight,
+        };
+        menuRoot.RowDefinitions.Add(new RowDefinition
+        {
+            Height = placeBelowSelection ? new GridLength(arrowHeight) : GridLength.Auto,
+        });
+        menuRoot.RowDefinitions.Add(new RowDefinition
+        {
+            Height = placeBelowSelection ? GridLength.Auto : new GridLength(arrowHeight),
+        });
+
         var menuBody = new Border
         {
+            Width = menuWidth,
+            Height = menuBodyHeight,
             Padding = new Thickness(5, 4, 5, 4),
             CornerRadius = new CornerRadius(22),
             Background = menuBackground,
@@ -335,42 +385,60 @@ public sealed partial class MainWindow
         };
         var menuArrow = new Polygon
         {
-            Points = new PointCollection
-            {
-                new Point(0, 0),
-                new Point(14, 0),
-                new Point(7, 7),
-            },
+            Points = placeBelowSelection
+                ? new PointCollection
+                {
+                    new Point(0, arrowHeight),
+                    new Point(14, arrowHeight),
+                    new Point(7, 0),
+                }
+                : new PointCollection
+                {
+                    new Point(0, 0),
+                    new Point(14, 0),
+                    new Point(7, arrowHeight),
+                },
             Fill = menuBackground,
             Width = 14,
-            Height = 7,
+            Height = arrowHeight,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = placeBelowSelection ? VerticalAlignment.Bottom : VerticalAlignment.Top,
             IsHitTestVisible = false,
         };
-        Grid.SetRow(menuBody, 0);
-        Grid.SetRow(menuArrow, 1);
+        Grid.SetRow(menuBody, placeBelowSelection ? 1 : 0);
+        Grid.SetRow(menuArrow, placeBelowSelection ? 0 : 1);
         menuRoot.Children.Add(menuBody);
         menuRoot.Children.Add(menuArrow);
 
-        var selectionFlyout = new Flyout
+        var selectionPopup = new Popup
         {
-            Content = menuRoot,
-            FlyoutPresenterStyle = CreateAnnotationFlyoutPresenterStyle(),
+            XamlRoot = RootGrid.XamlRoot,
+            Child = menuRoot,
+            IsLightDismissEnabled = true,
+            ShouldConstrainToRootBounds = true,
+            HorizontalOffset = menuLeft,
+            VerticalOffset = menuTop,
         };
-        selectionActionsFlyout = selectionFlyout;
-        selectionFlyout.Closed += (_, _) =>
+        selectionActionsPopup = selectionPopup;
+        selectionPopup.Closed += (_, _) =>
         {
-            if (ReferenceEquals(selectionActionsFlyout, selectionFlyout))
-                selectionActionsFlyout = null;
-            if (pendingSmallComposerAnchor is null)
-                hasLastTextSelectionPoint = false;
+            if (ReferenceEquals(selectionActionsPopup, selectionPopup))
+            {
+                selectionActionsPopup = null;
+                if (pendingSmallComposerAnchor is null)
+                    hasLastTextSelectionPoint = false;
+            }
         };
-        selectionFlyout.ShowAt(View, new FlyoutShowOptions
-        {
-            Position = menuAnchor,
-            Placement = FlyoutPlacementMode.Top,
-        });
+        selectionPopup.IsOpen = true;
+    }
+
+    private void CloseSelectionActionsPopup()
+    {
+        Popup? popup = selectionActionsPopup;
+        if (popup?.IsOpen == true)
+            popup.IsOpen = false;
+        else if (ReferenceEquals(selectionActionsPopup, popup))
+            selectionActionsPopup = null;
     }
 
     private Task OpenSmallAnnotationComposerAsync(
@@ -384,13 +452,13 @@ public sealed partial class MainWindow
                 ? lastTextSelectionComposerAnchor
                 : new Point(Math.Max(24, View.ActualWidth / 2), Math.Max(24, View.ActualHeight / 3)));
         pendingSmallComposerAnchor = null;
-        CloseSmallAnnotationComposer();
+        CloseSmallAnnotationComposer(clearSelection: false);
         pendingSmallAnnotationSelection = selected;
         pendingSmallAnnotationStore = store;
         pendingSmallAnnotationProject = project;
         pendingSmallAnnotationCategoryId = selectedSmallAnnotationCategoryId;
 
-        Brush popupBackground = GetAnnotationFlyoutBackground();
+        Brush popupBackground = new SolidColorBrush(Color.FromArgb(255, 48, 48, 48));
         Brush popupForeground = new SolidColorBrush(Colors.White);
         double readerWidth = View.ActualWidth > 0 ? View.ActualWidth : 720d;
         double readerHeight = View.ActualHeight > 0 ? View.ActualHeight : 640d;
@@ -418,6 +486,7 @@ public sealed partial class MainWindow
             VerticalContentAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
+            IsTabStop = true,
         };
         smallAnnotationComposerTextBox = contentBox;
 
@@ -569,6 +638,13 @@ public sealed partial class MainWindow
             if (ReferenceEquals(smallAnnotationComposerPopup, popup))
             {
                 smallAnnotationComposerPopup = null;
+                if (hasSmallComposerPassiveState)
+                {
+                    View.IsReaderInteractionPassive = wasReaderInteractionPassiveBeforeSmallComposer;
+                    hasSmallComposerPassiveState = false;
+                }
+                View.ClearTextSelection();
+                View.FocusCanvas();
                 smallAnnotationComposerTextBox = null;
                 smallAnnotationComposerValidation = null;
                 pendingSmallAnnotationSelection = null;
@@ -579,8 +655,25 @@ public sealed partial class MainWindow
             }
         };
 
+        contentBox.Loaded += (_, _) =>
+        {
+            // Popup children are loaded after IsOpen is set. Focus only after the TextBox is
+            // connected to the live XamlRoot, otherwise the first focus request can be lost.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
+                    && ReferenceEquals(smallAnnotationComposerPopup, popup)
+                    && popup.IsOpen)
+                {
+                    contentBox.Focus(FocusState.Programmatic);
+                }
+            });
+        };
+
         popup.IsOpen = true;
-        contentBox.Focus(FocusState.Programmatic);
+        wasReaderInteractionPassiveBeforeSmallComposer = View.IsReaderInteractionPassive;
+        hasSmallComposerPassiveState = true;
+        View.IsReaderInteractionPassive = true;
         return Task.CompletedTask;
     }
 
@@ -690,12 +783,18 @@ public sealed partial class MainWindow
         }
     }
 
-    private void CloseSmallAnnotationComposer()
+    private void CloseSmallAnnotationComposer(bool clearSelection = true)
     {
         Popup? popup = smallAnnotationComposerPopup;
         smallAnnotationComposerPopup = null;
         if (popup?.IsOpen == true)
             popup.IsOpen = false;
+
+        if (hasSmallComposerPassiveState)
+        {
+            View.IsReaderInteractionPassive = wasReaderInteractionPassiveBeforeSmallComposer;
+            hasSmallComposerPassiveState = false;
+        }
 
         smallAnnotationComposerTextBox = null;
         smallAnnotationComposerValidation = null;
@@ -705,7 +804,12 @@ public sealed partial class MainWindow
         pendingSmallAnnotationCategoryId = null;
         pendingSmallComposerAnchor = null;
         hasLastTextSelectionPoint = false;
-        View.FocusCanvas();
+
+        if (clearSelection)
+        {
+            View.ClearTextSelection();
+            View.FocusCanvas();
+        }
     }
 
     private Brush GetAnnotationFlyoutBackground()

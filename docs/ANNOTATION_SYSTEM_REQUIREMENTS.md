@@ -1099,3 +1099,13 @@ Phase 2 已在 WinUI 层新增 Win2DTextLayoutProvider / Win2DTextLayoutResult�
 - 用户 Windows x64 Release build 报错 CS0103：MainWindow.SmallAnnotations.cs 第 774 行仍引用旧变量 pendingSmallComposerPosition；上一轮将其重命名为 pendingSmallComposerAnchor 时遗漏了该引用。
 - 已将该处清理逻辑同步改为 pendingSmallComposerAnchor = null，并检查全部 6 个 MainWindow partial C# 文件，确认不再存在旧变量名引用。
 - WMC1509、WMC0001、WMC9999 暂不单独修改；先修复 C# 首要错误后重新构建，再根据剩余错误判断是否存在独立 XAML 问题。
+
+
+**2026-11-06 第四轮交互修正（待 Windows 实测）：**
+- 阅读区 TextCanvas 的鼠标指针由 IBeam 改为 Arrow；阅读器仍然支持拖动选中文字，但静止悬停时不再显示文本编辑器指针。
+- 选区菜单从 Flyout 改为 Popup，使用首条可见选中行锚点直接计算 X/Y，不再依赖 FlyoutPlacementMode.Top；正常情况下菜单底部箭头尖端与选区第一行顶部对齐，空间不足时菜单翻转到选区下方并翻转箭头。
+- 小批注编辑器背景固定为深灰色 #303030，不再因 Paper/Warm/Night 阅读背景切换成纯黑或其他颜色；选区菜单仍按阅读背景明暗联动。
+- 小批注编辑器在 Popup 内容 Loaded 后再通过 DispatcherQueue 设置输入焦点；打开期间将 TextCanvas 设为被动交互状态，阅读区滚轮仍可翻页，但点击阅读区不会清除原文选区或抢走编辑器焦点。关闭时恢复打开前的被动状态。
+- 点击“复制”后复制原文并清除选区；点击“小批”后保留原文选区用于锚点校验和保存，直到点击 X 或保存成功关闭编辑器后才清除选区。关闭编辑器时不改变阅读滚动位置。
+- 未修改数据库结构、锚点模型、原文校验与保存流程；未增加自动滚动。
+- 当前待验收重点：编辑器光标是否持续闪烁；阅读区箭头指针；选区菜单 Popup 的实际贴合间距；编辑器深灰背景；复制/关闭后的选区清除行为。未经 Windows 实测不得标记为验收通过。
