@@ -227,7 +227,7 @@ public sealed partial class MainWindow
         lastTextSelectionComposerAnchor = composerAnchor;
         hasLastTextSelectionPoint = true;
 
-        Brush menuBackground = GetAnnotationFlyoutBackground();
+        Brush menuBackground = GetSelectionMenuBackground();
         Brush menuForeground = new SolidColorBrush(Colors.White);
         var actions = new StackPanel
         {
@@ -812,7 +812,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private Brush GetAnnotationFlyoutBackground()
+    private Brush GetSelectionMenuBackground()
     {
         Color readerBackground = View.ReaderBackgroundColor;
         double luminance = (0.2126 * readerBackground.R
@@ -826,17 +826,4 @@ public sealed partial class MainWindow
                 : Color.FromArgb(255, 20, 20, 20));
     }
 
-    private static Style CreateAnnotationFlyoutPresenterStyle()
-    {
-        var style = new Style(typeof(FlyoutPresenter));
-        style.Setters.Add(new Setter(Control.BackgroundProperty,
-            new SolidColorBrush(Colors.Transparent)));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty,
-            new SolidColorBrush(Colors.Transparent)));
-        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
-        style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(0)));
-        style.Setters.Add(new Setter(FlyoutPresenter.IsDefaultShadowEnabledProperty, false));
-        return style;
-    }
 }
