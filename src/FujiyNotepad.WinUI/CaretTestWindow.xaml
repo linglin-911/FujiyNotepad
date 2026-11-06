@@ -82,8 +82,7 @@
                      SizeChanged="EditorTextBox_SizeChanged" />
 
             <Canvas x:Name="CaretOverlay"
-                    IsHitTestVisible="False"
-                    ClipToBounds="True">
+                    IsHitTestVisible="False">
                 <Border x:Name="CustomCaret"
                         Width="2"
                         Height="22"
