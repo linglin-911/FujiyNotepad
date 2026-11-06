@@ -185,8 +185,10 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 右上角为小型圆形关闭图标；保存为紧凑药丸按钮。只保留多行正文、保存和 X，不显示标题输入框或底部取消按钮。
 - 编辑器位置依据选区最后一条可见实际文字矩形的底边，不使用鼠标释放点；优先放在选区下方，超出阅读视口时贴近可视范围底部，不自动滚动阅读区域。
 - 打开后自动获取输入焦点；点击编辑区外部时失去焦点但不关闭弹窗；滚轮翻页不改变焦点；重新点击编辑区恢复焦点。
-- **当前已知问题：** 焦点获取/失去行为已由用户实测正常，但输入光标获得焦点后只闪烁约 5 次，随后停止闪烁。当前控件是 WinUI 3 原生 TextBox，并非第三方编辑器；但项目为它应用了自定义 AnnotationComposerTextBoxStyle 和 ControlTemplate（MainWindow.xaml，约第 42–98 行），实例在 MainWindow.AnnotationPane.cs 创建。尚未确认根因。
-- 后续处理光标问题时，优先临时移除自定义 ControlTemplate，保留透明背景、无边框等必要样式，先测试 WinUI TextBox 默认模板；若仍异常，再评估 RichEditBox 或其他输入实现。当前不预先决定替换，也不为此改变小批注数据和保存流程。
+- **当前已知问题及排查状态：** 焦点获取/失去行为已由用户实测正常，但输入光标获得焦点后只闪烁约 5 次，随后停止闪烁。控件是 WinUI 3 原生 TextBox；此前项目为它应用了自定义 AnnotationComposerTextBoxStyle 和 ControlTemplate（MainWindow.xaml），实例在 MainWindow.AnnotationPane.cs 创建。
+- **2026-11-06 排查改动：** 已从 AnnotationComposerTextBoxStyle 移除自定义 ControlTemplate，恢复 WinUI 默认 TextBox 模板；保留透明背景、透明边框、零边框宽度、零圆角、无系统焦点视觉，以及原有滚动设置。没有修改 TextBox 创建参数、GotFocus/LostFocus 诊断、初始焦点排队、外部点击失焦、Popup 生命周期、保存流程或批注数据。
+- **验证状态：** 代码已提交，尚未在 Windows 环境重新编译和实测。需要确认光标是否持续闪烁，以及默认模板是否仍保持透明无边框外观；本次修改不能视为已修复。
+- 若默认模板下仍异常，再检查 WinUI 默认模板的焦点/输入状态及 Popup 中的 TextBox 行为，之后才比较 RichEditBox 等替代控件。当前不预先决定替换，也不改变小批注数据和保存流程。
 
 ## 8. 统一批注面板和界面边界
 
@@ -211,7 +213,7 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 ### 当前唯一明确的交互遗留
 
-- 小批注 TextBox 获得焦点后，插入光标约闪烁 5 次便停止。焦点获取/失去本身正常。按第 7.2 节记录的顺序检查默认 TextBox 模板，必要时再评估替代控件。
+- 小批注 TextBox 获得焦点后，插入光标约闪烁 5 次便停止。已提交移除自定义 ControlTemplate、恢复 WinUI 默认 TextBox 模板的排查改动；焦点管理和 Popup 逻辑未改。当前等待 Windows x64 编译及用户实测，不能视为问题已修复。若默认模板下仍异常，再继续定位，不直接跳到 RichEditBox。
 
 ### 后续开发方向
 
