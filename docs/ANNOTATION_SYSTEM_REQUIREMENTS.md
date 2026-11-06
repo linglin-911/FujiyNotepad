@@ -185,10 +185,10 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - 右上角为小型圆形关闭图标；保存为紧凑药丸按钮。只保留多行正文、保存和 X，不显示标题输入框或底部取消按钮。
 - 编辑器位置依据选区最后一条可见实际文字矩形的底边，不使用鼠标释放点；优先放在选区下方，超出阅读视口时贴近可视范围底部，不自动滚动阅读区域。
 - 打开后自动获取输入焦点；点击编辑区外部时失去焦点但不关闭弹窗；滚轮翻页不改变焦点；重新点击编辑区恢复焦点。
-- **当前已知问题及排查状态：** 焦点获取/失去行为已由用户实测正常，但输入光标获得焦点后只闪烁约 5 次，随后停止闪烁。控件是 WinUI 3 原生 TextBox；此前项目为它应用了自定义 AnnotationComposerTextBoxStyle 和 ControlTemplate（MainWindow.xaml），实例在 MainWindow.AnnotationPane.cs 创建。
-- **2026-11-06 排查改动：** 已从 AnnotationComposerTextBoxStyle 移除自定义 ControlTemplate，恢复 WinUI 默认 TextBox 模板；保留透明背景、透明边框、零边框宽度、零圆角、无系统焦点视觉，以及原有滚动设置。没有修改 TextBox 创建参数、GotFocus/LostFocus 诊断、初始焦点排队、外部点击失焦、Popup 生命周期、保存流程或批注数据。
-- **验证状态：** 代码已提交，尚未在 Windows 环境重新编译和实测。需要确认光标是否持续闪烁，以及默认模板是否仍保持透明无边框外观；本次修改不能视为已修复。
-- 若默认模板下仍异常，再检查 WinUI 默认模板的焦点/输入状态及 Popup 中的 TextBox 行为，之后才比较 RichEditBox 等替代控件。当前不预先决定替换，也不改变小批注数据和保存流程。
+- **当前已知问题及排查状态：** 小批注编辑区和章节批注编辑区都出现光标约闪烁 5 次后停止、并停留在最后可见状态的现象。章节批注编辑区 `ChapterAnnotationEditorContent` 是 MainWindow.xaml 中未套用自定义模板的普通 WinUI TextBox；小批注编辑区则由 MainWindow.AnnotationPane.cs 动态创建并使用 `AnnotationComposerTextBoxStyle`。两个不同模板/创建路径出现相同现象，说明不能继续把根因归结为小批注自定义模板。
+- **外部排查线索（待本机确认）：** 社区报告发现 Windows 用户级注册表 `HKEY_CURRENT_USER\Control Panel\Desktop\CaretTimeout` 控制文本插入光标持续闪烁的时长；多个 Windows 版本的报告称默认约 5000 ms，超时后光标停留在最后的显示/隐藏状态。这与当前现象高度吻合，但该设置未找到微软官方 API 文档，不能仅凭社区资料认定本机值。下一步先读取本机值并在记事本/Win+R 输入框对照测试，不要先改应用焦点逻辑或更换控件。
+- **2026-11-06 外观调整：** 默认 TextBox 模板在小批注 Popup 中显示为白色编辑区和蓝色焦点底线，不符合已确认的深灰色一体化卡片设计。因此小批注编辑器恢复紧凑自定义模板，但不再使用透明背景：TextBox、内部 ScrollViewer 和 Popup 卡片共用同一个不透明深灰色 Background；模板仍省略默认焦点下划线视觉状态。该外观调整不宣称能修复 Windows caret timeout。
+- **验证状态：** 上述外观调整已提交，尚未完成 Windows x64 编译及视觉实测。焦点获取/失去、Popup 生命周期、保存流程和批注数据均未改变。
 
 ## 8. 统一批注面板和界面边界
 
@@ -213,7 +213,8 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 
 ### 当前唯一明确的交互遗留
 
-- 小批注 TextBox 获得焦点后，插入光标约闪烁 5 次便停止。已提交移除自定义 ControlTemplate、恢复 WinUI 默认 TextBox 模板的排查改动；焦点管理和 Popup 逻辑未改。当前等待 Windows x64 编译及用户实测，不能视为问题已修复。若默认模板下仍异常，再继续定位，不直接跳到 RichEditBox。
+- 小批注和章节批注的原生 TextBox 都出现约 5 次闪烁后停止的现象。优先验证 Windows 用户级 `CaretTimeout` 是否为约 5000 ms：先只读查询注册表，并与记事本/Win+R 对照。暂不更换 TextBox/RichEditBox，也不改动焦点管理。
+- 小批注 Popup 的编辑区已恢复紧凑自定义模板，并改为与深灰色卡片共用不透明背景；该外观修正尚待 Windows 编译和实测。
 
 ### 后续开发方向
 
