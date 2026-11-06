@@ -192,6 +192,9 @@ FujiyNotepad 小说阅读与批注系统是 Windows 桌面软件，面向长篇 
 - **应用内方向（WPF 式双层光标，原型已加入、待 Windows 验证）：** 保留 WinUI TextBox 负责文本存储、键盘导航、选区、中文 IME 和输入事件；上层 XAML 视觉元素负责可见光标和独立闪烁。参考 WPF `CaretElement`，不只调用 `HideCaret`：创建 1-bit 空白位图，通过 `CreateCaret`/`ShowCaret` 建立透明 Win32 系统 caret，再用 `SetCaretPos` 同步系统辅助光标位置；可见层使用 `SelectionStart` 和 `GetRectFromCharacterIndex` 定位，使用 `GetCaretBlinkTime` 作为自绘定时器的闪烁间隔。不得调用 `SetCaretBlinkTime`，不得修改用户注册表。
 - **独立测试窗口：** 新增 `CaretTestWindow.xaml` / `.xaml.cs`，从 View →「光标技术测试…」打开。提供“原生光标（对照）”和“WPF 式双层光标（自绘）”两种模式；显示当前 SelectionStart/SelectionLength、Text.Length、光标矩形 DIP、窗口客户区像素坐标和 Win32 caret 创建/定位状态；提供清空与填充长文本操作。该窗口是临时技术验证工具，不接入项目/批注数据库，不替换或修改正式小批注、章节批注编辑器。
 - **待验证项目：** Windows x64 Release 编译；自绘光标连续超过 5 秒仍闪烁；Win32 空白 caret 不出现可见重影；中文 IME 组合输入/候选窗；方向键、鼠标定位、选区与选区折叠；空文本、文本末尾、末尾换行、混合中英文；滚动、窗口缩放和 DPI；失焦/重新聚焦/关闭窗口后的系统 caret 释放；放大镜/UI Automation caret 位置。若 WinUI 内部重建系统 caret 导致可见重影或位置不同步，先在原型中定位，不直接推广到正式编辑器。
+- **第二版原型改进（2026-11-06，待 Windows 验证）：** 参考 WinUI `GetCaretRect` 社区实现与 AvalonEdit 的坐标/滚动处理，光标索引在无选区时直接使用 `SelectionStart`；文本末尾使用最后字符 trailing edge，末尾 CR/LF 单独处理；TextBox 返回的字符边缘先通过 `TransformToVisual(CaretOverlay)` 转换到自绘层，再通过同一字符边缘转换到 RootGrid 计算 Win32 坐标，避免两条路径各自假定坐标原点。诊断增加相邻字符 leading/trailing edge、Overlay/RootGrid 坐标、DPI 和滚动偏移。
+- **刷新队列修正：** 原 `updateQueued` 会直接丢弃队列期间到来的更新请求。现在合并 `resetBlink` / `forceRecreate` 标志，并使用低优先级 DispatcherQueue 更新，尽量等当前文本输入与布局过程结束后再读取字符矩形。滚动、尺寸变化和选择变化仍触发刷新。该改进仍需实测确认 WinUI 内部排版完成时机是否足够。
+- **参考源码：** AvalonEdit `Caret.cs`（VisualLine/TextLine 坐标、VisualLinesChanged、ScrollOffsetChanged）；WinUI `TextBoxExtensions.GetCaretRect`（字符边缘和末尾换行处理）；Avalonia `TextPresenter`（TextLayout/CharacterHit）。这些作为实现参考，不直接引入依赖或移植完整编辑器。
 - **2026-11-06 外观调整：** 默认 TextBox 模板在小批注 Popup 中显示为白色编辑区和蓝色焦点底线，不符合已确认的深灰色一体化卡片设计。因此小批注编辑器恢复紧凑自定义模板，但不再使用透明背景：TextBox、内部 ScrollViewer 和 Popup 卡片共用同一个不透明深灰色 Background；模板仍省略默认焦点下划线视觉状态。该外观调整不宣称能修复 Windows caret timeout。
 - **验证状态：** 上述外观调整已提交，尚未完成 Windows x64 编译及视觉实测。焦点获取/失去、Popup 生命周期、保存流程和批注数据均未改变。
 
