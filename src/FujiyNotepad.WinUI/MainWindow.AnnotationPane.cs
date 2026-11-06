@@ -668,34 +668,38 @@ public sealed partial class MainWindow
         contentBox.LostFocus += (_, _) =>
             LogDiagnostic("SmallAnnotationComposer: editor LostFocus");
 
-        // Popup.Opened is raised after the Popup child is attached to the live XamlRoot.
-        // Request focus once, on the next dispatcher turn, so the native caret starts blinking
-        // as soon as the editor appears. LostFocus is intentionally NOT auto-corrected:
-        // the pointer policy below decides whether focus should remain or be released.
-        popup.Opened += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        // Popup.Opened / TextBox.Loaded can occur in either order. Queue one initial focus request
+        // once the TextBox is loaded and the Popup is open; never use LostFocus to steal focus back.
+        bool initialFocusQueued = false;
+        void QueueInitialComposerFocus()
         {
-            if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
-                && ReferenceEquals(smallAnnotationComposerPopup, popup)
-                && popup.IsOpen)
-            {
-                bool focused = contentBox.Focus(FocusState.Programmatic);
-                LogDiagnostic($"SmallAnnotationComposer: initial editor focus accepted={focused}");
-            }
-        });
+            if (initialFocusQueued || !contentBox.IsLoaded)
+                return;
 
-        // Clicking the card outside the editable surface releases focus after the current
-        // pointer event. Enabled buttons keep their normal pointer/click behavior.
+            initialFocusQueued = true;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                initialFocusQueued = false;
+                if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
+                    && ReferenceEquals(smallAnnotationComposerPopup, popup)
+                    && popup.IsOpen)
+                {
+                    bool focused = contentBox.Focus(FocusState.Programmatic);
+                    LogDiagnostic($"SmallAnnotationComposer: initial editor focus accepted={focused}");
+                }
+            });
+        }
+
+        popup.Opened += (_, _) => QueueInitialComposerFocus();
+        contentBox.Loaded += (_, _) => QueueInitialComposerFocus();
+
+        // Any click released inside the card but outside the TextBox releases focus after the
+        // current pointer event. The queued check allows X/Save Click handlers to finish first.
         card.AddHandler(UIElement.PointerReleasedEvent,
             new PointerEventHandler((_, e) =>
             {
-                if (IsPointerWithin(contentBox, e)
-                    || IsPointerWithin(closeButton, e)
-                    || (saveButton.IsEnabled && IsPointerWithin(saveButton, e)))
-                {
-                    return;
-                }
-
-                QueueSmallComposerFocusRelease(popup, contentBox);
+                if (!IsPointerWithin(contentBox, e))
+                    QueueSmallComposerFocusRelease(popup, contentBox);
             }),
             true);
 
