@@ -670,10 +670,10 @@ public sealed partial class MainWindow
             });
         };
 
-        popup.IsOpen = true;
         wasReaderInteractionPassiveBeforeSmallComposer = View.IsReaderInteractionPassive;
         hasSmallComposerPassiveState = true;
         View.IsReaderInteractionPassive = true;
+        popup.IsOpen = true;
         return Task.CompletedTask;
     }
 
