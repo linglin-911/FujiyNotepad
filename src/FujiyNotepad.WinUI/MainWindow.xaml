@@ -39,11 +39,10 @@
                 <Setter Property="FontFamily" Value="Consolas" />
             </Style>
 
-            <!-- Keep the native WinUI TextBox template so its caret and input-method behavior
-                 remain under framework control. The transparent, zero-thickness surface keeps
-                 the composer visually integrated with its surrounding card. -->
+            <!-- The composer uses a compact template without the default focus underline.
+                 Its background is opaque and is supplied by the popup card so both surfaces
+                 render as one continuous dark editor. Caret blinking follows the Windows setting. -->
             <Style x:Key="AnnotationComposerTextBoxStyle" TargetType="TextBox">
-                <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="CornerRadius" Value="0" />
@@ -54,6 +53,47 @@
                 <Setter Property="ScrollViewer.VerticalScrollMode" Value="Auto" />
                 <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
                 <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Grid>
+                                <Border x:Name="BorderElement"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="{TemplateBinding CornerRadius}"
+                                        Control.IsTemplateFocusTarget="True"
+                                        MinWidth="{TemplateBinding MinWidth}"
+                                        MinHeight="{TemplateBinding MinHeight}" />
+                                <ScrollViewer x:Name="ContentElement"
+                                              HorizontalScrollMode="{TemplateBinding ScrollViewer.HorizontalScrollMode}"
+                                              HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                              VerticalScrollMode="{TemplateBinding ScrollViewer.VerticalScrollMode}"
+                                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                              IsHorizontalRailEnabled="{TemplateBinding ScrollViewer.IsHorizontalRailEnabled}"
+                                              IsVerticalRailEnabled="{TemplateBinding ScrollViewer.IsVerticalRailEnabled}"
+                                              IsDeferredScrollingEnabled="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                                              Margin="{TemplateBinding BorderThickness}"
+                                              Padding="{TemplateBinding Padding}"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              Background="{TemplateBinding Background}"
+                                              BorderBrush="{TemplateBinding BorderBrush}"
+                                              BorderThickness="0"
+                                              IsTabStop="False"
+                                              AutomationProperties.AccessibilityView="Raw"
+                                              ZoomMode="Disabled" />
+                                <TextBlock x:Name="PlaceholderTextContentPresenter"
+                                           Foreground="{TemplateBinding PlaceholderForeground}"
+                                           Margin="{TemplateBinding BorderThickness}"
+                                           Padding="{TemplateBinding Padding}"
+                                           Text="{TemplateBinding PlaceholderText}"
+                                           TextAlignment="{TemplateBinding TextAlignment}"
+                                           TextWrapping="{TemplateBinding TextWrapping}"
+                                           IsHitTestVisible="False" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
         </Grid.Resources>
 
