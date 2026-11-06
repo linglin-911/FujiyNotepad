@@ -334,10 +334,13 @@ public sealed partial class MainWindow
                            + 10d;
         double menuHeight = menuBodyHeight + arrowHeight;
 
-        // Transform the first selected visual row's anchor into the window root's coordinate space.
+        // The two anchors describe the visible selection highlight itself:
+        // menuAnchor is the top of the first selected row; composerAnchor is the bottom
+        // of the last selected row. They are intentionally separate for multi-row selections.
         GeneralTransform viewToRoot = View.TransformToVisual(RootGrid);
         Point readerOrigin = viewToRoot.TransformPoint(new Point(0, 0));
-        Point anchorInRoot = viewToRoot.TransformPoint(menuAnchor);
+        Point firstRowAnchorInRoot = viewToRoot.TransformPoint(menuAnchor);
+        Point lastRowAnchorInRoot = viewToRoot.TransformPoint(composerAnchor);
         double readerWidth = Math.Max(1d, View.ActualWidth);
         double readerHeight = Math.Max(1d, View.ActualHeight);
 
@@ -350,14 +353,18 @@ public sealed partial class MainWindow
         if (topMax < topMin)
             topMax = topMin;
 
-        // Normally the arrow sits below the menu and points at the first selected row.
-        // If there is not enough room above the selection, flip the arrow and place the menu below it.
-        bool placeBelowSelection = anchorInRoot.Y - menuHeight < topMin;
-        double menuLeft = Math.Clamp(anchorInRoot.X - menuWidth / 2d, leftMin, leftMax);
-        double menuTop = placeBelowSelection
-            ? anchorInRoot.Y + 0.665d
-            : anchorInRoot.Y - menuHeight;
-        menuTop = Math.Clamp(menuTop, topMin, topMax);
+        // Keep the menu above the first selected row whenever it fits.
+        // At the top edge, flip it below the LAST selected row so it never covers the first row.
+        bool placeBelowSelection = firstRowAnchorInRoot.Y - menuHeight < topMin;
+        Point placementAnchor = placeBelowSelection
+            ? lastRowAnchorInRoot
+            : firstRowAnchorInRoot;
+        const double arrowGap = 3d;
+        double menuLeft = Math.Clamp(placementAnchor.X - menuWidth / 2d, leftMin, leftMax);
+        double desiredMenuTop = placeBelowSelection
+            ? placementAnchor.Y + arrowGap
+            : firstRowAnchorInRoot.Y - menuHeight;
+        double menuTop = Math.Clamp(desiredMenuTop, topMin, topMax);
 
         var menuRoot = new Grid
         {
@@ -655,25 +662,32 @@ public sealed partial class MainWindow
             }
         };
 
-        contentBox.Loaded += (_, _) =>
+        void EnsureComposerTextBoxFocus()
         {
-            // Popup children are loaded after IsOpen is set. Focus only after the TextBox is
-            // connected to the live XamlRoot, otherwise the first focus request can be lost.
-            DispatcherQueue.TryEnqueue(() =>
+            if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
+                && ReferenceEquals(smallAnnotationComposerPopup, popup)
+                && popup.IsOpen)
             {
-                if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
-                    && ReferenceEquals(smallAnnotationComposerPopup, popup)
-                    && popup.IsOpen)
-                {
-                    contentBox.Focus(FocusState.Programmatic);
-                }
-            });
-        };
+                contentBox.Focus(FocusState.Programmatic);
+            }
+        }
+
+        // Popup.Opened runs after the child is attached to the live XamlRoot. Do not wait for a
+        // later pointer click to establish the insertion caret.
+        popup.Opened += (_, _) => EnsureComposerTextBoxFocus();
+        contentBox.Loaded += (_, _) => DispatcherQueue.TryEnqueue(EnsureComposerTextBoxFocus);
+
+        // A non-modal Popup can lose keyboard focus when the user clicks the reader or another
+        // in-window surface. Keep the editor as the active input target while it remains open.
+        // The X / Save handlers still run; the queued callback checks that the Popup is still open.
+        contentBox.LostFocus += (_, _) =>
+            DispatcherQueue.TryEnqueue(EnsureComposerTextBoxFocus);
 
         wasReaderInteractionPassiveBeforeSmallComposer = View.IsReaderInteractionPassive;
         hasSmallComposerPassiveState = true;
         View.IsReaderInteractionPassive = true;
         popup.IsOpen = true;
+        EnsureComposerTextBoxFocus();
         return Task.CompletedTask;
     }
 

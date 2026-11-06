@@ -928,11 +928,12 @@ namespace FujiyNotepad.WinUI.Controls
             if (!firstSelectedLine.HasSelection)
                 return fallback;
 
-            // Keep the menu close to the first visible selected row.
+            // VisibleLine.Y is the top edge used by the renderer for the selection highlight.
+            // Do not subtract the line-spacing/leading allowance here.
             double x = firstSelectedLine.SelectionWidth > 0
                 ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
                 : fallback.X;
-            double y = Math.Max(0d, firstSelectedLine.Y - 0.665d);
+            double y = Math.Max(0d, firstSelectedLine.Y);
             return new Point(
                 Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
                 y);
@@ -946,18 +947,17 @@ namespace FujiyNotepad.WinUI.Controls
             if (!lastSelectedLine.HasSelection)
                 return fallback;
 
-            // The composer is anchored to the bottom edge of the last visible selected visual row,
-            // not to the mouse-release point. Wrapped source lines are handled as separate visual rows.
-            double rowHeight = lastSelectedLine.UsesProportionalLayout
-                ? lastSelectedLine.LayoutRowHeight
-                : lineHeight;
-            if (!double.IsFinite(rowHeight) || rowHeight <= 0)
-                rowHeight = Math.Max(1d, lineHeight);
+            // Anchor to the bottom edge of the painted selection highlight, not LayoutRowHeight.
+            // LayoutRowHeight includes extra leading/line spacing, which creates a visible gap.
+            // Wrapped source lines are handled as separate visual rows.
+            double highlightHeight = double.IsFinite(lineHeight) && lineHeight > 0
+                ? lineHeight
+                : 1d;
 
             double x = lastSelectedLine.SelectionWidth > 0
                 ? lastSelectedLine.SelectionX + lastSelectedLine.SelectionWidth / 2d
                 : fallback.X;
-            double y = Math.Min(ActualHeight, lastSelectedLine.Y + rowHeight);
+            double y = Math.Min(ActualHeight, lastSelectedLine.Y + highlightHeight);
             return new Point(
                 Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
                 Math.Clamp(y, 0d, Math.Max(0d, ActualHeight)));
