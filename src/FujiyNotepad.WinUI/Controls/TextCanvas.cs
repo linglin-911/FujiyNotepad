@@ -750,6 +750,27 @@ namespace FujiyNotepad.WinUI.Controls
 
         public void FocusCanvas() => Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
 
+        /// <summary>
+        /// Takes keyboard focus while the reader is passive, so a floating annotation editor can
+        /// release its caret after an outside click without enabling text selection or navigation.
+        /// IsTabStop is restored immediately; the surface remains excluded from normal Tab traversal.
+        /// </summary>
+        public bool FocusPassiveReaderSurface()
+        {
+            bool wasTabStop = IsTabStop;
+            if (!wasTabStop)
+                IsTabStop = true;
+
+            try
+            {
+                return Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            }
+            finally
+            {
+                IsTabStop = wasTabStop;
+            }
+        }
+
         /// <summary>Copies the current selection to the clipboard (no-op when nothing is selected).</summary>
         public void CopySelection()
         {

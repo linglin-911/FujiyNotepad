@@ -359,11 +359,12 @@ public sealed partial class MainWindow
         Point placementAnchor = placeBelowSelection
             ? lastRowAnchorInRoot
             : firstRowAnchorInRoot;
-        const double arrowGap = 3d;
+        // Leave a visible gap between the selection highlight and the arrow tip in either direction.
+        const double arrowGap = 10d;
         double menuLeft = Math.Clamp(placementAnchor.X - menuWidth / 2d, leftMin, leftMax);
         double desiredMenuTop = placeBelowSelection
             ? placementAnchor.Y + arrowGap
-            : firstRowAnchorInRoot.Y - menuHeight;
+            : firstRowAnchorInRoot.Y - menuHeight - arrowGap;
         double menuTop = Math.Clamp(desiredMenuTop, topMin, topMax);
 
         var menuRoot = new Grid
@@ -662,26 +663,41 @@ public sealed partial class MainWindow
             }
         };
 
-        void EnsureComposerTextBoxFocus()
+        contentBox.GotFocus += (_, _) =>
+            LogDiagnostic("SmallAnnotationComposer: editor GotFocus");
+        contentBox.LostFocus += (_, _) =>
+            LogDiagnostic("SmallAnnotationComposer: editor LostFocus");
+
+        // Popup.Opened is raised after the Popup child is attached to the live XamlRoot.
+        // Request focus once, on the next dispatcher turn, so the native caret starts blinking
+        // as soon as the editor appears. LostFocus is intentionally NOT auto-corrected:
+        // the pointer policy below decides whether focus should remain or be released.
+        popup.Opened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
                 && ReferenceEquals(smallAnnotationComposerPopup, popup)
                 && popup.IsOpen)
             {
-                contentBox.Focus(FocusState.Programmatic);
+                bool focused = contentBox.Focus(FocusState.Programmatic);
+                LogDiagnostic($"SmallAnnotationComposer: initial editor focus accepted={focused}");
             }
-        }
+        });
 
-        // Popup.Opened runs after the child is attached to the live XamlRoot. Do not wait for a
-        // later pointer click to establish the insertion caret.
-        popup.Opened += (_, _) => EnsureComposerTextBoxFocus();
-        contentBox.Loaded += (_, _) => DispatcherQueue.TryEnqueue(EnsureComposerTextBoxFocus);
+        // Clicking the card outside the editable surface releases focus after the current
+        // pointer event. Enabled buttons keep their normal pointer/click behavior.
+        card.AddHandler(UIElement.PointerReleasedEvent,
+            new PointerEventHandler((_, e) =>
+            {
+                if (IsPointerWithin(contentBox, e)
+                    || IsPointerWithin(closeButton, e)
+                    || (saveButton.IsEnabled && IsPointerWithin(saveButton, e)))
+                {
+                    return;
+                }
 
-        // A non-modal Popup can lose keyboard focus when the user clicks the reader or another
-        // in-window surface. Keep the editor as the active input target while it remains open.
-        // The X / Save handlers still run; the queued callback checks that the Popup is still open.
-        contentBox.LostFocus += (_, _) =>
-            DispatcherQueue.TryEnqueue(EnsureComposerTextBoxFocus);
+                QueueSmallComposerFocusRelease(popup, contentBox);
+            }),
+            true);
 
         wasReaderInteractionPassiveBeforeSmallComposer = View.IsReaderInteractionPassive;
         hasSmallComposerPassiveState = true;
@@ -795,6 +811,41 @@ public sealed partial class MainWindow
                 smallAnnotationComposerValidation.Visibility = Visibility.Visible;
             }
         }
+    }
+
+    private void QueueSmallComposerFocusRelease(Popup popup, TextBox contentBox)
+    {
+        // Run after the pointer event so an X/Save button can complete its normal Click action.
+        // If the click landed on a non-focusable surface, explicitly move focus to the passive
+        // reader host; this hides the TextBox caret without making the reader interactive.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(smallAnnotationComposerPopup, popup)
+                || !popup.IsOpen
+                || !ReferenceEquals(smallAnnotationComposerTextBox, contentBox)
+                || contentBox.FocusState == FocusState.Unfocused)
+            {
+                return;
+            }
+
+            bool moved = View.FocusPassiveReaderSurface();
+            LogDiagnostic($"SmallAnnotationComposer: outside click released editor focus; readerFocusAccepted={moved}");
+        });
+    }
+
+    private void QueueSmallComposerFocusReleaseForPointer(PointerRoutedEventArgs e)
+    {
+        Popup? popup = smallAnnotationComposerPopup;
+        TextBox? contentBox = smallAnnotationComposerTextBox;
+        if (popup?.IsOpen != true || contentBox is null || IsPointerWithin(contentBox, e))
+            return;
+
+        // Popup children normally use their own routed tree. If this event also reaches RootGrid,
+        // leave clicks inside the card to the card handler so action buttons are not interrupted.
+        if (popup.Child is FrameworkElement popupChild && IsPointerWithin(popupChild, e))
+            return;
+
+        QueueSmallComposerFocusRelease(popup, contentBox);
     }
 
     private void CloseSmallAnnotationComposer(bool clearSelection = true)

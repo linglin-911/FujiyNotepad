@@ -133,6 +133,8 @@ namespace FujiyNotepad.WinUI
             RootGrid.ActualThemeChanged += (_, _) => UpdateWindowTitleBarTheme();
             RootGrid.AddHandler(UIElement.PointerPressedEvent,
                 new PointerEventHandler(RootGrid_PointerPressed), true);
+            RootGrid.AddHandler(UIElement.PointerReleasedEvent,
+                new PointerEventHandler(RootGrid_PointerReleased), true);
             ReaderSettingsControl.SettingsChanged += ReaderSettingsControl_SettingsChanged;
             ReaderSettingsControl.CloseRequested += CloseReaderSettingsPanel;
             View.ReaderPaletteChanged += UpdateReaderViewportBackground;
@@ -3524,6 +3526,13 @@ namespace FujiyNotepad.WinUI
 
             CloseReaderSettingsPanel();
             e.Handled = true;
+        }
+
+        private void RootGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            // Mouse-wheel scrolling does not raise PointerReleased and therefore never changes
+            // the annotation editor's focus state.
+            QueueSmallComposerFocusReleaseForPointer(e);
         }
 
         private static bool IsPointerWithin(FrameworkElement element, PointerRoutedEventArgs e)
