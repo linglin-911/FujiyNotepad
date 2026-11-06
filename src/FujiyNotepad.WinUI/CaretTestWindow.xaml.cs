@@ -478,29 +478,32 @@ public sealed partial class CaretTestWindow : Window
         return null;
     }
 
-    [LibraryImport("gdi32.dll", EntryPoint = "CreateBitmap", SetLastError = true)]
-    private static partial IntPtr CreateBitmap(int width, int height, uint planes, uint bitsPerPixel, IntPtr bits);
+    // Use classic DllImport here instead of LibraryImport. The WinUI app does not
+    // enable unsafe blocks, and these seven small Win32 declarations do not need
+    // source-generated interop to support this isolated experiment.
+    [DllImport("gdi32.dll", EntryPoint = "CreateBitmap", SetLastError = true)]
+    private static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitsPerPixel, IntPtr bits);
 
-    [LibraryImport("gdi32.dll", EntryPoint = "DeleteObject", SetLastError = true)]
+    [DllImport("gdi32.dll", EntryPoint = "DeleteObject", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DeleteObject(IntPtr handle);
+    private static extern bool DeleteObject(IntPtr handle);
 
-    [LibraryImport("user32.dll", EntryPoint = "CreateCaret", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "CreateCaret", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CreateCaret(IntPtr hwnd, IntPtr bitmap, int width, int height);
+    private static extern bool CreateCaret(IntPtr hwnd, IntPtr bitmap, int width, int height);
 
-    [LibraryImport("user32.dll", EntryPoint = "ShowCaret", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "ShowCaret", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ShowCaret(IntPtr hwnd);
+    private static extern bool ShowCaret(IntPtr hwnd);
 
-    [LibraryImport("user32.dll", EntryPoint = "DestroyCaret", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "DestroyCaret", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DestroyCaret();
+    private static extern bool DestroyCaret();
 
-    [LibraryImport("user32.dll", EntryPoint = "SetCaretPos", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "SetCaretPos", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetCaretPos(int x, int y);
+    private static extern bool SetCaretPos(int x, int y);
 
-    [LibraryImport("user32.dll", EntryPoint = "GetCaretBlinkTime")]
-    private static partial uint GetCaretBlinkTime();
+    [DllImport("user32.dll", EntryPoint = "GetCaretBlinkTime", SetLastError = true)]
+    private static extern uint GetCaretBlinkTime();
 }
