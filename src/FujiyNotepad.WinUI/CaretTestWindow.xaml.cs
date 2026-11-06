@@ -241,7 +241,7 @@ public sealed partial class CaretTestWindow : Window
         }
         catch (Exception ex)
         {
-            SystemCaretStatusText.Text = $\"读取 TextBox 光标矩形失败：{ex.Message}\";
+            SystemCaretStatusText.Text = $"读取 TextBox 光标矩形失败：{ex.Message}";
             CustomCaret.Visibility = Visibility.Collapsed;
             return;
         }
@@ -271,7 +271,7 @@ public sealed partial class CaretTestWindow : Window
         }
         catch (Exception ex)
         {
-            SystemCaretStatusText.Text = $\"转换光标坐标失败：{ex.Message}\";
+            SystemCaretStatusText.Text = $"转换光标坐标失败：{ex.Message}";
             CustomCaret.Visibility = Visibility.Collapsed;
             return;
         }
@@ -297,7 +297,7 @@ public sealed partial class CaretTestWindow : Window
         {
             if (!CreateTransparentSystemCaret(heightPixels))
             {
-                UpdateCaretDiagnostics(text, caretIndex, caretRect, overlayPoint, windowPoint, scale, xPixels, yPixels, \"透明 Win32 光标创建失败\");
+                UpdateCaretDiagnostics(text, caretIndex, caretRect, overlayPoint, windowPoint, scale, xPixels, yPixels, "透明 Win32 光标创建失败");
                 return;
             }
         }
@@ -306,16 +306,16 @@ public sealed partial class CaretTestWindow : Window
         {
             int firstError = Marshal.GetLastWin32Error();
             if (CreateTransparentSystemCaret(heightPixels) && SetCaretPos(xPixels, yPixels))
-                lastSystemCaretStatus = \"透明 Win32 光标已重新创建，位置同步成功。\";
+                lastSystemCaretStatus = "透明 Win32 光标已重新创建，位置同步成功。";
             else
             {
                 int secondError = Marshal.GetLastWin32Error();
-                lastSystemCaretStatus = $\"SetCaretPos 失败（首次错误 {firstError}，重试错误 {secondError}）。\";
+                lastSystemCaretStatus = $"SetCaretPos 失败（首次错误 {firstError}，重试错误 {secondError}）。";
             }
         }
         else
         {
-            lastSystemCaretStatus = \"透明 Win32 光标已创建，系统辅助光标位置同步成功。\";
+            lastSystemCaretStatus = "透明 Win32 光标已创建，系统辅助光标位置同步成功。";
         }
 
         SystemCaretStatusText.Text = lastSystemCaretStatus;
@@ -324,7 +324,7 @@ public sealed partial class CaretTestWindow : Window
 
     private void UpdateCaretDiagnostics(string text, int caretIndex, Rect caretRect, Point overlayPoint, Point windowPoint, double scale, int xPixels, int yPixels, string? extraStatus)
     {
-        string adjacentEdges = \"\";
+        string adjacentEdges = "";
         if (text.Length > 0 && caretIndex < text.Length)
         {
             try
@@ -333,19 +333,21 @@ public sealed partial class CaretTestWindow : Window
                 Rect previousTrailing = caretIndex > 0
                     ? EditorTextBox.GetRectFromCharacterIndex(caretIndex - 1, true)
                     : currentLeading;
-                adjacentEdges = $\"前一字符尾边缘=({previousTrailing.X:0.0},{previousTrailing.Y:0.0})；当前字符前边缘=({currentLeading.X:0.0},{currentLeading.Y:0.0})；\";
+                adjacentEdges = $"前一字符尾边缘=({previousTrailing.X:0.0},{previousTrailing.Y:0.0})；当前字符前边缘=({currentLeading.X:0.0},{currentLeading.Y:0.0})；";
             }
             catch
             {
-                adjacentEdges = \"相邻字符边缘读取失败；\";
+                adjacentEdges = "相邻字符边缘读取失败；";
             }
         }
 
+        double horizontalOffset = editorScrollViewer?.HorizontalOffset ?? 0;
+        double verticalOffset = editorScrollViewer?.VerticalOffset ?? 0;
         DiagnosticsText.Text =
-            $\"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, Text.Length={text.Length}, caretIndex={caretIndex}; \" +
-            $\"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP；\" +
-            $\"Overlay 点=({overlayPoint.X:0.0},{overlayPoint.Y:0.0}) DIP；窗口内容点=({windowPoint.X:0.0},{windowPoint.Y:0.0}) DIP；\" +
-            $\"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；{adjacentEdges}{extraStatus}\";
+            $"SelectionStart={EditorTextBox.SelectionStart}, SelectionLength={EditorTextBox.SelectionLength}, Text.Length={text.Length}, caretIndex={caretIndex}; " +
+            $"TextBox 矩形=({caretRect.X:0.0},{caretRect.Y:0.0},h={caretRect.Height:0.0}) DIP；" +
+            $"Overlay 点=({overlayPoint.X:0.0},{overlayPoint.Y:0.0}) DIP；窗口内容点=({windowPoint.X:0.0},{windowPoint.Y:0.0}) DIP；" +
+            $"Win32=({xPixels},{yPixels}) px，DPI={scale:0.00}；滚动偏移=({horizontalOffset:0.0},{verticalOffset:0.0}) DIP；{adjacentEdges}{extraStatus}";
     }
     private bool CreateTransparentSystemCaret(int heightPixels)
     {
