@@ -944,47 +944,185 @@ namespace FujiyNotepad.WinUI.Controls
             UpdateAutoScroll();
         }
 
-        private Point GetSelectionMenuAnchorPoint(Point fallback)
+        private bool TryGetSelectionPaintBounds(VisibleLine line, out Rect bounds)
         {
-            IReadOnlyList<VisibleLine> visibleLines =
-                engine.GetVisibleLines(hasFocus: false, caretVisible: false);
-            VisibleLine firstSelectedLine = visibleLines.FirstOrDefault(line => line.HasSelection);
-            if (!firstSelectedLine.HasSelection)
-                return fallback;
+            bounds = default;
+            if (!line.HasSelection)
+                return false;
 
-            // VisibleLine.Y is the top edge used by the renderer for the selection highlight.
-            // Do not subtract the line-spacing/leading allowance here.
-            double x = firstSelectedLine.SelectionWidth > 0
-                ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
-                : fallback.X;
-            double y = Math.Max(0d, firstSelectedLine.Y);
-            return new Point(
-                Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
-                y);
+            double minX = double.PositiveInfinity;
+            double minY = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity;
+            double maxY = double.NegativeInfinity;
+
+            void Include(double x, double y, double width, double height)
+            {
+                if (!double.IsFinite(x) || !double.IsFinite(y)
+                    || !double.IsFinite(width) || !double.IsFinite(height)
+                    || width <= 0 || height <= 0)
+                {
+                    return;
+                }
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x + width);
+                maxY = Math.Max(maxY, y + height);
+            }
+
+            double dpiScale = (canvas.Dpi > 0 ? canvas.Dpi : 96d) / 96d;
+
+            if (line.UsesProportionalLayout)
+            {
+                ITextLayoutResult? layout = engine.GetLayoutForLine(line.LineIndex);
+                if (layout is not null)
+                {
+                    if (line.SelectionLength <= 0)
+                        return false;
+
+                    // Match DrawSourceTextRangeHighlight exactly:
+                    // snapped layout origin + the same baseline-derived TextLayoutRect values.
+                    float layoutTopPx = (float)PixelSnap.SnapToDevicePixels(
+                        line.Y - line.LayoutRowTop, dpiScale);
+                    foreach (TextLayoutRect rectangle in layout.GetRangeGeometry(
+                                 line.SelectionStartIndex, line.SelectionLength))
+                    {
+                        if (rectangle.Width <= 0 || rectangle.Height <= 0)
+                            continue;
+
+                        float x = (float)(line.TextX + rectangle.X);
+                        float y = layoutTopPx + (float)rectangle.Y;
+                        Include(x, y, (float)rectangle.Width, (float)rectangle.Height);
+                    }
+                }
+                else
+                {
+                    // This is the renderer's fallback when no proportional layout is available.
+                    float rowTopPx = (float)PixelSnap.SnapToDevicePixels(line.Y, dpiScale);
+                    Include(line.SelectionX, rowTopPx, line.SelectionWidth, lineHeight);
+                }
+            }
+            else
+            {
+                // Match the legacy renderer's DrawTextRangeHighlight / continuation rectangles.
+                float rowTopPx = (float)PixelSnap.SnapToDevicePixels(line.Y, dpiScale);
+                float paintedHeight = (float)Math.Max(1d, lineHeight);
+                CanvasTextLayout? layout = GetTextLayout(line);
+
+                if (layout is not null)
+                {
+                    int startIndex = Math.Clamp(line.SelectionStartIndex, 0, line.Display.Length);
+                    int endIndex = Math.Clamp(
+                        startIndex + line.SelectionLength, startIndex, line.Display.Length);
+                    if (endIndex > startIndex)
+                    {
+                        Vector2 start = layout.GetCaretPosition(
+                            startIndex, trailingSideOfCharacter: false);
+                        Vector2 end = layout.GetCaretPosition(
+                            endIndex, trailingSideOfCharacter: false);
+                        double left = line.TextX + Math.Min(start.X, end.X);
+                        double right = line.TextX + Math.Max(start.X, end.X);
+                        Include(left, rowTopPx, right - left, paintedHeight);
+                    }
+
+                    if (line.SelectionContinuesPastRow)
+                    {
+                        Vector2 end = layout.GetCaretPosition(
+                            line.Display.Length, trailingSideOfCharacter: false);
+                        Include(
+                            line.TextX + end.X,
+                            rowTopPx,
+                            Math.Max(1d, charWidth),
+                            paintedHeight);
+                    }
+                }
+                else
+                {
+                    Include(line.SelectionX, rowTopPx, line.SelectionWidth, paintedHeight);
+                }
+            }
+
+            if (!double.IsFinite(minX) || !double.IsFinite(minY)
+                || !double.IsFinite(maxX) || !double.IsFinite(maxY)
+                || maxX <= minX || maxY <= minY)
+            {
+                return false;
+            }
+
+            // Canvas clips the highlight to its viewport. Use the visible portion of the same
+            // painted rectangle when anchoring the floating menu at the top/bottom edge.
+            double visibleTop = Math.Max(0d, minY);
+            double visibleBottom = Math.Min(Math.Max(0d, ActualHeight), maxY);
+            if (visibleBottom <= visibleTop)
+                return false;
+
+            bounds = new Rect(minX, visibleTop, maxX - minX, visibleBottom - visibleTop);
+            return true;
         }
 
-        private Point GetSelectionComposerAnchorPoint(Point fallback)
+        private Point GetSelectionMenuAnchorPoint()
         {
             IReadOnlyList<VisibleLine> visibleLines =
                 engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            foreach (VisibleLine line in visibleLines)
+            {
+                if (!TryGetSelectionPaintBounds(line, out Rect bounds))
+                    continue;
+
+                double x = bounds.X + bounds.Width / 2d;
+                return new Point(
+                    Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                    bounds.Y);
+            }
+
+            // Defensive fallback only: never use the mouse-release position as a selection anchor.
+            VisibleLine firstSelectedLine = visibleLines.FirstOrDefault(line => line.HasSelection);
+            if (firstSelectedLine.HasSelection)
+            {
+                double x = firstSelectedLine.SelectionWidth > 0
+                    ? firstSelectedLine.SelectionX + firstSelectedLine.SelectionWidth / 2d
+                    : ActualWidth / 2d;
+                double y = Math.Max(0d, firstSelectedLine.Y);
+                LogDiagnostic("TextCanvas: selection menu used row fallback because paint geometry was unavailable");
+                return new Point(
+                    Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                    y);
+            }
+
+            return new Point(Math.Max(8d, ActualWidth / 2d), 0d);
+        }
+
+        private Point GetSelectionComposerAnchorPoint()
+        {
+            IReadOnlyList<VisibleLine> visibleLines =
+                engine.GetVisibleLines(hasFocus: false, caretVisible: false);
+            for (int i = visibleLines.Count - 1; i >= 0; i--)
+            {
+                VisibleLine line = visibleLines[i];
+                if (!TryGetSelectionPaintBounds(line, out Rect bounds))
+                    continue;
+
+                double x = bounds.X + bounds.Width / 2d;
+                return new Point(
+                    Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                    Math.Clamp(bounds.Y + bounds.Height, 0d, Math.Max(0d, ActualHeight)));
+            }
+
+            // Defensive fallback only; normal placement always uses the last painted selection rectangle.
             VisibleLine lastSelectedLine = visibleLines.LastOrDefault(line => line.HasSelection);
-            if (!lastSelectedLine.HasSelection)
-                return fallback;
+            if (lastSelectedLine.HasSelection)
+            {
+                double x = lastSelectedLine.SelectionWidth > 0
+                    ? lastSelectedLine.SelectionX + lastSelectedLine.SelectionWidth / 2d
+                    : ActualWidth / 2d;
+                double y = Math.Min(ActualHeight, lastSelectedLine.Y + Math.Max(1d, lineHeight));
+                LogDiagnostic("TextCanvas: composer anchor used row fallback because paint geometry was unavailable");
+                return new Point(
+                    Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
+                    Math.Clamp(y, 0d, Math.Max(0d, ActualHeight)));
+            }
 
-            // Anchor to the bottom edge of the painted selection highlight, not LayoutRowHeight.
-            // LayoutRowHeight includes extra leading/line spacing, which creates a visible gap.
-            // Wrapped source lines are handled as separate visual rows.
-            double highlightHeight = double.IsFinite(lineHeight) && lineHeight > 0
-                ? lineHeight
-                : 1d;
-
-            double x = lastSelectedLine.SelectionWidth > 0
-                ? lastSelectedLine.SelectionX + lastSelectedLine.SelectionWidth / 2d
-                : fallback.X;
-            double y = Math.Min(ActualHeight, lastSelectedLine.Y + highlightHeight);
-            return new Point(
-                Math.Clamp(x, 8d, Math.Max(8d, ActualWidth - 8d)),
-                Math.Clamp(y, 0d, Math.Max(0d, ActualHeight)));
+            return new Point(Math.Max(8d, ActualWidth / 2d), Math.Max(0d, ActualHeight));
         }
 
         private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
@@ -1008,8 +1146,8 @@ namespace FujiyNotepad.WinUI.Controls
 
             if (!isClick && engine.HasSelection)
                 TextSelectionCompleted?.Invoke(
-                    GetSelectionMenuAnchorPoint(released),
-                    GetSelectionComposerAnchorPoint(released));
+                    GetSelectionMenuAnchorPoint(),
+                    GetSelectionComposerAnchorPoint());
 
             if (isClick && hadSelectionAnchor)
             {

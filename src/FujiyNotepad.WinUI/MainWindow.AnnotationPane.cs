@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.UI;
@@ -334,9 +335,9 @@ public sealed partial class MainWindow
                            + 10d;
         double menuHeight = menuBodyHeight + arrowHeight;
 
-        // The two anchors describe the visible selection highlight itself:
-        // menuAnchor is the top of the first selected row; composerAnchor is the bottom
-        // of the last selected row. They are intentionally separate for multi-row selections.
+        // The two anchors come from the actual painted selection rectangles:
+        // menuAnchor is the top of the first visible selected rectangle; composerAnchor is
+        // the bottom of the last visible selected rectangle. They are separate for multi-row selections.
         GeneralTransform viewToRoot = View.TransformToVisual(RootGrid);
         Point readerOrigin = viewToRoot.TransformPoint(new Point(0, 0));
         Point firstRowAnchorInRoot = viewToRoot.TransformPoint(menuAnchor);
@@ -359,8 +360,9 @@ public sealed partial class MainWindow
         Point placementAnchor = placeBelowSelection
             ? lastRowAnchorInRoot
             : firstRowAnchorInRoot;
-        // Leave a visible gap between the selection highlight and the arrow tip in either direction.
-        const double arrowGap = 10d;
+        // Keep the existing compact offset. Correct selection geometry, not a larger gap,
+        // prevents the flipped menu from covering the final selected row.
+        const double arrowGap = 3d;
         double menuLeft = Math.Clamp(placementAnchor.X - menuWidth / 2d, leftMin, leftMax);
         double desiredMenuTop = placeBelowSelection
             ? placementAnchor.Y + arrowGap
